@@ -63,8 +63,10 @@ export const signupAsync = createAsyncThunk(
   },
 );
 
-// ── DEV-only mock users (removed automatically in production builds) ──────────
-const DEV_MOCK_USERS = import.meta.env.DEV
+// ── Demo mode: mock users — enabled unless VITE_ENABLE_DEMO=false ─────────────
+const DEMO_MODE = import.meta.env.VITE_ENABLE_DEMO !== 'false';
+
+const DEV_MOCK_USERS = DEMO_MODE
   ? {
       'robert@domain.com':  { password: 'password123', role: 'cro_admin' },
       'user@example.com':   { password: 'password123', role: 'cro'       },
@@ -76,8 +78,8 @@ const DEV_MOCK_USERS = import.meta.env.DEV
 export const loginAsync = createAsyncThunk(
   'auth/login',
   async ({ email, password, geoInfo }, { rejectWithValue }) => {
-    // DEV: short-circuit with mock credentials so the UI works without a backend
-    if (import.meta.env.DEV && DEV_MOCK_USERS) {
+    // Demo: short-circuit with mock credentials so the UI works without a backend
+    if (DEMO_MODE && DEV_MOCK_USERS) {
       const mockUser = DEV_MOCK_USERS[email?.toLowerCase()];
       if (mockUser) {
         if (mockUser.password !== password) {
@@ -166,8 +168,8 @@ export const refreshTokenAsync = createAsyncThunk(
 export const fetchCurrentUserAsync = createAsyncThunk(
   'auth/fetchCurrentUser',
   async (_, { rejectWithValue }) => {
-    // DEV: restore mock session from localStorage without hitting the API
-    if (import.meta.env.DEV) {
+    // Demo: restore mock session from localStorage without hitting the API
+    if (DEMO_MODE) {
       const stored = localStorage.getItem('dev_mock_session');
       if (stored) {
         try { return JSON.parse(stored); } catch { /* fall through */ }
