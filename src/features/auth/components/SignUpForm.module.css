@@ -1,0 +1,129 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   SignUpForm.module.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Heading ─────────────────────────────────────────────────────────────── */
+.heading { margin-bottom: var(--sp-6); }
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 var(--sp-1);
+  letter-spacing: -0.3px;
+}
+
+.sub {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── Form layout ─────────────────────────────────────────────────────────── */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* ── Text input ──────────────────────────────────────────────────────────── */
+.input {
+  width: 100%;
+  min-height: 40px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  outline: none;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.input::placeholder { color: var(--text-muted); }
+.input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
+}
+.input[aria-invalid="true"] { border-color: var(--color-danger); }
+
+/* ── Root error banner ───────────────────────────────────────────────────── */
+.rootError {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-sm);
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: var(--color-danger);
+  font-size: 13.5px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ── Submit button ───────────────────────────────────────────────────────── */
+.submitBtn {
+  width: 100%;
+  min-height: 42px;
+  background: var(--color-primary);
+  color: #ffffff;
+  border-radius: var(--r-sm);
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+  transition: opacity var(--t-fast), transform var(--t-fast);
+}
+.submitBtn:hover:not(:disabled)  { opacity: 0.9; }
+.submitBtn:active:not(:disabled) { transform: scale(0.99); }
+.submitBtn:disabled              { opacity: 0.6; cursor: not-allowed; }
+
+/* ── Switch link ─────────────────────────────────────────────────────────── */
+.switchLink {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  text-align: center;
+  margin: 0;
+}
+.link { color: var(--color-primary); font-weight: 500; }
+.link:hover { text-decoration: underline; }
+
+/* ── Success state ───────────────────────────────────────────────────────── */
+.success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--sp-4);
+  padding: var(--sp-8) 0;
+}
+
+.successIcon {
+  color: var(--color-success);
+}
+
+.successTitle {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+
+.successSub {
+  font-size: 14.5px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 320px;
+}
+
+.successLink {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px var(--sp-6);
+  background: var(--color-primary);
+  color: #ffffff;
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  font-weight: 600;
+  transition: opacity var(--t-fast);
+  margin-top: var(--sp-2);
+}
+.successLink:hover { opacity: 0.9; }

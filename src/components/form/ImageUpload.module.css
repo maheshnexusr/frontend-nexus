@@ -1,0 +1,220 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ImageUpload.module.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.root { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+.hiddenInput { display: none; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RECTANGLE DROP-ZONE
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--border-medium);
+  border-radius: var(--r-md);
+  background: var(--bg-page);
+  min-height: 140px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--t-fast), background var(--t-fast);
+  overflow: hidden;
+}
+
+.dropzone:hover,
+.dropzone:focus,
+.dropzoneActive {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.dropzoneHasImage {
+  border-style: solid;
+  border-color: var(--border-medium);
+  min-height: unset;
+}
+
+.dropzoneError {
+  border-color: var(--color-danger);
+}
+
+.dropzoneDisabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.dropzoneDisabled:hover { border-color: var(--border-medium); background: var(--bg-page); }
+
+/* ── Inner placeholder ───────────────────────────────────────────────────── */
+.dropzoneInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-6);
+  text-align: center;
+}
+
+.uploadIcon { color: var(--text-muted); }
+
+.dropzoneTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.dropzoneHint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── Preview (rectangle) ─────────────────────────────────────────────────── */
+.preview {
+  position: relative;
+  width: 100%;
+}
+
+.previewImg {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  display: block;
+}
+
+.previewLock {
+  position: absolute;
+  top: var(--sp-2);
+  left: var(--sp-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px var(--sp-2);
+  border-radius: var(--r-full);
+  background: rgba(15,23,42,.65);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  backdrop-filter: blur(4px);
+}
+
+.removeBtn {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px var(--sp-2);
+  border-radius: var(--r-sm);
+  background: rgba(225,29,72,.9);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background var(--t-fast);
+  backdrop-filter: blur(4px);
+}
+.removeBtn:hover { background: var(--color-danger); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CIRCULAR MODE (profile photo)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.circle {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  border-radius: var(--r-full);
+  overflow: hidden;
+  cursor: pointer;
+  border: 2px dashed var(--border-medium);
+  background: var(--bg-page);
+  outline: none;
+  transition: border-color var(--t-fast);
+}
+
+.circle:hover,
+.circle:focus { border-color: var(--color-primary); }
+
+.circleError   { border-color: var(--color-danger); }
+.circleDisabled { opacity: 0.55; cursor: not-allowed; }
+.circleDisabled:hover { border-color: var(--border-medium); }
+
+.circleImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.circlePlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+.cameraIcon { color: var(--text-muted); }
+
+/* hover overlay on existing image */
+.circleOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15,23,42,.45);
+  color: #fff;
+  opacity: 0;
+  transition: opacity var(--t-fast);
+  border-radius: var(--r-full);
+}
+.circle:hover .circleOverlay,
+.circle:focus .circleOverlay { opacity: 1; }
+
+/* lock badge */
+.lockBadge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-full);
+  background: rgba(15,23,42,.7);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* remove button (circle mode) */
+.circleRemove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-full);
+  background: rgba(225,29,72,.88);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--t-fast);
+  opacity: 0;
+}
+.circle:hover .circleRemove,
+.circle:focus .circleRemove { opacity: 1; }
+.circleRemove:hover { background: var(--color-danger); }
+
+/* ── File validation error ───────────────────────────────────────────────── */
+.fileError {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--color-danger);
+}

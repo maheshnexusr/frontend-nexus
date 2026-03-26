@@ -1,0 +1,75 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   DatePicker.module.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.input {
+  width: 100%;
+  min-height: 38px;
+  padding: var(--sp-2) var(--sp-8) var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+.input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
+}
+
+/* Empty state (no date selected) */
+.input:not([value]),
+.input[value=""] {
+  color: var(--text-muted);
+}
+
+.input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: var(--bg-page);
+}
+
+/* ── Error state ─────────────────────────────────────────────────────────── */
+.wrapperError .input {
+  border-color: var(--color-danger);
+}
+.wrapperError .input:focus {
+  box-shadow: 0 0 0 3px rgba(225,29,72,.12);
+}
+
+/* ── Disabled wrapper ────────────────────────────────────────────────────── */
+.wrapperDisabled .icon { opacity: 0.45; }
+
+/* ── Calendar icon (right side) ──────────────────────────────────────────── */
+.icon {
+  position: absolute;
+  right: var(--sp-3);
+  color: var(--text-muted);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Browser date-picker opener icon: hide the native one on Chrome/Edge */
+.input::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  position: absolute;
+  right: 0;
+  width: 40px;
+  height: 100%;
+  cursor: pointer;
+}

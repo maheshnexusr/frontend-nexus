@@ -1,0 +1,197 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   StudyWizardStep3.module.css — Study Configuration
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.heading {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.2px;
+}
+
+.sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: calc(var(--sp-5) * -1) 0 0;
+}
+
+/* ── No-scope guard ─────────────────────────────────────────────────────── */
+.noScope {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+.noScopeText {
+  font-size: 14px;
+  color: var(--text-secondary);
+  background: var(--bg-subtle, #f8fafc);
+  border: 1px dashed var(--border-medium);
+  border-radius: var(--r-md);
+  padding: 20px 28px;
+  text-align: center;
+  max-width: 420px;
+  line-height: 1.6;
+}
+
+/* ── Config cards ────────────────────────────────────────────────────────── */
+.configList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.configCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--bg-subtle, #f8fafc);
+  border: 1px solid var(--border-light, #f1f5f9);
+  border-radius: var(--r-md);
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.configCard:hover {
+  border-color: var(--border-medium);
+  background: var(--bg-hover, #f1f5f9);
+}
+
+.configLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.configLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.configInfo {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--color-primary-light, #eff6ff);
+  color: var(--color-primary, #2563eb);
+}
+
+/* ── Toggle switch ───────────────────────────────────────────────────────── */
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* hide native checkbox */
+.toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggleTrack {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--border-medium, #cbd5e1);
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.toggleThumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.20);
+  transition: transform 0.2s;
+}
+
+/* checked state */
+.toggle input:checked ~ .toggleTrack {
+  background: var(--color-primary, #2563eb);
+}
+.toggle input:checked ~ .toggleTrack .toggleThumb {
+  transform: translateX(20px);
+}
+
+.toggleLabel {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  min-width: 26px;
+}
+.toggle input:checked ~ .toggleLabel {
+  color: var(--color-primary, #2563eb);
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border-light);
+  margin-top: var(--sp-3);
+}
+
+.btnCancel {
+  height: 36px;
+  padding: 0 var(--sp-5);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+.btnCancel:hover { background: var(--bg-hover); }
+
+.btnSave {
+  height: 36px;
+  padding: 0 var(--sp-6);
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--color-primary);
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+.btnSave:hover { background: var(--color-primary-dark, #1d4ed8); }

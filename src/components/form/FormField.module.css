@@ -1,0 +1,93 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   FormField.module.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+
+/* ── Label ───────────────────────────────────────────────────────────────── */
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.asterisk {
+  color: var(--color-danger);
+  font-weight: 700;
+}
+
+/* ── Control wrapper ─────────────────────────────────────────────────────── */
+.control {
+  width: 100%;
+}
+
+/*
+  Any direct child input / select / textarea inherits these base styles.
+  Components can override via their own CSS Modules without specificity fights.
+*/
+.control input,
+.control select,
+.control textarea {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  outline: none;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  min-height: 38px;
+}
+
+.control input::placeholder,
+.control textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.control input:focus,
+.control select:focus,
+.control textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
+}
+
+/* ── Error message ───────────────────────────────────────────────────────── */
+.error {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--color-danger);
+  line-height: 1.4;
+  margin-top: 1px;
+}
+
+.errorIcon {
+  flex-shrink: 0;
+}
+
+/* Highlight the input when there is an error */
+.field:has(.error) .control input,
+.field:has(.error) .control select,
+.field:has(.error) .control textarea {
+  border-color: var(--color-danger);
+}
+.field:has(.error) .control input:focus,
+.field:has(.error) .control select:focus,
+.field:has(.error) .control textarea:focus {
+  box-shadow: 0 0 0 3px rgba(225,29,72,.12);
+}
+
+/* ── Help text ───────────────────────────────────────────────────────────── */
+.helpText {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}

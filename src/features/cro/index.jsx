@@ -1,0 +1,23 @@
+// Barrel export — CRO feature pages
+export { default as CRODashboardPage }   from './pages/CRODashboardPage';
+export { default as SponsorListPage }    from './pages/SponsorListPage';
+export { default as SponsorNewPage }     from './pages/SponsorNewPage';
+export { default as SponsorEditPage }    from './pages/SponsorEditPage';
+export { default as StudyListPage }      from './pages/StudyListPage';
+export { default as StudyNewPage }       from './pages/StudyNewPage';
+export { default as StudyWizardStep1 }   from './pages/StudyWizardStep1';
+export { default as StudyWizardStep2 }   from './pages/StudyWizardStep2';
+export { default as StudyWizardStep3 }   from './pages/StudyWizardStep3';
+export { default as StudyWizardStep4 }   from './pages/StudyWizardStep4';
+export { default as StudyWizardStep5 }   from './pages/StudyWizardStep5';
+export { default as StudyWizardStep6 }   from './pages/StudyWizardStep6';
+export { default as StudyEditPage }      from './pages/StudyEditPage';
+export { default as TeamMembersPage }    from './pages/TeamMembersPage';
+export { default as TeamMemberNewPage }  from './pages/TeamMemberNewPage';
+export { default as TeamRolesPage }      from './pages/TeamRolesPage';
+export { default as EmailTemplatesPage } from './pages/EmailTemplatesPage';
+export { default as StudyPhasesPage }    from './pages/StudyPhasesPage';
+export { default as LocationsPage }      from './pages/LocationsPage';
+export { default as ActivityLogPage }    from './pages/ActivityLogPage';
+export { default as CROProfilePage }     from './pages/CROProfilePage';
+export { default as ChangePasswordPage } from './pages/ChangePasswordPage';

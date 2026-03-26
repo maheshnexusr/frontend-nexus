@@ -1,0 +1,139 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   TeamMembersPage.module.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.page {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 100%;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  margin: 0 0 4px;
+}
+.sub {
+  font-size: 13px;
+  color: var(--text-secondary, #64748b);
+  margin: 0;
+}
+
+.btnPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.btnPrimary:hover { background: #1d4ed8; }
+
+/* ── Avatar cell ─────────────────────────────────────────────────────────── */
+.nameBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+.avatarCell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.avatarImg {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid var(--border-default, #e2e8f0);
+  flex-shrink: 0;
+}
+.avatarInitials {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.avatarName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+}
+.nameBtn:hover .avatarName { color: var(--color-primary, #2563eb); }
+
+/* ── Study tags ──────────────────────────────────────────────────────────── */
+.studyTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.studyTag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid #bfdbfe;
+}
+.studyMore {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--bg-muted, #f1f5f9);
+  color: var(--text-muted, #64748b);
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.noStudies {
+  color: var(--text-disabled, #94a3b8);
+  font-size: 13px;
+}
+
+/* ── Row actions ─────────────────────────────────────────────────────────── */
+.actions { display: flex; align-items: center; gap: 4px; }
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 6px;
+  background: var(--bg-card, #fff);
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.actionBtn:hover       { border-color: var(--color-primary, #2563eb); color: var(--color-primary, #2563eb); }
+.actionBtnDanger:hover { border-color: #dc2626; color: #dc2626; }

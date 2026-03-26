@@ -1,0 +1,76 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ConfirmDialog.module.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0 var(--sp-4);
+}
+
+/* ── Icon ────────────────────────────────────────────────────────────────── */
+.iconWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r-full);
+  flex-shrink: 0;
+}
+
+.iconDanger  { background: var(--rose-bg);   color: var(--color-danger);  }
+.iconWarning { background: var(--amber-bg);  color: var(--color-warning); }
+.iconInfo    { background: var(--blue-bg);   color: var(--color-info);    }
+
+/* ── Text ────────────────────────────────────────────────────────────────── */
+.title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.message {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 320px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.cancelBtn {
+  padding: 8px var(--sp-5);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  transition: background var(--t-fast), color var(--t-fast);
+  cursor: pointer;
+}
+.cancelBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.confirmBtn {
+  padding: 8px var(--sp-5);
+  border: none;
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  transition: filter var(--t-fast);
+  cursor: pointer;
+}
+.confirmBtn:hover { filter: brightness(1.1); }
+
+.btnDanger  { background: var(--color-danger);  }
+.btnWarning { background: var(--color-warning); }
+.btnInfo    { background: var(--color-info);    }

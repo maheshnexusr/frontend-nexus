@@ -1,0 +1,55 @@
+.outer { flex: 1; overflow-y: auto; background: #f8fafc; padding: 24px; }
+.inner { max-width: 900px; margin: 0 auto; }
+
+.topBar {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
+}
+
+.viewTabs {
+  display: flex; background: #fff; border: 1px solid #e2e8f0; border-radius: 7px; padding: 3px; gap: 2px;
+}
+.viewTab {
+  padding: 5px 12px; font-size: 12px; font-weight: 500; border-radius: 5px; color: #64748b; transition: background 0.1s, color 0.1s;
+}
+.viewTabActive { background: #1e293b; color: #fff; }
+
+.actions { display: flex; gap: 8px; }
+.btnOutline {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border: 1px solid #e2e8f0; border-radius: 7px; font-size: 12px; font-weight: 500;
+  color: #475569; background: #fff; transition: background 0.1s;
+}
+.btnOutline:hover { background: #f8fafc; }
+.btnCopy {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border-radius: 7px; font-size: 12px; font-weight: 500;
+  color: #fff; transition: background 0.15s;
+}
+
+.codeBox {
+  background: #0f172a; border-radius: 10px; border: 1px solid #1e293b;
+  overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+}
+.chrome {
+  display: flex; align-items: center; gap: 5px;
+  padding: 10px 14px; border-bottom: 1px solid #1e293b;
+}
+.dot { width: 11px; height: 11px; border-radius: 50%; }
+.dotR { background: rgba(239,68,68,0.5); }
+.dotY { background: rgba(234,179,8,0.5); }
+.dotG { background: rgba(34,197,94,0.5); }
+.filename { margin-left: 8px; font-size: 11px; color: #475569; }
+
+.pre {
+  overflow: auto; padding: 20px; font-size: 12px; line-height: 1.7;
+  max-height: calc(100vh - 280px); font-family: 'Fira Code', 'Consolas', monospace;
+}
+.code { color: #94a3b8; }
+
+.stats { display: flex; gap: 10px; margin-top: 12px; }
+.stat {
+  flex: 1; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+  padding: 10px 14px; text-align: center;
+}
+.statVal  { font-size: 20px; font-weight: 700; color: #1e293b; }
+.statLabel { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }

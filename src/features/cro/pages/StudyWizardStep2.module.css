@@ -1,0 +1,155 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   StudyWizardStep2.module.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+/* ── No-scope guard ─────────────────────────────────────────────────────── */
+.noScope {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+.noScopeText {
+  font-size: 14px;
+  color: var(--text-secondary);
+  background: var(--bg-subtle, #f8fafc);
+  border: 1px dashed var(--border-medium);
+  border-radius: var(--r-md);
+  padding: 20px 28px;
+  text-align: center;
+  max-width: 420px;
+  line-height: 1.6;
+}
+
+.stepHeading {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.2px;
+}
+
+.stepSub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: calc(var(--sp-5) * -1) 0 0;
+}
+
+/* ── Section labels (only visible when hasBoth scopes) ──────────────────── */
+.sectionLabel {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding-bottom: var(--sp-1);
+  border-bottom: 1px solid var(--border-light);
+  margin-bottom: calc(var(--sp-5) * -1); /* tighten gap to next row */
+}
+
+/* ── Grids ─────────────────────────────────────────────────────────────── */
+.row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-5);
+}
+.row1 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--sp-5);
+}
+@media (max-width: 639px) {
+  .row2 { grid-template-columns: 1fr; }
+}
+
+/* ── Inputs ─────────────────────────────────────────────────────────────── */
+.input {
+  width: 100%;
+  height: 38px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-md);
+  font-size: 13.5px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  box-sizing: border-box;
+}
+.input::placeholder { color: var(--text-placeholder, #a0aec0); }
+.input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-alpha, rgba(99,102,241,.12));
+}
+.input::-webkit-inner-spin-button,
+.input::-webkit-outer-spin-button { opacity: 0.6; }
+
+.inputError {
+  border-color: var(--color-danger, #ef4444) !important;
+  box-shadow: 0 0 0 3px rgba(239,68,68,.10);
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border-light);
+  margin-top: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.footerRight {
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.btnDraft {
+  height: 36px;
+  padding: 0 var(--sp-5);
+  border: 1px dashed var(--border-medium);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--t-fast), color var(--t-fast);
+}
+.btnDraft:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+.btnCancel {
+  height: 36px;
+  padding: 0 var(--sp-5);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.btnCancel:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+
+.btnNext {
+  height: 36px;
+  padding: 0 var(--sp-6);
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--color-primary);
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+.btnNext:hover { background: var(--color-primary-dark, #4f46e5); }

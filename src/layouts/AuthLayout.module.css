@@ -1,0 +1,159 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   AuthLayout.module.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Page shell ──────────────────────────────────────────────────────────── */
+.page {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg-page);
+}
+
+/* ── Brand panel ─────────────────────────────────────────────────────────── */
+.brand {
+  display: none;           /* hidden on mobile */
+  position: relative;
+  flex: 0 0 440px;
+  background: linear-gradient(150deg, #1e3a8a 0%, #1d4ed8 55%, #3b82f6 100%);
+  overflow: hidden;
+  padding: var(--sp-10) var(--sp-8);
+  align-items: center;
+}
+@media (min-width: 1024px) { .brand { display: flex; } }
+@media (min-width: 1280px) { .brand { flex: 0 0 500px; } }
+
+.brandInner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+
+.logoRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-10);
+}
+
+.logoMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: var(--r-lg);
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffffff;
+  flex-shrink: 0;
+  letter-spacing: 0.5px;
+}
+
+.logoText {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.3px;
+}
+
+.headline {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #ffffff;
+  margin: 0 0 var(--sp-4);
+  letter-spacing: -0.5px;
+}
+
+.tagline {
+  font-size: 14.5px;
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.75);
+  margin: 0 0 var(--sp-8);
+  max-width: 340px;
+}
+
+.features {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.featureItem {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.featureDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  flex-shrink: 0;
+}
+
+/* Background decorative circles */
+.brandDecor {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 85% 15%, rgba(255,255,255,.10) 0%, transparent 45%),
+    radial-gradient(circle at 15% 85%, rgba(255,255,255,.07) 0%, transparent 45%),
+    radial-gradient(circle at 50% 50%, rgba(255,255,255,.03) 0%, transparent 65%);
+  pointer-events: none;
+}
+
+/* ── Form panel ──────────────────────────────────────────────────────────── */
+.formPanel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-8) var(--sp-4);
+  overflow-y: auto;
+  min-height: 100vh;
+}
+
+.formCard {
+  width: 100%;
+  max-width: 440px;
+}
+
+/* ── Mobile-only logo ───────────────────────────────────────────────────── */
+.mobileLogo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  justify-content: center;
+  margin-bottom: var(--sp-8);
+}
+@media (min-width: 1024px) { .mobileLogo { display: none; } }
+
+.logoMarkAlt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: var(--color-primary-light);
+  border-radius: var(--r-lg);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--color-primary);
+  flex-shrink: 0;
+  letter-spacing: 0.5px;
+}
+
+.logoTextAlt {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}

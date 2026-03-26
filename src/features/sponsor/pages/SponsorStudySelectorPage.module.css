@@ -1,0 +1,152 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   SponsorStudySelectorPage.module.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--sp-8) var(--sp-6);
+  min-height: 100vh;
+}
+@media (max-width: 767px) { .page { padding: var(--sp-5) var(--sp-4); } }
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.header { margin-bottom: var(--sp-8); }
+
+.greeting {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-primary);
+  margin: 0 0 var(--sp-2);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.title {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 var(--sp-2);
+  letter-spacing: -0.4px;
+}
+
+.sub {
+  font-size: 14.5px;
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 500px;
+  line-height: 1.6;
+}
+
+/* ── Search bar ──────────────────────────────────────────────────────────── */
+.searchWrap {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-md);
+  padding: 0 var(--sp-4);
+  height: 44px;
+  margin-bottom: var(--sp-6);
+  max-width: 480px;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.searchWrap:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
+}
+.searchIcon  { color: var(--text-muted); flex-shrink: 0; }
+.searchInput { flex: 1; border: none; outline: none; background: transparent; font-size: 14px; color: var(--text-primary); }
+.searchInput::placeholder { color: var(--text-muted); }
+
+/* ── Study grid ──────────────────────────────────────────────────────────── */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-4);
+}
+@media (max-width: 1023px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 639px)  { .grid { grid-template-columns: 1fr; } }
+
+/* ── Study card ──────────────────────────────────────────────────────────── */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-lg);
+  text-align: left;
+  width: 100%;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast);
+  cursor: pointer;
+}
+.card:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 16px rgba(37,99,235,.08);
+  transform: translateY(-1px);
+}
+.card:active { transform: translateY(0); }
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.cardIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  border-radius: var(--r-md);
+  flex-shrink: 0;
+}
+
+.cardBadgeRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.cardChevron {
+  color: var(--text-xmuted);
+  flex-shrink: 0;
+  transition: color var(--t-fast), transform var(--t-fast);
+}
+.card:hover .cardChevron {
+  color: var(--color-primary);
+  transform: translateX(2px);
+}
+
+.cardBody   { display: flex; flex-direction: column; gap: 3px; }
+.cardTitle  { font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0; line-height: 1.4; }
+.cardProtocol { font-size: 12px; color: var(--text-muted); margin: 0; font-family: monospace; }
+
+.cardEnvs {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-12) var(--sp-4);
+  color: var(--text-muted);
+  text-align: center;
+}
+.emptyText { font-size: 14.5px; color: var(--text-muted); margin: 0; font-weight: 500; }
+.emptyHint { font-size: 13px; color: var(--text-xmuted); margin: 0; }

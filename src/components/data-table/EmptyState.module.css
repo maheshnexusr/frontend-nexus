@@ -1,0 +1,28 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-12) var(--sp-6);
+  text-align: center;
+  width: 100%;
+}
+
+.illustration {
+  max-width: 200px;
+  margin-bottom: var(--sp-4);
+  opacity: 0.75;
+}
+
+.illustration svg,
+.illustration img {
+  max-width: 100%;
+  height: auto;
+}
+
+.message {
+  font-size: 14px;
+  color: var(--text-muted);
+  max-width: 300px;
+  line-height: 1.6;
+}

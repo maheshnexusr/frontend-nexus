@@ -1,0 +1,98 @@
+.outer {
+  flex: 1;
+  overflow-y: auto;
+  background: #f1f5f9;
+  min-height: 0;
+}
+
+.inner {
+  max-width: 768px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+.card {
+  position: relative;
+  min-height: 520px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  border: 2px solid transparent;
+  padding: 32px 40px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.cardDragOver {
+  border-color: #07bf9b;
+  box-shadow: 0 4px 16px rgba(7,191,155,0.12);
+}
+
+.hint {
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 12px;
+}
+
+.dropLine {
+  position: absolute;
+  left: 32px;
+  right: 32px;
+  height: 2px;
+  background: #07bf9b;
+  border-radius: 2px;
+  z-index: 30;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+.dropDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #07bf9b;
+}
+.dropDotLeft  { margin-left: -4px; }
+.dropDotRight { margin-left: auto; margin-right: -4px; }
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 440px;
+  gap: 16px;
+}
+.emptyIcon {
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+  border: 2px dashed #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #cbd5e1;
+  transition: all 0.15s;
+}
+.emptyIconActive {
+  border-color: #07bf9b;
+  background: rgba(7,191,155,0.07);
+  color: #07bf9b;
+  transform: scale(1.08);
+}
+.emptyText { text-align: center; }
+.emptyTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: #94a3b8;
+  transition: color 0.15s;
+}
+.emptyTitleActive { color: #07bf9b; }
+.emptySubtitle { font-size: 13px; color: #cbd5e1; margin-top: 4px; }
+
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0;
+  min-height: 400px;
+}

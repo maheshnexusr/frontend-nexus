@@ -1,0 +1,12 @@
+/* ── Full-screen overlay behind the mobile sidebar drawer ───────────────── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, .30);
+  backdrop-filter: blur(2px);
+  animation: edc-fade-in var(--t-normal);
+}
+@media (min-width: 1024px) {
+  .overlay { display: none; }  /* never shown on desktop (sidebar is always docked) */
+}

@@ -1,0 +1,360 @@
+/* SFBLeft.module.css */
+
+.panel {
+  width: 220px;
+  min-width: 220px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-light);
+  overflow: hidden;
+}
+
+/* ── Tab bar ─────────────────────────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color var(--t-fast), border-color var(--t-fast);
+}
+.tabActive {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  font-weight: 600;
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ── Structure Tree ─────────────────────────────────────────────────────── */
+.tree {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+
+.treeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 6px;
+}
+
+.treeLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.addBlockBtn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-primary);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.addBlockBtn:hover { background: var(--color-primary-light, #eff6ff); }
+
+.treeEmpty {
+  padding: 20px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.emptyAddBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: var(--color-primary-light, #eff6ff);
+  border: none;
+  border-radius: var(--r-md);
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.treeList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 4px;
+}
+
+/* ── Block node ─────────────────────────────────────────────────────────── */
+.blockNode {
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.blockHeader {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border-radius: var(--r-md);
+  cursor: default;
+  transition: background var(--t-fast);
+}
+.blockHeader:hover { background: var(--bg-subtle, #f8fafc); }
+.blockHeaderActive { background: #eff6ff; }
+
+.collapseBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.collapseBtn:hover { background: var(--bg-hover); }
+
+.blockTitle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+/* Pencil rename button — hidden until parent hovered */
+.renameIconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  margin-left: auto;
+}
+.blockHeader:hover .renameIconBtn,
+.pageNode:hover .renameIconBtn { opacity: 1; }
+.renameIconBtn:hover { color: var(--color-primary); background: var(--bg-hover); }
+
+.renameInput {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--color-primary);
+  border-radius: 3px;
+  padding: 1px 5px;
+  outline: none;
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.renameInputSm {
+  flex: 1;
+  font-size: 12px;
+  border: 1px solid var(--color-primary);
+  border-radius: 3px;
+  padding: 1px 4px;
+  outline: none;
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.blockActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.nodeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+}
+.nodeBtn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.nodeBtnDanger:hover { color: var(--color-danger, #ef4444); background: #fff1f2; }
+.nodeBtnSm { width: 16px; height: 16px; opacity: 0; }
+
+/* ── Page node ──────────────────────────────────────────────────────────── */
+.pagesList {
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: 4px;
+}
+
+.pageNode {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+.pageNode:hover { background: var(--bg-subtle, #f8fafc); }
+.pageNode:hover .nodeBtnSm { opacity: 1; }
+.pageNodeActive {
+  background: #dbeafe;
+}
+
+.grip {
+  color: var(--text-muted);
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+.pageTitle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.pageNodeActive .pageTitle { color: var(--color-primary); font-weight: 600; }
+
+.fieldCount {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  border-radius: 10px;
+  padding: 0 5px;
+  flex-shrink: 0;
+}
+
+/* ── Field Palette ──────────────────────────────────────────────────────── */
+.palette {
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.paletteHint {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 0 10px 8px;
+  margin: 0;
+}
+
+.paletteGroup {
+  margin-bottom: 2px;
+}
+
+.paletteGroupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 5px 10px;
+  border: none;
+  background: transparent;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.paletteGroupHeader:hover { background: var(--bg-subtle); }
+
+.paletteItems {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 6px 4px;
+}
+
+.paletteItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--r-md);
+  cursor: grab;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  transition: background var(--t-fast), color var(--t-fast);
+  border: 1px solid transparent;
+}
+.paletteItem:hover {
+  background: var(--bg-subtle, #f8fafc);
+  color: var(--text-primary);
+  border-color: var(--border-light);
+}
+.paletteItemDragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.paletteItemIcon {
+  color: var(--color-primary, #2563eb);
+  flex-shrink: 0;
+}
+
+.paletteItemLabel {
+  font-size: 12.5px;
+  font-weight: 500;
+}

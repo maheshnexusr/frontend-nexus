@@ -1,0 +1,233 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   StudyWizardStep4.module.css — Study Design
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.heading {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.2px;
+}
+
+.sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: calc(var(--sp-5) * -1) 0 0;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  min-height: 220px;
+  border: 1.5px dashed var(--border-medium);
+  border-radius: var(--r-lg);
+  background: var(--bg-subtle, #f8fafc);
+  padding: var(--sp-8) var(--sp-6);
+  text-align: center;
+}
+
+.emptyIcon {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.emptyTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.emptyDesc {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 360px;
+  line-height: 1.6;
+}
+
+.btnCreate {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 38px;
+  padding: 0 var(--sp-5);
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--color-primary);
+  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--t-fast);
+  margin-top: var(--sp-2);
+}
+.btnCreate:hover:not(:disabled) { background: var(--color-primary-dark, #1d4ed8); }
+.btnCreate:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── Form summary card ───────────────────────────────────────────────────── */
+.formCard {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+  background: var(--bg-subtle, #f8fafc);
+  border: 1px solid var(--border-light, #f1f5f9);
+  border-radius: var(--r-lg);
+  transition: border-color var(--t-fast);
+}
+.formCard:hover {
+  border-color: var(--border-medium);
+}
+
+.formCardLeft {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r-md);
+  background: var(--color-primary-light, #eff6ff);
+}
+
+.formIcon {
+  color: var(--color-primary, #2563eb);
+}
+
+.formCardBody {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.formCardHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.formTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 340px;
+}
+
+.badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.badgeDraft {
+  background: var(--bg-hover, #f1f5f9);
+  color: var(--text-secondary);
+}
+.badgePublished {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.formMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.metaItem {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.metaItem + .metaItem::before {
+  content: '·';
+  margin-right: var(--sp-3);
+}
+
+.formCardActions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+
+.btnRefresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast);
+}
+.btnRefresh:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: var(--color-primary-light, #eff6ff);
+}
+
+.btnOpen {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 34px;
+  padding: 0 var(--sp-4);
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--color-primary);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--t-fast);
+  white-space: nowrap;
+}
+.btnOpen:hover { background: var(--color-primary-dark, #1d4ed8); }
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border-light);
+  margin-top: var(--sp-3);
+}
+
+.btnCancel {
+  height: 36px;
+  padding: 0 var(--sp-5);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+.btnCancel:hover { background: var(--bg-hover); }

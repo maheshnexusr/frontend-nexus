@@ -1,0 +1,108 @@
+.wrap {
+  position: relative;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background: #fff;
+  transition: border-color 0.1s;
+  margin-bottom: 4px;
+}
+.wrapSelected  { border-color: #07bf9b; box-shadow: 0 1px 4px rgba(7,191,155,0.12); }
+.wrapHover:hover { border-color: #e2e8f0; }
+.wrapDragging  { box-shadow: 0 8px 24px rgba(0,0,0,0.12); transform: rotate(0.5deg); opacity: 0.92; }
+
+.handle {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.1s;
+  cursor: grab;
+  border-radius: 8px 0 0 8px;
+  z-index: 10;
+  color: #94a3b8;
+}
+.wrap:hover .handle,
+.wrapSelected .handle { opacity: 1; }
+.handle:active { cursor: grabbing; }
+
+.nameBadge {
+  position: absolute;
+  left: 4px;
+  top: -11px;
+  opacity: 0;
+  transition: opacity 0.1s;
+  z-index: 20;
+  pointer-events: none;
+}
+.wrap:hover .nameBadge,
+.wrapSelected .nameBadge { opacity: 1; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  background: #07bf9b;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 4px;
+  line-height: 1.5;
+}
+
+.sizePill {
+  position: absolute;
+  left: 22px;
+  top: 6px;
+  z-index: 10;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+}
+
+.actions {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  display: flex;
+  gap: 2px;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.wrap:hover .actions,
+.wrapSelected .actions { opacity: 1; }
+
+.actionBtn {
+  padding: 5px;
+  border-radius: 5px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  transition: color 0.1s, border-color 0.1s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+.actionBtn:hover       { color: #475569; border-color: #cbd5e1; }
+.actionBtnDel:hover    { color: #ef4444; border-color: #fca5a5; }
+
+.accent {
+  position: absolute;
+  left: 0; top: 8px; bottom: 8px;
+  width: 3px;
+  background: #07bf9b;
+  border-radius: 0 2px 2px 0;
+}
+
+.content {
+  padding: 10px 16px 10px 22px;
+}
+.contentSelected { background: rgba(7,191,155,0.015); border-radius: 6px; }

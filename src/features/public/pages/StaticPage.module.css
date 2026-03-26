@@ -1,0 +1,5 @@
+.page { padding: var(--sp-10) var(--sp-4); background: var(--bg-page); min-height: calc(100vh - 60px); }
+.inner { max-width: 720px; margin: 0 auto; }
+.title { font-size: 30px; font-weight: 700; color: var(--text-primary); margin: 0 0 var(--sp-3); letter-spacing: -0.5px; }
+.updated { font-size: 13px; color: var(--text-muted); margin: 0 0 var(--sp-8); }
+.body { font-size: 15px; color: var(--text-secondary); line-height: 1.8; margin: 0; }

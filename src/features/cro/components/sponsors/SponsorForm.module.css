@@ -1,0 +1,156 @@
+.page {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 100%;
+}
+
+/* ── Top bar ──────────────────────────────────────────────────────────────── */
+.topBar {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary, #374151);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.backBtn:hover { background: var(--bg-subtle, #f8fafc); }
+.pageTitle { flex: 1; }
+.title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  margin: 0 0 4px;
+}
+.sub {
+  font-size: 13px;
+  color: var(--text-secondary, #64748b);
+  margin: 0;
+}
+
+/* ── Card ─────────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 12px;
+  overflow: hidden;
+  max-width: 860px;
+}
+
+/* ── Photo ────────────────────────────────────────────────────────────────── */
+.photoRow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 24px 20px;
+  border-bottom: 1px solid var(--border-default, #e2e8f0);
+  background: var(--bg-subtle, #f8fafc);
+}
+.photoHint {
+  font-size: 11px;
+  color: var(--text-secondary, #94a3b8);
+  margin: 6px 0 0;
+}
+
+/* ── Section ──────────────────────────────────────────────────────────────── */
+.section {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-default, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.section:last-of-type { border-bottom: none; }
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary, #64748b);
+  margin: 0;
+}
+
+/* ── Grid rows ────────────────────────────────────────────────────────────── */
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+
+/* ── Inputs ───────────────────────────────────────────────────────────────── */
+.input {
+  padding: 8px 11px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--text-primary, #111827);
+  background: #fff;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.input:focus   { border-color: var(--color-primary, #2563eb); box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
+.inputError    { border-color: #dc2626 !important; }
+.inputError:focus { box-shadow: 0 0 0 3px rgba(220,38,38,.1) !important; }
+
+/* ── Footer ───────────────────────────────────────────────────────────────── */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-default, #e2e8f0);
+  background: var(--bg-subtle, #f8fafc);
+}
+.btnCancel {
+  padding: 8px 18px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-secondary, #374151);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btnCancel:hover    { background: #f1f5f9; }
+.btnCancel:disabled { opacity: 0.5; cursor: not-allowed; }
+.btnSave {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btnSave:hover    { background: #1d4ed8; }
+.btnSave:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── Loading ──────────────────────────────────────────────────────────────── */
+.loadingWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+}
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--border-default, #e2e8f0);
+  border-top-color: var(--color-primary, #2563eb);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }

@@ -1,0 +1,92 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   EmailVerificationPage.module.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--sp-6) var(--sp-4);
+  background: var(--bg-page);
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--sp-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-xl);
+  padding: var(--sp-10) var(--sp-8);
+  box-shadow: var(--shadow-lg);
+  animation: edc-scale-in 240ms ease;
+}
+
+/* ── State icons ─────────────────────────────────────────────────────────── */
+.iconLoading { color: var(--color-primary); }
+.iconSuccess { color: var(--color-success); }
+.iconError   { color: var(--color-danger);  }
+
+/* Spinning loader */
+@keyframes spin {
+  from { transform: rotate(0deg);   }
+  to   { transform: rotate(360deg); }
+}
+.spinner { animation: spin 1s linear infinite; }
+
+/* ── Text ────────────────────────────────────────────────────────────────── */
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+
+.sub {
+  font-size: 14.5px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 320px;
+}
+
+/* ── Actions ─────────────────────────────────────────────────────────────── */
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  margin-top: var(--sp-2);
+}
+
+.primaryBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 var(--sp-8);
+  background: var(--color-primary);
+  color: #ffffff;
+  border-radius: var(--r-sm);
+  font-size: 14.5px;
+  font-weight: 600;
+  width: 100%;
+  max-width: 260px;
+  transition: opacity var(--t-fast);
+}
+.primaryBtn:hover { opacity: 0.9; }
+
+.secondaryBtn {
+  font-size: 13.5px;
+  color: var(--color-primary);
+  font-weight: 500;
+  transition: opacity var(--t-fast);
+}
+.secondaryBtn:hover { opacity: 0.75; text-decoration: underline; }

@@ -1,0 +1,78 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Toast.module.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  width: 360px;
+  max-width: calc(100vw - var(--sp-6));
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-medium);
+  box-shadow: var(--shadow-popup);
+  animation: edc-slide-in-right var(--t-normal);
+  pointer-events: all;
+}
+
+/* ── Variant borders ─────────────────────────────────────────────────────── */
+.wrapSuccess { border-left: 3px solid var(--color-success); }
+.wrapError   { border-left: 3px solid var(--color-danger);  }
+.wrapWarning { border-left: 3px solid var(--color-warning); }
+.wrapInfo    { border-left: 3px solid var(--color-info);    }
+
+/* ── Icon ────────────────────────────────────────────────────────────────── */
+.iconWrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  margin-top: 1px;
+}
+
+.iconSuccess { background: var(--emerald-bg); color: var(--color-success); }
+.iconError   { background: var(--rose-bg);    color: var(--color-danger);  }
+.iconWarning { background: var(--amber-bg);   color: var(--color-warning); }
+.iconInfo    { background: var(--blue-bg);    color: var(--color-info);    }
+
+/* ── Message ─────────────────────────────────────────────────────────────── */
+.message {
+  flex: 1;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  word-break: break-word;
+  padding-top: 4px;
+}
+
+/* ── Dismiss button ──────────────────────────────────────────────────────── */
+.closeBtn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+  color: var(--text-muted);
+  margin-top: 2px;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.closeBtn:hover {
+  background: var(--bg-active);
+  color: var(--text-secondary);
+}
+
+/* ── Mobile: full-width, top-pinned ─────────────────────────────────────── */
+@media (max-width: 479px) {
+  .toast {
+    width: 100%;
+    max-width: 100%;
+    border-radius: var(--r-sm);
+  }
+}

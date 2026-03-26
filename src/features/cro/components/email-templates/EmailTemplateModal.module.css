@@ -1,0 +1,269 @@
+/* ── Overlay ─────────────────────────────────────────────────────────────── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  z-index: 200;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ── Drawer ──────────────────────────────────────────────────────────────── */
+.drawer {
+  width: min(960px, 95vw);
+  height: 100%;
+  background: var(--bg-card, #fff);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -4px 0 32px rgba(0, 0, 0, 0.12);
+  animation: slideIn 0.22s ease;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.drawerHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-default, #e2e8f0);
+  flex-shrink: 0;
+}
+.drawerTitle {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  margin: 0 0 3px;
+}
+.drawerSub {
+  font-size: 12px;
+  color: var(--text-secondary, #64748b);
+  margin: 0;
+}
+.closeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.closeBtn:hover { background: var(--bg-subtle, #f8fafc); }
+
+/* ── Body ────────────────────────────────────────────────────────────────── */
+.drawerBody {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Form column ─────────────────────────────────────────────────────────── */
+.formCol {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Section ─────────────────────────────────────────────────────────────── */
+.section {
+  padding-bottom: 20px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border-default, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.section:last-child { border-bottom: none; margin-bottom: 0; }
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary, #64748b);
+  margin: 0;
+}
+
+/* ── Grid rows ───────────────────────────────────────────────────────────── */
+.row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
+.input {
+  padding: 8px 11px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--text-primary, #111827);
+  background: #fff;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.input:focus { border-color: var(--color-primary, #2563eb); box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
+.inputError { border-color: #dc2626 !important; }
+.inputError:focus { box-shadow: 0 0 0 3px rgba(220,38,38,.1) !important; }
+
+/* ── Quill editor ────────────────────────────────────────────────────────── */
+.quillWrap {
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.quillWrap:focus-within { border-color: var(--color-primary, #2563eb); box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
+.quillWrapError { border-color: #dc2626; }
+
+/* Override Quill default borders */
+.quillWrap :global(.ql-toolbar) {
+  border: none;
+  border-bottom: 1px solid var(--border-default, #e2e8f0) !important;
+  background: var(--bg-subtle, #f8fafc);
+  padding: 6px 8px;
+}
+.quillWrap :global(.ql-container) {
+  border: none !important;
+  font-size: 13px;
+  min-height: 200px;
+}
+.quillWrap :global(.ql-editor) {
+  min-height: 200px;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.6;
+}
+.quillWrap :global(.ql-editor.ql-blank::before) {
+  color: #94a3b8;
+  font-style: normal;
+  font-size: 13px;
+}
+
+/* ── Placeholders column ─────────────────────────────────────────────────── */
+.placeholderCol {
+  width: 260px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border-default, #e2e8f0);
+  overflow-y: auto;
+  background: var(--bg-subtle, #f8fafc);
+}
+
+.placeholderPanel {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.placeholderTitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary, #64748b);
+  margin: 0;
+}
+.placeholderHint {
+  font-size: 11px;
+  color: var(--text-secondary, #94a3b8);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.placeholderList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.placeholderBtn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: left;
+}
+.placeholderBtn:hover {
+  border-color: var(--color-primary, #2563eb);
+  background: #eff6ff;
+}
+
+.placeholderKey {
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-primary, #2563eb);
+  flex-shrink: 0;
+}
+.placeholderDesc {
+  font-size: 11px;
+  color: var(--text-secondary, #64748b);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.placeholderIcon {
+  flex-shrink: 0;
+  color: var(--text-secondary, #94a3b8);
+  display: flex;
+  align-items: center;
+}
+.copiedIcon { color: #059669; }
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.drawerFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-default, #e2e8f0);
+  flex-shrink: 0;
+}
+
+.btnCancel {
+  padding: 8px 18px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-secondary, #374151);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btnCancel:hover { background: var(--bg-subtle, #f8fafc); }
+.btnCancel:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btnSave {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btnSave:hover { background: #1d4ed8; }
+.btnSave:disabled { opacity: 0.6; cursor: not-allowed; }

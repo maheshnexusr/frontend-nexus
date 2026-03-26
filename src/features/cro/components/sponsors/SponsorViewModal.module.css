@@ -1,0 +1,108 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Profile header ───────────────────────────────────────────────────────── */
+.profileHead {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-default, #e2e8f0);
+}
+.photo {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border-default, #e2e8f0);
+  flex-shrink: 0;
+}
+.photoInitials {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  margin: 0 0 2px;
+}
+.orgName {
+  font-size: 13px;
+  color: var(--text-secondary, #64748b);
+  margin: 0 0 8px;
+}
+
+/* ── Details grid ─────────────────────────────────────────────────────────── */
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.detailRow {
+  display: grid;
+  grid-template-columns: 20px 130px 1fr;
+  align-items: baseline;
+  gap: 8px;
+}
+.detailIcon {
+  color: var(--text-secondary, #94a3b8);
+  display: flex;
+  align-items: center;
+}
+.detailLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+  white-space: nowrap;
+}
+.detailValue {
+  font-size: 13px;
+  color: var(--text-primary, #0f172a);
+  word-break: break-word;
+}
+.link {
+  color: var(--color-primary, #2563eb);
+  text-decoration: none;
+}
+.link:hover { text-decoration: underline; }
+
+/* ── Footer buttons ───────────────────────────────────────────────────────── */
+.btnClose {
+  padding: 8px 18px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-secondary, #374151);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btnClose:hover { background: var(--bg-subtle, #f8fafc); }
+
+.btnEdit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btnEdit:hover { background: #1d4ed8; }
