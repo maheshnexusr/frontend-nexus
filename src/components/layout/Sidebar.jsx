@@ -113,7 +113,7 @@ function ProfileCard({ collapsed, profilePath, settingsPath }) {
   const handleLogout = () => {
     dispatch(logout());
     setOpen(false);
-    navigate("/signin");
+    navigate("/");
   };
 
   useEffect(() => {
