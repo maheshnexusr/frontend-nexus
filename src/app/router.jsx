@@ -72,6 +72,7 @@ function sp(C) {
 // Lazy page imports — Public
 // ─────────────────────────────────────────────────────────────────────────────
 
+const LandingPage         = lazy(() => import('@/features/public/pages/LandingPage'));
 const PublicLayout        = lazy(() => import('@/layouts/PublicLayout'));
 const HomePage            = lazy(() => import('@/features/public/pages/HomePage'));
 const PrivacyPolicyPage   = lazy(() => import('@/features/public/pages/PrivacyPolicyPage'));
@@ -241,11 +242,13 @@ export const router = createBrowserRouter([
     element: <RootLayout />,
     children: [
 
+      // ── Landing page — served at "/" without any layout wrapper ──────────
+      { index: true, element: sp(LandingPage) },
+
       // ── Public routes ────────────────────────────────────────────────────
       {
         element: sp(PublicLayout),
         children: [
-          { index: true,              element: sp(HomePage) },
           { path: 'privacy-policy',   element: sp(PrivacyPolicyPage) },
           { path: 'terms-of-use',     element: sp(TermsOfUsePage) },
           { path: 'cookie-policy',    element: sp(CookiePolicyPage) },

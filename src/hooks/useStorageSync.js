@@ -44,7 +44,7 @@ export function useStorageSync() {
       if (e.key !== BROADCAST_KEY || e.newValue === null) return;
       // Another tab signed out — mirror that here
       dispatch(logout());
-      navigate('/signin', { replace: true });
+      navigate('/', { replace: true });
     };
 
     window.addEventListener('storage', handler);
