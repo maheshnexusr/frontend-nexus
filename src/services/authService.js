@@ -50,6 +50,10 @@ export const authService = {
   refreshToken: (refreshToken) =>
     axiosClient.post('/api/v1/auth/refresh', { refresh_token: refreshToken }),
 
+  /** POST /api/v1/auth/verify-email */
+  verifyEmail: ({ token }) =>
+    axiosClient.post('/api/v1/auth/verify-email', { token }),
+
   /** POST /api/v1/auth/logout */
   logout: () =>
     axiosClient.post('/api/v1/auth/logout'),
