@@ -24,13 +24,14 @@ import {
   BarChart2,
   Activity,
   UserCircle,
+  BookOpen,
 } from 'lucide-react';
 import { useAppSelector, useAppDispatch } from '@/app/hooks';
 import {
   selectSidebarCollapsed,
   toggleSidebar,
   selectActiveStudy,
-} from '@/features/workspace/workspaceSlice';
+} from '@/features/workspace/store/workspaceSlice';
 import Sidebar         from '@/components/layout/Sidebar';
 import WorkspaceHeader from './WorkspaceHeader';
 import styles          from './SponsorLayout.module.css';
@@ -51,23 +52,64 @@ export default function SponsorLayout() {
 
   /* Build dynamic nav from studyConfig */
   const navItems = [
-    { key: 'dashboard',    label: 'Dashboard',    icon: LayoutDashboard, path: `${base}/dashboard`    },
-    { key: 'capture',      label: 'Data Capture',  icon: Database,        path: `${base}/capture`      },
-    ...(study?.config?.consentEnabled ? [
-      { key: 'consent', label: 'Consent', icon: FileCheck, path: `${base}/consent/config` },
-    ] : []),
-    ...(study?.config?.queryEnabled ? [
-      { key: 'queries', label: 'Queries', icon: MessageSquare, path: `${base}/queries` },
-    ] : []),
-    { key: 'verification', label: 'Verification', icon: ShieldCheck,     path: `${base}/verification` },
-    { key: 'sites',        label: 'Sites',        icon: MapPin,          path: `${base}/sites`        },
-    { key: 'personnel',    label: 'Personnel',    icon: Users,           path: `${base}/personnel`    },
-    { key: 'reports',      label: 'Reports',      icon: BarChart2,       path: `${base}/reports`      },
+    {
+      key: 'dashboard',
+      label: 'Dashboard',
+      icon: LayoutDashboard,
+      path: `${base}/dashboard`,
+    },
+    {
+      key: 'capture',
+      label: 'Data Capture',
+      icon: Database,
+      path: `${base}/capture`,
+    },
+    {
+      key: 'masters',
+      label: 'Masters',
+      icon: BookOpen,
+      children: [
+        { key: 'masters-email',     label: 'Email Templates', path: `${base}/masters/email-templates` },
+        { key: 'masters-countries', label: 'Country',         path: `${base}/masters/countries`       },
+        { key: 'masters-locations', label: 'Locations',       path: `${base}/masters/locations`       },
+      ],
+    },
+    ...(study?.config?.consentEnabled !== false ? [{
+      key: 'consent',
+      label: 'Consent Management',
+      icon: FileCheck,
+      children: [
+        { key: 'consent-builder', label: 'Consent Builder',           path: `${base}/consent/config` },
+        { key: 'consent-review',  label: 'Consent Review & Approval', path: `${base}/consent/review` },
+      ],
+    }] : []),
+    {
+      key: 'queries',
+      label: 'Query Management',
+      icon: MessageSquare,
+      path: `${base}/queries`,
+    },
+    {
+      key: 'verification',
+      label: 'Data Verification Management',
+      icon: ShieldCheck,
+      path: `${base}/verification`,
+    },
+    {
+      key: 'sites',
+      label: 'Site Management',
+      icon: MapPin,
+      children: [
+        { key: 'sites-list', label: 'Sites',          path: `${base}/sites`     },
+        { key: 'personnel',  label: 'Site Personnel', path: `${base}/personnel` },
+        { key: 'roles',      label: 'Site Role',      path: `${base}/roles`     },
+      ],
+    },
   ];
 
   const bottomNav = [
-    { key: 'activity-log', label: 'Activity Log', icon: Activity,    path: `${base}/activity-log` },
-    { key: 'profile',      label: 'Profile',      icon: UserCircle,  path: `${base}/personnel`    },
+    { key: 'activity-log', label: 'Activity Log', icon: Activity,   path: `${base}/activity-log` },
+    { key: 'reports',      label: 'Reports',      icon: BarChart2,  path: `${base}/reports`      },
   ];
 
   /* Close mobile drawer at desktop width */
@@ -105,7 +147,7 @@ export default function SponsorLayout() {
         onMobileClose={() => setMobileOpen(false)}
         profilePath={`${base}/personnel`}
         settingsPath={`${base}/personnel`}
-        notificationsPath={`${base}/activity-log`}
+        notificationsPath={null}
       />
 
       <div className={clx(styles.body, collapsed && styles.bodyCollapsed)}>

@@ -1,77 +1,113 @@
 /**
  * studyService.js
- * Clinical study API calls.
+ * Clinical study API calls — /api/v1/studies
+ *
+ * Studies are created/edited via a 5-step wizard.
+ * Each step has its own PUT endpoint; step 1 creation uses POST.
  */
 
 import axiosClient from '@/api/axiosClient';
 import { buildQueryString } from '@/api/apiHelpers';
 
-export const studyService = {
-  /* ── CRUD ─────────────────────────────────────────────────────────────── */
+function csvDownload(blob, filename = 'studies.csv') {
+  const url    = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href     = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
 
+export const studyService = {
   /**
-   * List studies with optional filters.
-   * @param {{ status?, sponsorId?, search?, page?, pageSize? }} params
+   * GET /api/v1/studies
+   * params: { page, pageSize, search, status, sponsorId }
+   * Returns: { success, items, pagination }
    */
   list: (params = {}) =>
-    axiosClient.get(`/studies${buildQueryString(params)}`),
-
-  /** Get a single study by ID. */
-  getById: (id) =>
-    axiosClient.get(`/studies/${id}`),
-
-  /** Create a new study (all wizard steps in one payload). */
-  create: (data) =>
-    axiosClient.post('/studies', data),
-
-  /** Update any step of an existing study. */
-  update: (id, data) =>
-    axiosClient.put(`/studies/${id}`, data),
-
-  /** Soft-delete a study. */
-  delete: (id) =>
-    axiosClient.delete(`/studies/${id}`),
-
-  /* ── Lifecycle ────────────────────────────────────────────────────────── */
-
-  /** Publish a study to UAT or LIVE. */
-  publish: (id, environment) =>
-    axiosClient.post(`/studies/${id}/publish`, { environment }),
-
-  /** Change study status (Active / Inactive / Locked). */
-  changeStatus: (id, status) =>
-    axiosClient.patch(`/studies/${id}/status`, { status }),
-
-  /** Create a new version of a study. */
-  createVersion: (id) =>
-    axiosClient.post(`/studies/${id}/versions`),
-
-  /* ── Form design ──────────────────────────────────────────────────────── */
-
-  /** Save the study form builder design. */
-  saveFormDesign: (id, studyFormData) =>
-    axiosClient.put(`/studies/${id}/form`, { studyFormData }),
-
-  /* ── Team & invitations ───────────────────────────────────────────────── */
-
-  /** Assign team members to a study. */
-  assignTeam: (id, memberIds) =>
-    axiosClient.post(`/studies/${id}/team`, { memberIds }),
-
-  /** Send an invitation email. */
-  sendInvitation: (id, inviteeEmail) =>
-    axiosClient.post(`/studies/${id}/invitations`, { email: inviteeEmail }),
-
-  /* ── Export ───────────────────────────────────────────────────────────── */
+    axiosClient.get(`/api/v1/studies${buildQueryString(params)}`),
 
   /**
-   * Export study data.  The server returns a Blob (Excel/CSV/PDF).
-   * @param {string} id
-   * @param {'csv'|'xlsx'|'pdf'} format
+   * GET /api/v1/studies/:id
+   * Returns: { success, item } — includes configuration, form_definition,
+   *          triggers, team_assignments, versions
    */
-  export: (id, format = 'csv') =>
-    axiosClient.get(`/studies/${id}/export`, {
-      params:       { format },
-      responseType: 'blob',
-    }),
+  getById: (id) =>
+    axiosClient.get(`/api/v1/studies/${id}`),
+
+  /* ── Wizard steps ──────────────────────────────────────────────────────── */
+
+  /**
+   * POST /api/v1/studies/step-1  (create)
+   * Payload: { protocolNumber, studyTitle, studyPhaseId, sponsorId,
+   *            scopes, therapeuticArea?, studyDescription? }
+   * Returns: { success, item }
+   */
+  createStep1: (data) =>
+    axiosClient.post('/api/v1/studies/step-1', data),
+
+  /**
+   * PUT /api/v1/studies/:id/step-1
+   * Same payload as createStep1.
+   */
+  updateStep1: (id, data) =>
+    axiosClient.put(`/api/v1/studies/${id}/step-1`, data),
+
+  /**
+   * PUT /api/v1/studies/:id/step-2
+   * Payload: { startDate, expectedEndDate, maxEnrollments, coverageType,
+   *            coverageId, maxSites, randomizationMethod? }
+   */
+  updateStep2: (id, data) =>
+    axiosClient.put(`/api/v1/studies/${id}/step-2`, data),
+
+  /**
+   * PUT /api/v1/studies/:id/step-3
+   * Payload: { enableConsentManager, enableQueryManager,
+   *            enableDataManager, enableNavigationBar }
+   */
+  updateStep3: (id, data) =>
+    axiosClient.put(`/api/v1/studies/${id}/step-3`, data),
+
+  /**
+   * PUT /api/v1/studies/:id/step-4
+   * Payload: { formStructure, version, triggers[] }
+   */
+  updateStep4: (id, data) =>
+    axiosClient.put(`/api/v1/studies/${id}/step-4`, data),
+
+  /**
+   * PUT /api/v1/studies/:id/step-5
+   * Payload: { assignments: [{ teamMemberId, studyRole }] }
+   */
+  updateStep5: (id, data) =>
+    axiosClient.put(`/api/v1/studies/${id}/step-5`, data),
+
+  /* ── Lifecycle ─────────────────────────────────────────────────────────── */
+
+  /**
+   * POST /api/v1/studies/:id/publish
+   * Payload: { environment: 'UAT'|'LIVE', status?, description? }
+   * Returns: { success, item } — version row with provisioned flag
+   */
+  publish: (id, payload) =>
+    axiosClient.post(`/api/v1/studies/${id}/publish`, payload),
+
+  /**
+   * POST /api/v1/studies/:id/invitations
+   * Payload: { versionId, environment, recipients: [{ email, recipientType }] }
+   */
+  sendInvitations: (id, payload) =>
+    axiosClient.post(`/api/v1/studies/${id}/invitations`, payload),
+
+  /* ── Export ────────────────────────────────────────────────────────────── */
+
+  /**
+   * GET /api/v1/studies/export
+   * Triggers a CSV file download in the browser.
+   */
+  export: async () => {
+    const blob = await axiosClient.get('/api/v1/studies/export', { responseType: 'blob' });
+    csvDownload(blob, 'studies.csv');
+  },
 };

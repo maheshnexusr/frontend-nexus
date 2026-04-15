@@ -18,7 +18,6 @@ import {
   Layers,
   FlaskConical,
   Users,
-  ClipboardList,
   Building2,
   UserCircle,
   Activity,
@@ -27,7 +26,7 @@ import { useAppSelector, useAppDispatch } from '@/app/hooks';
 import {
   selectSidebarCollapsed,
   toggleSidebar,
-} from '@/features/workspace/workspaceSlice';
+} from '@/features/workspace/store/workspaceSlice';
 import { selectPermissions } from '@/features/auth/authSlice';
 import Sidebar         from '@/components/layout/Sidebar';
 import WorkspaceHeader from './WorkspaceHeader';
@@ -83,7 +82,7 @@ const NAV_ITEMS = [
     key:   'workspace',
     label: 'Choose Sponsor Workspace',
     icon:  Building2,
-    path:  '/workspace',
+    path:  '/cro/workspace',
   },
 ];
 

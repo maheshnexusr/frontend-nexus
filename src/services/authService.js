@@ -1,77 +1,56 @@
 /**
  * authService.js
  * All authentication-related API calls.
- *
- * Rules:
- *  - Only Axios calls here — zero UI/Redux logic
- *  - Each function returns the unwrapped response payload (axiosClient unwraps .data)
- *  - Callers (hooks / thunks) decide what to do with the result
+ * All request payloads use snake_case per API spec.
  */
 
 import axiosClient from '@/api/axiosClient';
 
 export const authService = {
-  /**
-   * Sign in with email + password.
-   * @returns {{ accessToken, refreshToken, user, permissions }}
-   */
-  login: ({ email, password, geoInfo }) =>
-    axiosClient.post('/auth/signin', { email, password, geoInfo }),
+  /** POST /api/v1/auth/register */
+  register: ({ fullName, emailAddress, contactNumber, jobTitle, organizationCode, organizationName }) =>
+    axiosClient.post('/api/v1/auth/register', {
+      full_name:         fullName,
+      email_address:     emailAddress,
+      contact_number:    contactNumber   || undefined,
+      job_title:         jobTitle        || undefined,
+      organization_code: organizationCode || undefined,
+      organization_name: organizationName || undefined,
+    }),
 
-  /**
-   * Register a new account.
-   * @returns {{ message }}
-   */
-  signup: ({ fullName, email, password }) =>
-    axiosClient.post('/auth/signup', { fullName, email, password }),
+  /** POST /api/v1/auth/activate */
+  activate: ({ token, password, confirmPassword }) =>
+    axiosClient.post('/api/v1/auth/activate', {
+      token,
+      password,
+      confirm_password: confirmPassword,
+    }),
 
-  /**
-   * Invalidate the current session server-side.
-   */
-  logout: () =>
-    axiosClient.post('/auth/signout'),
+  /** POST /api/v1/auth/login/password */
+  login: ({ emailAddress, password }) =>
+    axiosClient.post('/api/v1/auth/login/password', {
+      email_address: emailAddress,
+      password,
+    }),
 
-  /**
-   * Fetch the authenticated user's profile.
-   * @returns {{ user, permissions }}
-   */
-  me: () =>
-    axiosClient.get('/auth/me'),
+  /** POST /api/v1/auth/login/otp/request */
+  requestOtp: ({ emailAddress }) =>
+    axiosClient.post('/api/v1/auth/login/otp/request', {
+      email_address: emailAddress,
+    }),
 
-  /**
-   * Exchange a refresh token for a new access token.
-   * @returns {{ accessToken, refreshToken }}
-   */
+  /** POST /api/v1/auth/login/otp/verify */
+  verifyOtp: ({ emailAddress, otp }) =>
+    axiosClient.post('/api/v1/auth/login/otp/verify', {
+      email_address: emailAddress,
+      otp,
+    }),
+
+  /** POST /api/v1/auth/refresh */
   refreshToken: (refreshToken) =>
-    axiosClient.post('/auth/refresh-token', { refreshToken }),
+    axiosClient.post('/api/v1/auth/refresh', { refresh_token: refreshToken }),
 
-  /**
-   * Request a password-reset email.
-   */
-  requestPasswordReset: (email) =>
-    axiosClient.post('/auth/forgot-password', { email }),
-
-  /**
-   * Set a new password using a reset token.
-   */
-  resetPassword: ({ token, newPassword }) =>
-    axiosClient.post('/auth/reset-password', { token, newPassword }),
-
-  /**
-   * Change password for the currently authenticated user.
-   */
-  changePassword: ({ oldPassword, newPassword }) =>
-    axiosClient.put('/auth/change-password', { oldPassword, newPassword }),
-
-  /**
-   * Verify an email address using a one-time token.
-   */
-  verifyEmail: (token) =>
-    axiosClient.post('/auth/verify-email', { token }),
-
-  /**
-   * Verify a one-time password sent to the user's email.
-   */
-  verifyOtp: ({ email, otp, geoInfo }) =>
-    axiosClient.post('/auth/verify-otp', { email, otp, geoInfo }),
+  /** POST /api/v1/auth/logout */
+  logout: () =>
+    axiosClient.post('/api/v1/auth/logout'),
 };

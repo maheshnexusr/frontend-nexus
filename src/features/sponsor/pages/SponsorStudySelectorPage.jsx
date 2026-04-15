@@ -16,7 +16,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, FlaskConical, ChevronRight } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { selectStudy }    from '@/features/workspace/workspaceSlice';
+import { selectStudy }    from '@/features/workspace/store/workspaceSlice';
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import StatusBadge        from '@/components/feedback/StatusBadge';
 import styles             from './SponsorStudySelectorPage.module.css';

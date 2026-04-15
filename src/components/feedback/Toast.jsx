@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 import { useAppDispatch } from '@/app/hooks';
-import { removeToast } from '@/features/notifications/notificationSlice';
+import { removeToast } from '@/app/notificationSlice';
 import styles from './Toast.module.css';
 
 const clx = (...a) => a.filter(Boolean).join(' ');

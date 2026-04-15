@@ -1,0 +1,229 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   AccountActivationPage.module.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Page wrapper ────────────────────────────────────────────────────────── */
+.page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--sp-6) var(--sp-4);
+  background: var(--bg-page);
+}
+
+/* ── Status card (no-token / success states) ─────────────────────────────── */
+.card {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--sp-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-xl);
+  padding: var(--sp-10) var(--sp-8);
+  box-shadow: var(--shadow-lg);
+  animation: edc-scale-in 240ms ease;
+}
+
+/* ── Form card ───────────────────────────────────────────────────────────── */
+.formCard {
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-xl);
+  padding: var(--sp-8);
+  box-shadow: var(--shadow-lg);
+  animation: edc-scale-in 240ms ease;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.headerIcon {
+  color: var(--color-primary);
+  margin-bottom: var(--sp-1);
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.3px;
+}
+
+.sub {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ── State icons ─────────────────────────────────────────────────────────── */
+.iconSuccess { color: var(--color-success); }
+.iconError   { color: var(--color-danger);  }
+
+/* ── Error banner ────────────────────────────────────────────────────────── */
+.errorBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-3);
+  background: var(--color-danger-bg, #fef2f2);
+  border: 1px solid var(--color-danger-border, #fecaca);
+  border-radius: var(--r-sm);
+  color: var(--color-danger);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin-bottom: var(--sp-1);
+}
+.errorBanner svg { flex-shrink: 0; margin-top: 1px; }
+
+/* ── Field group ─────────────────────────────────────────────────────────── */
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.label {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.required { color: var(--color-danger); }
+
+/* ── Password input wrapper ──────────────────────────────────────────────── */
+.pwdWrap {
+  position: relative;
+}
+
+.input {
+  width: 100%;
+  min-height: 40px;
+  padding: var(--sp-2) var(--sp-9) var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  outline: none;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.input::placeholder { color: var(--text-muted); }
+.input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-ring);
+}
+.inputError { border-color: var(--color-danger); }
+.inputError:focus { box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15); }
+
+.eyeBtn {
+  position: absolute;
+  right: var(--sp-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  line-height: 0;
+  transition: color var(--t-fast);
+}
+.eyeBtn:hover { color: var(--text-primary); }
+
+.fieldError {
+  font-size: 12.5px;
+  color: var(--color-danger);
+  margin: 0;
+}
+
+/* ── Password requirement list ───────────────────────────────────────────── */
+.ruleList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ruleItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.ruleOk   { color: var(--color-success, #16a34a); }
+.ruleFail { color: var(--text-muted); }
+
+/* ── Submit button ───────────────────────────────────────────────────────── */
+.submitBtn {
+  width: 100%;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  background: var(--color-primary);
+  color: #ffffff;
+  border-radius: var(--r-sm);
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+  transition: opacity var(--t-fast), transform var(--t-fast);
+  margin-top: var(--sp-1);
+}
+.submitBtn:hover:not(:disabled)  { opacity: 0.9; }
+.submitBtn:active:not(:disabled) { transform: scale(0.99); }
+.submitBtn:disabled              { opacity: 0.6; cursor: not-allowed; }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.spinner { animation: spin 0.75s linear infinite; flex-shrink: 0; }
+
+/* ── Primary button (status cards) ──────────────────────────────────────── */
+.primaryBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 var(--sp-8);
+  background: var(--color-primary);
+  color: #ffffff;
+  border-radius: var(--r-sm);
+  font-size: 14.5px;
+  font-weight: 600;
+  width: 100%;
+  max-width: 260px;
+  transition: opacity var(--t-fast);
+}
+.primaryBtn:hover { opacity: 0.9; }
+
+/* ── Sign-in link ────────────────────────────────────────────────────────── */
+.signinLink {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  text-align: center;
+  margin: 0;
+}
+.link {
+  color: var(--color-primary);
+  font-weight: 600;
+  transition: opacity var(--t-fast);
+}
+.link:hover { opacity: 0.8; text-decoration: underline; }

@@ -11,7 +11,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, ArrowLeft } from 'lucide-react';
-import apiClient from '@/lib/api-client';
+import apiClient from '@/api/axiosClient';
 import styles    from './ForgotPasswordPage.module.css';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

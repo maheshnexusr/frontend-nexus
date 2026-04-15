@@ -13,15 +13,13 @@
  *   /sponsor/:studyId         → ProtectedRoute → SponsorLayout
  */
 
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense } from 'react';
 import {
   createBrowserRouter,
   Navigate,
   Outlet,
 } from 'react-router-dom';
 
-import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { fetchCurrentUserAsync, selectIsAuthenticated } from '@/features/auth/authSlice';
 import { useStorageSync } from '@/hooks/useStorageSync';
 import ProtectedRoute from '@/components/navigation/ProtectedRoute';
 
@@ -88,6 +86,7 @@ const SignUpPage               = lazy(() => import('@/features/auth/pages/SignUp
 const SignInPage               = lazy(() => import('@/features/auth/pages/SignInPage'));
 const EmailVerificationPage    = lazy(() => import('@/features/auth/pages/EmailVerificationPage'));
 const ForgotPasswordPage       = lazy(() => import('@/features/auth/pages/ForgotPasswordPage'));
+const AccountActivationPage    = lazy(() => import('@/features/auth/pages/AccountActivationPage'));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lazy page imports — Workspace selector
@@ -103,25 +102,25 @@ const StudySelectorPage     = lazy(() => import('@/features/workspace/pages/Stud
 const CROLayout          = lazy(() => import('@/layouts/CROLayout'));
 const FormsListPage      = lazy(() => import('@/features/form-builder/pages/FormsListPage'));
 const FormBuilderPage    = lazy(() => import('@/features/form-builder/pages/FormBuilderPage'));
-const CRODashboardPage   = lazy(() => import('@/features/cro/pages/CRODashboardPage'));
-const SponsorListPage    = lazy(() => import('@/features/cro/pages/SponsorListPage'));
-const SponsorNewPage     = lazy(() => import('@/features/cro/pages/SponsorNewPage'));
-const SponsorEditPage    = lazy(() => import('@/features/cro/pages/SponsorEditPage'));
-const StudyListPage      = lazy(() => import('@/features/cro/pages/StudyListPage'));
-const StudyNewPage       = lazy(() => import('@/features/cro/pages/StudyNewPage'));
-const StudyEditPage      = lazy(() => import('@/features/cro/pages/StudyEditPage'));
-const TeamMembersPage    = lazy(() => import('@/features/cro/pages/TeamMembersPage'));
-const TeamMemberNewPage  = lazy(() => import('@/features/cro/pages/TeamMemberNewPage'));
-const TeamRolesPage      = lazy(() => import('@/features/cro/pages/TeamRolesPage'));
-const TeamRoleFormPage   = lazy(() => import('@/features/cro/pages/TeamRoleFormPage'));
-const EmailTemplatesPage = lazy(() => import('@/features/cro/pages/EmailTemplatesPage'));
-const StudyPhasesPage    = lazy(() => import('@/features/cro/pages/StudyPhasesPage'));
-const LocationsPage      = lazy(() => import('@/features/cro/pages/LocationsPage'));
-const CountryPage        = lazy(() => import('@/features/cro/pages/CountryPage'));
-const RegionsPage        = lazy(() => import('@/features/cro/pages/RegionsPage'));
-const CROActivityLogPage = lazy(() => import('@/features/cro/pages/ActivityLogPage'));
-const CROProfilePage     = lazy(() => import('@/features/cro/pages/CROProfilePage'));
-const ChangePasswordPage = lazy(() => import('@/features/cro/pages/ChangePasswordPage'));
+const CRODashboardPage   = lazy(() => import('@/features/cro/pages/dashboard/CRODashboardPage'));
+const CROProfilePage     = lazy(() => import('@/features/cro/pages/profile/CROProfilePage'));
+const ChangePasswordPage = lazy(() => import('@/features/cro/pages/profile/ChangePasswordPage'));
+const SponsorListPage    = lazy(() => import('@/features/cro/pages/sponsors/SponsorListPage'));
+const SponsorNewPage     = lazy(() => import('@/features/cro/pages/sponsors/SponsorNewPage'));
+const SponsorEditPage    = lazy(() => import('@/features/cro/pages/sponsors/SponsorEditPage'));
+const StudyListPage      = lazy(() => import('@/features/cro/pages/studies/StudyListPage'));
+const StudyNewPage       = lazy(() => import('@/features/cro/pages/studies/StudyNewPage'));
+const StudyEditPage      = lazy(() => import('@/features/cro/pages/studies/StudyEditPage'));
+const TeamMembersPage    = lazy(() => import('@/features/cro/pages/team/TeamMembersPage'));
+const TeamMemberNewPage  = lazy(() => import('@/features/cro/pages/team/TeamMemberNewPage'));
+const TeamRolesPage      = lazy(() => import('@/features/cro/pages/team/TeamRolesPage'));
+const TeamRoleFormPage   = lazy(() => import('@/features/cro/pages/team/TeamRoleFormPage'));
+const EmailTemplatesPage = lazy(() => import('@/features/cro/pages/masters/EmailTemplatesPage'));
+const StudyPhasesPage    = lazy(() => import('@/features/cro/pages/masters/StudyPhasesPage'));
+const CountryPage        = lazy(() => import('@/features/cro/pages/masters/CountryPage'));
+const LocationsPage      = lazy(() => import('@/features/cro/pages/masters/LocationsPage'));
+const RegionsPage        = lazy(() => import('@/features/cro/pages/masters/RegionsPage'));
+const CROActivityLogPage = lazy(() => import('@/features/cro/pages/activity-log/ActivityLogPage'));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lazy page imports — Sponsor
@@ -140,7 +139,10 @@ const SitesPage              = lazy(() => import('@/features/sponsor/pages/Sites
 const PersonnelPage          = lazy(() => import('@/features/sponsor/pages/PersonnelPage'));
 const RolesPage              = lazy(() => import('@/features/sponsor/pages/RolesPage'));
 const ReportsPage            = lazy(() => import('@/features/sponsor/pages/ReportsPage'));
-const SponsorActivityLogPage = lazy(() => import('@/features/sponsor/pages/SponsorActivityLogPage'));
+const SponsorActivityLogPage      = lazy(() => import('@/features/sponsor/pages/SponsorActivityLogPage'));
+const MasterEmailTemplatesPage    = lazy(() => import('@/features/sponsor/pages/MasterEmailTemplatesPage'));
+const MasterCountriesPage         = lazy(() => import('@/features/sponsor/pages/MasterCountriesPage'));
+const MasterLocationsPage         = lazy(() => import('@/features/sponsor/pages/MasterLocationsPage'));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inline 404 page
@@ -213,19 +215,6 @@ function NotFoundPage() {
  * - Wires cross-tab logout via useStorageSync.
  */
 function RootLayout() {
-  const dispatch        = useAppDispatch();
-  const isAuthenticated = useAppSelector(selectIsAuthenticated);
-
-  // Session restore: if token present but Redux state doesn't know about
-  // the user yet (e.g. hard refresh), re-fetch the current user.
-  useEffect(() => {
-    const token = sessionStorage.getItem('accessToken');
-    if (token && !isAuthenticated) {
-      dispatch(fetchCurrentUserAsync());
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount only
-
   // Broadcast logout across tabs
   useStorageSync();
 
@@ -263,6 +252,7 @@ export const router = createBrowserRouter([
           { path: 'signin',            element: sp(SignInPage) },
           { path: 'verify/:token',     element: sp(EmailVerificationPage) },
           { path: 'forgot-password',   element: sp(ForgotPasswordPage) },
+          { path: 'activate',          element: sp(AccountActivationPage) },
         ],
       },
 
@@ -331,6 +321,9 @@ export const router = createBrowserRouter([
           // Activity log
           { path: 'activity-log', element: sp(CROActivityLogPage) },
 
+          // Choose Sponsor Workspace
+          { path: 'workspace', element: sp(WorkspaceSelectorPage) },
+
           // Profile
           { path: 'profile',           element: sp(CROProfilePage) },
           { path: 'profile/password',  element: sp(ChangePasswordPage) },
@@ -372,7 +365,10 @@ export const router = createBrowserRouter([
           { path: 'personnel',      element: sp(PersonnelPage) },
           { path: 'roles',          element: sp(RolesPage) },
           { path: 'reports',        element: sp(ReportsPage) },
-          { path: 'activity-log',   element: sp(SponsorActivityLogPage) },
+          { path: 'activity-log',              element: sp(SponsorActivityLogPage)   },
+          { path: 'masters/email-templates',   element: sp(MasterEmailTemplatesPage) },
+          { path: 'masters/countries',         element: sp(MasterCountriesPage)      },
+          { path: 'masters/locations',         element: sp(MasterLocationsPage)      },
         ],
       },
 

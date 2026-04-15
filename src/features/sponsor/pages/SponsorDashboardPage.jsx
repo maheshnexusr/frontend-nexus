@@ -6,7 +6,7 @@ import {
   selectActiveStudy,
   selectStudyStatus,
   selectStudyError,
-} from '@/features/workspace/workspaceSlice';
+} from '@/features/workspace/store/workspaceSlice';
 import styles from './SponsorDashboardPage.module.css';
 
 export default function SponsorDashboardPage() {

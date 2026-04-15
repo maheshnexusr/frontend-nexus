@@ -1,119 +1,128 @@
 /**
- * sponsorsClient — localStorage CRUD for Sponsors.
+ * sponsorsClient — real API client for Sponsors.
+ * Normalizes snake_case API ↔ camelCase UI.
  */
 
-const KEY = 'edc_sponsors';
+import axiosClient from '@/api/axiosClient';
 
-function now() { return new Date().toISOString(); }
-
-let _counter = Date.now();
-function uid() { return `sp-${++_counter}`; }
-
-function getAll() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  localStorage.setItem(KEY, JSON.stringify([]));
-  return [];
+/* ── Response normalizer ─────────────────────────────────────────────────── */
+function normalize(raw) {
+  return {
+    id:                 raw.sponsor_id          ?? raw.id,
+    photograph:         raw.photograph_path      ?? raw.photograph ?? null,
+    fullName:           raw.full_name            ?? raw.fullName   ?? '',
+    contactNumber:      raw.contact_number       ?? raw.contactNumber ?? '',
+    email:              raw.email_address        ?? raw.email ?? '',
+    organizationName:   raw.organization_name    ?? raw.organizationName ?? '',
+    website:            raw.website              ?? '',
+    registrationNumber: raw.registration_number  ?? raw.registrationNumber ?? '',
+    addressLine1:       raw.address_line1        ?? raw.addressLine1 ?? '',
+    addressLine2:       raw.address_line2        ?? raw.addressLine2 ?? '',
+    city:               raw.city                 ?? '',
+    district:           raw.district             ?? '',
+    state:              raw.state                ?? '',
+    zipcode:            raw.postal_code          ?? raw.zipcode ?? '',
+    countryId:          raw.country_id           ?? raw.countryId ?? '',
+    countryName:        raw.country_name         ?? raw.countryName ?? '',
+    status:             raw.status               ?? 'Active',
+    createdAt:          raw.created_at           ?? raw.createdAt,
+    updatedAt:          raw.updated_at           ?? raw.updatedAt,
+  };
 }
 
-function persist(data) {
-  localStorage.setItem(KEY, JSON.stringify(data));
+function extractList(res) {
+  const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
+  return arr.map(normalize);
 }
 
-// ── Export filename helper ────────────────────────────────────────────────────
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-export function buildExportFilename() {
-  const d   = new Date();
-  const dd  = String(d.getDate()).padStart(2, '0');
-  const mmm = MONTHS[d.getMonth()];
-  const yyyy = d.getFullYear();
-  const hh  = String(d.getHours()).padStart(2, '0');
-  const mm  = String(d.getMinutes()).padStart(2, '0');
-  return `Sponsor_Details_${dd}_${mmm}_${yyyy} ${hh}${mm}.csv`;
+/* ── Request builder (camelCase form → snake_case FormData) ─────────────── */
+function toFormData(form) {
+  const fd = new FormData();
+  const add = (key, val) => { if (val !== undefined && val !== null && val !== '') fd.append(key, val); };
+
+  add('full_name',           form.fullName);
+  add('email_address',       form.email);
+  add('contact_number',      form.contactNumber);
+  add('organization_name',   form.organizationName);
+  add('registration_number', form.registrationNumber);
+  add('website',             form.website);
+  add('address_line1',       form.addressLine1);
+  add('address_line2',       form.addressLine2);
+  add('country_id',          form.countryId);
+  add('city',                form.city);
+  add('district',            form.district);
+  add('state',               form.state);
+  add('postal_code',         form.zipcode);
+  add('status',              form.status);
+
+  if (form.photograph) {
+    if (form.photograph instanceof File || form.photograph instanceof Blob) {
+      fd.append('photograph', form.photograph);
+    } else if (typeof form.photograph === 'string' && form.photograph.startsWith('data:')) {
+      const [meta, b64] = form.photograph.split(',');
+      const mime = meta.match(/:(.*?);/)[1];
+      const bin  = atob(b64);
+      const buf  = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      fd.append('photograph', new Blob([buf], { type: mime }), 'photo.jpg');
+    }
+  }
+
+  return fd;
 }
 
-export function exportSponsorsCSV(data) {
-  const headers = [
-    'Full Name','Email Address','Contact Number','Organization Name',
-    'Website','Registration Number','Address Line 1','Address Line 2',
-    'City','District','State','Zipcode','Country','Status','Created Date',
-  ];
-  const esc = (v) => `"${(v ?? '').toString().replace(/"/g, '""')}"`;
-  const rows = data.map((s) => [
-    esc(s.fullName), esc(s.email), esc(s.contactNumber), esc(s.organizationName),
-    esc(s.website), esc(s.registrationNumber), esc(s.addressLine1), esc(s.addressLine2),
-    esc(s.city), esc(s.district), esc(s.state), esc(s.zipcode), esc(s.countryName),
-    esc(s.status), esc(s.createdAt ? new Date(s.createdAt).toLocaleDateString('en-US') : ''),
-  ]);
-  const csv  = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
   a.href     = url;
-  a.download = buildExportFilename();
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
-  return a.download;
 }
 
+/* ── Client ──────────────────────────────────────────────────────────────── */
 export const sponsorsClient = {
-  list() {
-    return Promise.resolve(getAll());
+  async list() {
+    const res = await axiosClient.get('/api/v1/sponsors');
+    return extractList(res);
   },
 
-  create(data) {
-    const all    = getAll();
-    const record = { id: uid(), ...data, createdBy: 'Admin', createdAt: now(), updatedAt: now() };
-    persist([...all, record]);
-    return Promise.resolve(record);
+  async getById(id) {
+    const res = await axiosClient.get(`/api/v1/sponsors/${id}`);
+    return normalize(res?.item ?? res);
   },
 
-  update(id, data) {
-    const all = getAll();
-    let updated;
-    const next = all.map((r) => {
-      if (r.id !== id) return r;
-      updated = { ...r, ...data, email: r.email, updatedAt: now() }; // email immutable
-      return updated;
+  async create(form) {
+    const res = await axiosClient.post('/api/v1/sponsors', toFormData(form), {
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
-    persist(next);
-    return Promise.resolve(updated);
+    return normalize(res?.item ?? res);
   },
 
-  delete(id) {
-    persist(getAll().filter((r) => r.id !== id));
-    return Promise.resolve();
+  async update(id, form) {
+    const res = await axiosClient.put(`/api/v1/sponsors/${id}`, toFormData(form), {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return normalize(res?.item ?? res);
   },
 
-  getById(id) {
-    return Promise.resolve(getAll().find((r) => r.id === id) ?? null);
+  async delete(id) {
+    return axiosClient.delete(`/api/v1/sponsors/${id}`);
   },
 
-  emailExists(email, excludeId = null) {
-    const match = getAll().find(
-      (r) => r.email?.toLowerCase() === email?.toLowerCase() && r.id !== excludeId,
-    );
-    return Promise.resolve(!!match);
-  },
-
-  regNumExists(regNum, excludeId = null) {
-    const match = getAll().find(
-      (r) => r.registrationNumber?.toLowerCase() === regNum?.toLowerCase() && r.id !== excludeId,
-    );
-    return Promise.resolve(!!match);
-  },
-
-  checkDependencies(id) {
-    for (const k of ['edc_studies', 'edc_contracts']) {
-      try {
-        const raw = localStorage.getItem(k);
-        if (raw && JSON.parse(raw).some((r) => r.sponsorId === id)) {
-          return Promise.resolve(true);
-        }
-      } catch { /* ignore */ }
-    }
-    return Promise.resolve(false);
-  },
+  // Validation stubs — backend validates on conflict (409)
+  emailExists:       () => Promise.resolve(false),
+  regNumExists:      () => Promise.resolve(false),
+  checkDependencies: () => Promise.resolve(false),
 };
+
+export async function exportSponsorsCSV() {
+  const res      = await axiosClient.get('/api/v1/sponsors/export', { responseType: 'blob' });
+  const blob     = res instanceof Blob ? res : new Blob([res], { type: 'text/csv' });
+  const d        = new Date();
+  const filename = `Sponsors_${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.csv`;
+  triggerDownload(blob, filename);
+  return filename;
+}
+
+export function buildExportFilename() { return 'sponsors.csv'; }

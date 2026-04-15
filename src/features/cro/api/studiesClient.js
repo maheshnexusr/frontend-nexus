@@ -1,207 +1,148 @@
 /**
- * studiesClient — localStorage CRUD for Studies + Releases.
- * Keys:
- *   edc_studies          — study master records
- *   edc_study_releases   — version/publish records per study
+ * studiesClient — real API client for Studies.
+ * Normalizes snake_case API ↔ camelCase UI.
  */
 
-const KEY          = 'edc_studies';
-const RELEASES_KEY = 'edc_study_releases';
+import axiosClient from '@/api/axiosClient';
 
-function now() { return new Date().toISOString(); }
-
-let _counter = Date.now();
-function uid(prefix = 'study') { return `${prefix}-${++_counter}`; }
-
-function getAll() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  localStorage.setItem(KEY, JSON.stringify([]));
-  return [];
+/* ── Response normalizer ─────────────────────────────────────────────────── */
+function normalize(raw) {
+  return {
+    id:                  raw.study_id           ?? raw.id,
+    studyId:             raw.protocol_number    ?? raw.protocolNumber ?? raw.studyId ?? '',
+    protocolNumber:      raw.protocol_number    ?? raw.protocolNumber ?? '',
+    studyTitle:          raw.study_title        ?? raw.studyTitle ?? '',
+    studyPhaseId:        raw.study_phase_id     ?? raw.studyPhaseId ?? '',
+    studyPhaseName:      raw.phase_name         ?? raw.studyPhaseName ?? '',
+    scopeEdc:            raw.scope_edc          ?? false,
+    scopeSurvey:         raw.scope_survey       ?? false,
+    scopeEpro:           raw.scope_epro         ?? false,
+    therapeuticArea:     raw.therapeutic_area   ?? raw.therapeuticArea ?? '',
+    studyDescription:    raw.study_description  ?? raw.studyDescription ?? '',
+    sponsorId:           raw.sponsor_id         ?? raw.sponsorId ?? '',
+    sponsorName:         raw.sponsor_name       ?? raw.sponsorName ?? '',
+    startDate:           raw.start_date         ?? raw.startDate ?? '',
+    expectedEndDate:     raw.expected_end_date  ?? raw.expectedEndDate ?? '',
+    maxSites:            raw.max_sites          ?? raw.maxSites ?? null,
+    maxEnrollments:      raw.max_enrollments    ?? raw.maxEnrollments ?? null,
+    regionCovered:       raw.region_covered     ?? raw.regionCovered ?? '',
+    randomizationMethod: raw.randomization_method ?? raw.randomizationMethod ?? '',
+    status:              raw.status             ?? 'Draft',
+    lastCompletedStep:   raw.last_completed_step ?? raw.lastCompletedStep ?? 0,
+    currentEnvironment:  raw.current_environment ?? raw.currentEnvironment ?? '',
+    tenantDbName:        raw.tenant_db_name     ?? raw.tenantDbName ?? '',
+    configuration:       raw.configuration      ?? null,
+    formDefinition:      raw.form_definition    ?? null,
+    triggers:            raw.triggers           ?? [],
+    teamAssignments:     raw.team_assignments   ?? [],
+    versions:            (raw.versions ?? []).map(normalizeVersion),
+    createdAt:           raw.created_at         ?? raw.createdAt,
+    updatedAt:           raw.updated_at         ?? raw.updatedAt,
+  };
 }
 
-function persist(data) {
-  localStorage.setItem(KEY, JSON.stringify(data));
+function normalizeVersion(v) {
+  return {
+    id:            v.version_id     ?? v.id,
+    studyId:       v.study_id       ?? v.studyId,
+    versionNumber: v.version_number ?? v.versionNumber,
+    environment:   v.environment    ?? '',
+    status:        v.status         ?? '',
+    description:   v.description    ?? '',
+    databaseName:  v.database_name  ?? v.databaseName ?? '',
+    uatLink:       v.uat_link       ?? v.uatLink ?? null,
+    liveLink:      v.live_link      ?? v.liveLink ?? null,
+    publishedBy:   v.published_by   ?? v.publishedBy ?? '',
+    publishedAt:   v.published_at   ?? v.publishedAt ?? '',
+    isCurrent:     v.is_current     ?? false,
+  };
 }
 
-function getAllReleases() {
-  try {
-    const raw = localStorage.getItem(RELEASES_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  localStorage.setItem(RELEASES_KEY, JSON.stringify([]));
-  return [];
+function extractList(res) {
+  const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? res?.studies ?? []);
+  return arr.map(normalize);
 }
 
-function persistReleases(data) {
-  localStorage.setItem(RELEASES_KEY, JSON.stringify(data));
-}
-
-/** Auto-increment version based on existing releases for a study protocol ID. */
-function nextVersion(studyProtocolId) {
-  const existing = getAllReleases()
-    .filter((r) => r.studyProtocolId === studyProtocolId)
-    .map((r) => r.version)
-    .filter(Boolean);
-
-  if (existing.length === 0) return 'v1.0';
-
-  const nums = existing
-    .map((v) => v.replace(/^v/, '').split('.').map(Number))
-    .filter((p) => p.length === 2 && !p.some(isNaN));
-
-  if (nums.length === 0) return 'v1.0';
-
-  nums.sort((a, b) => a[0] !== b[0] ? b[0] - a[0] : b[1] - a[1]);
-  const [major, minor] = nums[0];
-  return `v${major}.${minor + 1}`;
-}
-
-/** Build database name per environment. */
-function buildDbName(studyId, env) {
-  const safe = studyId.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-  return env === 'UAT' ? `UAT_${safe}` : safe;
-}
-
-/** Build access link. */
-function buildAccessLink(studyId, env) {
-  const base = 'https://app.edcplatform.io/study';
-  return `${base}/${studyId.toLowerCase()}/${env.toLowerCase()}`;
-}
-
+/* ── Client ──────────────────────────────────────────────────────────────── */
 export const studiesClient = {
-  list() {
-    return Promise.resolve(getAll());
+  async list() {
+    const res = await axiosClient.get('/api/v1/studies');
+    return extractList(res);
   },
 
-  getById(id) {
-    return Promise.resolve(getAll().find((r) => r.id === id) ?? null);
+  async getById(id) {
+    const res = await axiosClient.get(`/api/v1/studies/${id}`);
+    return normalize(res?.item ?? res);
   },
 
-  create(data) {
-    const all    = getAll();
-    const record = {
-      id:        uid(),
-      ...data,
-      status:    data.status ?? 'Draft',
-      createdBy: 'Admin',
-      createdAt: now(),
-      updatedAt: now(),
-    };
-    persist([...all, record]);
-    return Promise.resolve(record);
+  async delete(id) {
+    return axiosClient.delete(`/api/v1/studies/${id}`);
   },
 
-  update(id, data) {
-    const all = getAll();
-    let updated;
-    const next = all.map((r) => {
-      if (r.id !== id) return r;
-      updated = { ...r, ...data, updatedAt: now() };
-      return updated;
+  // Step 1 create
+  async create(data) {
+    const res = await axiosClient.post('/api/v1/studies/step-1', {
+      protocol_number:    data.protocolNumber ?? data.studyId,
+      study_title:        data.studyTitle,
+      study_phase_id:     data.studyPhaseId,
+      sponsor_id:         data.sponsorId,
+      scopes:             data.scopes ?? [],
+      therapeutic_area:   data.therapeuticArea  || undefined,
+      study_description:  data.studyDescription || undefined,
     });
-    persist(next);
-    return Promise.resolve(updated);
+    return normalize(res?.item ?? res);
   },
 
-  delete(id) {
-    persist(getAll().filter((r) => r.id !== id));
-    // also remove all releases for this study
-    persistReleases(getAllReleases().filter((r) => r.studyId !== id));
-    return Promise.resolve();
+  // Generic step update
+  async saveStep(id, step, data) {
+    const res = await axiosClient.put(`/api/v1/studies/${id}/step-${step}`, data);
+    return normalize(res?.item ?? res);
   },
 
-  /** Returns true if a study with this studyId / protocol number already exists. */
-  studyIdExists(studyId, excludeId = null) {
-    const match = getAll().find(
-      (r) => r.studyId?.toLowerCase() === studyId?.trim().toLowerCase() && r.id !== excludeId,
-    );
-    return Promise.resolve(!!match);
+  // Convenience aliases kept for wizard steps
+  async update(id, data) {
+    return studiesClient.saveStep(id, 1, {
+      protocol_number:   data.protocolNumber ?? data.studyId,
+      study_title:       data.studyTitle,
+      study_phase_id:    data.studyPhaseId,
+      sponsor_id:        data.sponsorId,
+      scopes:            data.scopes ?? [],
+      therapeutic_area:  data.therapeuticArea  || undefined,
+      study_description: data.studyDescription || undefined,
+    });
   },
 
-  // ── Publish ──────────────────────────────────────────────────────────────
-  /**
-   * publish(wizardData, publishConfig) — Creates or updates the study record,
-   * then creates a versioned release entry.
-   *
-   * @param {object} wizardData   — merged step1–step5 data
-   * @param {object} publishConfig — { environment, status, description }
-   * @returns {Promise<{ study, release }>}
-   */
-  publish(wizardData, publishConfig) {
-    const { environment, status, description } = publishConfig;
-    const studyProtocolId = wizardData.studyId; // from step 1
-
-    // 1. Upsert the study master record
-    const all    = getAll();
-    const exists = all.find((r) => r.studyId === studyProtocolId);
-
-    let study;
-    if (exists) {
-      study = { ...exists, ...wizardData, status, updatedAt: now() };
-      persist(all.map((r) => r.id === exists.id ? study : r));
-    } else {
-      study = {
-        id:            uid(),
-        ...wizardData,
-        status,
-        createdBy:     'Admin',
-        createdAt:     now(),
-        updatedAt:     now(),
-      };
-      persist([...all, study]);
-    }
-
-    // 2. Create release record
-    const version    = nextVersion(studyProtocolId);
-    const dbName     = buildDbName(studyProtocolId, environment);
-    const accessLink = buildAccessLink(studyProtocolId, environment);
-    const tablePrefix = environment === 'UAT' ? 'usp_' : 'sp_';
-
-    const release = {
-      id:              uid('rel'),
-      studyId:         study.id,
-      studyProtocolId,
-      version,
-      environment,
-      status,
-      description:     description ?? '',
-      databaseName:    dbName,
-      tablePrefix,
-      accessLink,
-      invitationLink:  `${accessLink}/invite`,
-      publishedBy:     'Admin',
-      publishedAt:     now(),
-    };
-
-    persistReleases([...getAllReleases(), release]);
-
-    return Promise.resolve({ study, release });
+  // Publish
+  async publish(studyId, publishConfig) {
+    const res = await axiosClient.post(`/api/v1/studies/${studyId}/publish`, {
+      environment: publishConfig.environment,
+      status:      publishConfig.status      || undefined,
+      description: publishConfig.description || undefined,
+    });
+    return res?.item ?? res;
   },
 
-  // ── Releases ─────────────────────────────────────────────────────────────
-  getReleasesByProtocolId(studyProtocolId) {
-    return Promise.resolve(
-      getAllReleases()
-        .filter((r) => r.studyProtocolId === studyProtocolId)
-        .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt)),
-    );
+  // Releases
+  async getReleasesByStudyId(studyId) {
+    const study = await studiesClient.getById(studyId);
+    return study?.versions ?? [];
   },
 
-  getReleasesByStudyId(studyId) {
-    return Promise.resolve(
-      getAllReleases()
-        .filter((r) => r.studyId === studyId)
-        .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt)),
-    );
+  async getReleasesByProtocolId(protocolId) {
+    const all = await studiesClient.list();
+    const study = all.find((s) => s.protocolNumber === protocolId);
+    return study?.versions ?? [];
   },
 
-  updateReleaseStatus(releaseId, status) {
-    const all  = getAllReleases();
-    const next = all.map((r) => r.id === releaseId ? { ...r, status } : r);
-    persistReleases(next);
-    return Promise.resolve(next.find((r) => r.id === releaseId));
+  async updateReleaseStatus(releaseId, status) {
+    return axiosClient.patch(`/api/v1/studies/releases/${releaseId}`, { status });
   },
+
+  // Invitations
+  async sendInvitation(studyId, payload) {
+    return axiosClient.post(`/api/v1/studies/${studyId}/invitations`, payload);
+  },
+
+  // Validation stub — backend enforces uniqueness
+  studyIdExists: () => Promise.resolve(false),
 };

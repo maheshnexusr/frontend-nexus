@@ -1,156 +1,76 @@
 /**
- * locationsClient — localStorage CRUD for Locations.
- * Each record: { id, countryId, countryName, state, district, city, postalCode, status, createdBy, createdAt, updatedAt }
+ * locationsClient — real API client for Locations.
+ * Normalizes snake_case API ↔ camelCase UI.
  */
 
-const KEY = 'edc_locations';
+import axiosClient from '@/api/axiosClient';
 
-function now() { return new Date().toISOString(); }
-
-let _counter = Date.now();
-function uid() { return `loc-${++_counter}`; }
-
-function combKey(r) {
-  return [
-    (r.countryId  ?? '').toLowerCase(),
-    (r.state      ?? '').toLowerCase().trim(),
-    (r.district   ?? '').toLowerCase().trim(),
-    (r.city       ?? '').toLowerCase().trim(),
-    (r.postalCode ?? '').toLowerCase().trim(),
-  ].join('|');
+/* ── Response normalizer ─────────────────────────────────────────────────── */
+function normalize(raw) {
+  return {
+    id:          raw.location_id        ?? raw.id,
+    countryId:   raw.country_id         ?? raw.countryId ?? '',
+    countryName: raw.country_name       ?? raw.countryName ?? '',
+    state:       raw.state              ?? '',
+    district:    raw.district           ?? '',
+    city:        raw.city               ?? '',
+    postalCode:  raw.postal_code        ?? raw.postalCode ?? '',
+    status:      raw.status             ?? 'Active',
+    isSystem:    raw.is_system_location ?? false,
+    createdAt:   raw.created_at         ?? raw.createdAt,
+    updatedAt:   raw.updated_at         ?? raw.updatedAt,
+  };
 }
 
-function getAll() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  localStorage.setItem(KEY, JSON.stringify([]));
-  return [];
+function extractList(res) {
+  const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? res?.locations ?? []);
+  return arr.map(normalize);
 }
 
-function persist(data) {
-  localStorage.setItem(KEY, JSON.stringify(data));
-}
-
+/* ── Client ──────────────────────────────────────────────────────────────── */
 export const locationsClient = {
-  list() {
-    return Promise.resolve(getAll());
+  async list() {
+    const res = await axiosClient.get('/api/v1/masters/locations');
+    return extractList(res);
   },
 
-  create(data) {
-    const all    = getAll();
-    const record = {
-      id:          uid(),
-      countryId:   data.countryId,
-      countryName: data.countryName,
-      state:       data.state.trim(),
-      district:    (data.district ?? '').trim(),
-      city:        data.city.trim(),
-      postalCode:  data.postalCode.trim(),
-      status:      data.status ?? 'Active',
-      createdBy:   'Admin',
-      createdAt:   now(),
-      updatedAt:   now(),
-    };
-    persist([...all, record]);
-    return Promise.resolve(record);
-  },
-
-  update(id, data) {
-    const all = getAll();
-    let updated;
-    const next = all.map((r) => {
-      if (r.id !== id) return r;
-      updated = {
-        ...r,
-        countryId:   data.countryId,
-        countryName: data.countryName,
-        state:       data.state.trim(),
-        district:    (data.district ?? '').trim(),
-        city:        data.city.trim(),
-        postalCode:  data.postalCode.trim(),
-        status:      data.status,
-        updatedAt:   now(),
-      };
-      return updated;
+  async create(data) {
+    const res = await axiosClient.post('/api/v1/masters/locations', {
+      country_id:  data.countryId,
+      state:       data.state,
+      city:        data.city,
+      postal_code: data.postalCode,
+      district:    data.district   || undefined,
+      status:      data.status     ?? 'Active',
     });
-    persist(next);
-    return Promise.resolve(updated);
+    return normalize(res?.item ?? res);
   },
 
-  delete(id) {
-    persist(getAll().filter((r) => r.id !== id));
-    return Promise.resolve();
+  async update(id, data) {
+    const res = await axiosClient.put(`/api/v1/masters/locations/${id}`, {
+      country_id:  data.countryId,
+      state:       data.state,
+      city:        data.city,
+      postal_code: data.postalCode,
+      district:    data.district   || undefined,
+      status:      data.status,
+    });
+    return normalize(res?.item ?? res);
   },
 
-  /** Returns true if same Country+State+District+City+PostalCode combo exists (excluding excludeId). */
-  combinationExists(data, excludeId = null) {
-    const key = combKey(data);
-    const match = getAll().find(
-      (r) => r.id !== excludeId && combKey(r) === key,
-    );
-    return Promise.resolve(!!match);
+  async delete(id) {
+    return axiosClient.delete(`/api/v1/masters/locations/${id}`);
   },
 
-  /** Dependency check — inspects sites, sponsors, studies, team members. */
-  checkDependencies(id) {
-    const storageKeys = ['edc_sites', 'edc_sponsors', 'edc_studies', 'edc_team_members'];
-    for (const k of storageKeys) {
-      try {
-        const raw = localStorage.getItem(k);
-        if (raw) {
-          const records = JSON.parse(raw);
-          if (records.some((r) => r.locationId === id || r.location === id)) {
-            return Promise.resolve(true);
-          }
-        }
-      } catch { /* ignore */ }
-    }
-    return Promise.resolve(false);
+  async bulkImport(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    return axiosClient.post('/api/v1/masters/locations/import', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
   },
 
-  /**
-   * Bulk import from parsed CSV rows.
-   * Each row must have Country (matched by name to edc_countries), State, City, Postal Code.
-   */
-  bulkImport(rows, countryList) {
-    const all      = getAll();
-    const combSet  = new Set(all.map(combKey));
-    // Build country name → { id, name } map
-    const countryMap = Object.fromEntries(
-      countryList.map((c) => [c.countryName.toLowerCase(), c]),
-    );
-
-    let imported = 0;
-    let skipped  = 0;
-    const next   = [...all];
-
-    for (const row of rows) {
-      const countryName = (row['Country'] ?? row.countryName ?? '').trim();
-      const state       = (row['State']   ?? row.state       ?? '').trim();
-      const district    = (row['District']?? row.district    ?? '').trim();
-      const city        = (row['City']    ?? row.city        ?? '').trim();
-      const postalCode  = (row['Postal Code'] ?? row.postalCode ?? '').trim();
-      const status      = (row['Status']  ?? row.status ?? 'Active').trim();
-
-      const country = countryMap[countryName.toLowerCase()];
-      if (!country || !state || !city || !postalCode) { skipped++; continue; }
-
-      const candidate = { countryId: country.id, state, district, city, postalCode };
-      if (combSet.has(combKey(candidate))) { skipped++; continue; }
-
-      const record = {
-        id: uid(), countryId: country.id, countryName: country.countryName,
-        state, district, city, postalCode, status,
-        createdBy: 'Import', createdAt: now(), updatedAt: now(),
-      };
-      next.push(record);
-      combSet.add(combKey(candidate));
-      imported++;
-    }
-
-    persist(next);
-    return Promise.resolve({ imported, skipped });
-  },
+  // Validation stubs — backend enforces uniqueness / dependency constraints
+  combinationExists: () => Promise.resolve(false),
+  checkDependencies: () => Promise.resolve(false),
 };

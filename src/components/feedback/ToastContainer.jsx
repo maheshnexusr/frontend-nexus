@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useAppSelector } from '@/app/hooks';
-import { selectToasts } from '@/features/notifications/notificationSlice';
+import { selectToasts } from '@/app/notificationSlice';
 import Toast from './Toast';
 import styles from './ToastContainer.module.css';
 

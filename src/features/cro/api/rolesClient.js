@@ -1,183 +1,133 @@
 /**
- * rolesClient — localStorage CRUD for CRO Roles.
- * Storage key: 'edc_roles'
+ * rolesClient — real API client for CRO Roles.
  *
- * Seed on first access:
- *   • "CRO Administrator" — system role, all permissions enabled, cannot be deleted/edited.
- *   • 8 common CRO role names with empty permissions (available for team member assignment).
+ * The UI stores permissions as a nested object:
+ *   { groupKey: { featureKey: { permKey: boolean } } }
+ *
+ * The API sends/receives permissions as a flat array:
+ *   [{ feature_name: "Sponsors", can_view: true, can_create: false, … }]
+ *
+ * This module converts between the two formats.
  */
 
-import { buildPermissions } from '@/features/cro/constants/permissionsSchema';
+import axiosClient from '@/api/axiosClient';
+import { PERMISSION_GROUPS, buildPermissions } from '@/features/cro/constants/permissionsSchema';
 
-const KEY = 'edc_roles';
+/* ── Permissions: API flat array → nested UI object ─────────────────────── */
+function apiPermsToNested(apiPerms) {
+  if (!Array.isArray(apiPerms) || apiPerms.length === 0) return buildPermissions(false);
 
-// ── Seed data ─────────────────────────────────────────────────────────────────
-const SYSTEM_ROLE_ID = 'role-system-admin';
+  const result = buildPermissions(false);
 
-function buildSeed(now) {
-  return [
-    {
-      id:          SYSTEM_ROLE_ID,
-      name:        'CRO Administrator',
-      description: 'Full administrative access to the platform. All permissions are enabled.',
-      isSystem:    true,
-      permissions: buildPermissions(true),
-      createdAt:   now,
-      updatedAt:   now,
-    },
-    {
-      id:          'role-2',
-      name:        'Project Manager',
-      description: 'Oversees study planning and execution.',
-      isSystem:    false,
-      permissions: buildPermissions(false),
-      createdAt:   now,
-      updatedAt:   now,
-    },
-    {
-      id:          'role-3',
-      name:        'Data Manager',
-      description: 'Manages study data integrity and validation.',
-      isSystem:    false,
-      permissions: buildPermissions(false),
-      createdAt:   now,
-      updatedAt:   now,
-    },
-    {
-      id:          'role-4',
-      name:        'Clinical Research Associate',
-      description: 'Monitors clinical study sites (CRA).',
-      isSystem:    false,
-      permissions: buildPermissions(false),
-      createdAt:   now,
-      updatedAt:   now,
-    },
-    {
-      id:          'role-5',
-      name:        'Site Monitor',
-      description: 'Performs on-site monitoring activities.',
-      isSystem:    false,
-      permissions: buildPermissions(false),
-      createdAt:   now,
-      updatedAt:   now,
-    },
-    {
-      id:          'role-6',
-      name:        'Statistician',
-      description: 'Statistical analysis and data review.',
-      isSystem:    false,
-      permissions: buildPermissions(false),
-      createdAt:   now,
-      updatedAt:   now,
-    },
-    {
-      id:          'role-7',
-      name:        'Medical Monitor',
-      description: 'Medical oversight and patient safety review.',
-      isSystem:    false,
-      permissions: buildPermissions(false),
-      createdAt:   now,
-      updatedAt:   now,
-    },
-    {
-      id:          'role-8',
-      name:        'Regulatory Affairs Specialist',
-      description: 'Regulatory submissions and compliance.',
-      isSystem:    false,
-      permissions: buildPermissions(false),
-      createdAt:   now,
-      updatedAt:   now,
-    },
-    {
-      id:          'role-9',
-      name:        'Study Coordinator',
-      description: 'Coordinates day-to-day study operations.',
-      isSystem:    false,
-      permissions: buildPermissions(false),
-      createdAt:   now,
-      updatedAt:   now,
-    },
-  ];
-}
-
-// ── Storage helpers ───────────────────────────────────────────────────────────
-function now() { return new Date().toISOString(); }
-
-let _counter = Date.now();
-function uid() { return `role-${++_counter}`; }
-
-function getAll() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  const seeded = buildSeed(now());
-  localStorage.setItem(KEY, JSON.stringify(seeded));
-  return seeded;
-}
-
-function persist(data) {
-  localStorage.setItem(KEY, JSON.stringify(data));
-}
-
-// ── Client ────────────────────────────────────────────────────────────────────
-export const rolesClient = {
-  list()      { return Promise.resolve(getAll()); },
-  getById(id) { return Promise.resolve(getAll().find((r) => r.id === id) ?? null); },
-
-  create(data) {
-    const all    = getAll();
-    const record = {
-      id:          uid(),
-      isSystem:    false,
-      permissions: buildPermissions(false),
-      ...data,
-      createdAt:   now(),
-      updatedAt:   now(),
-    };
-    persist([...all, record]);
-    return Promise.resolve(record);
-  },
-
-  update(id, data) {
-    const all = getAll();
-    const target = all.find((r) => r.id === id);
-    // Prevent editing the system role
-    if (target?.isSystem) return Promise.reject(new Error('System role cannot be edited.'));
-    let updated;
-    const next = all.map((r) => {
-      if (r.id !== id) return r;
-      updated = { ...r, ...data, id, isSystem: r.isSystem, updatedAt: now() };
-      return updated;
-    });
-    persist(next);
-    return Promise.resolve(updated ?? null);
-  },
-
-  delete(id) {
-    const all    = getAll();
-    const target = all.find((r) => r.id === id);
-    if (target?.isSystem) return Promise.reject(new Error('System role cannot be deleted.'));
-    persist(all.filter((r) => r.id !== id));
-    return Promise.resolve();
-  },
-
-  /** Returns true if a role with the given name already exists (excluding `excludeId`). */
-  nameExists(name, excludeId = null) {
-    const norm   = (name ?? '').toLowerCase().trim();
-    const exists = getAll().some(
-      (r) => r.name?.toLowerCase().trim() === norm && r.id !== excludeId,
-    );
-    return Promise.resolve(exists);
-  },
-
-  /** Returns true if the role is assigned to at least one team member. */
-  isInUse(id) {
-    try {
-      const members = JSON.parse(localStorage.getItem('edc_team_members') ?? '[]');
-      return Promise.resolve(members.some((m) => m.roleId === id));
-    } catch {
-      return Promise.resolve(false);
+  for (const p of apiPerms) {
+    const featureName = (p.featureName ?? p.feature_name ?? '').toLowerCase();
+    for (const group of PERMISSION_GROUPS) {
+      for (const feature of group.features) {
+        if (feature.label.toLowerCase() === featureName) {
+          result[group.key][feature.key] = {};
+          feature.perms.forEach(({ key }) => {
+            // Map API field names to internal perm keys
+            const apiMap = {
+              view:          p.canView      ?? p.can_view      ?? false,
+              create:        p.canCreate    ?? p.can_create    ?? false,
+              edit:          p.canEdit      ?? p.can_edit      ?? false,
+              delete:        p.canDelete    ?? p.can_delete    ?? false,
+              export:        p.canExport    ?? p.can_export    ?? false,
+              duplicate:     p.canDuplicate ?? p.can_duplicate ?? false,
+              locked:        p.canLock      ?? p.can_lock      ?? false,
+              import:        p.canImport    ?? p.can_import    ?? false,
+              configuration: p.canConfigure ?? p.can_configure ?? false,
+              publish:       p.canPublish   ?? p.can_publish   ?? false,
+            };
+            result[group.key][feature.key][key] = apiMap[key] ?? false;
+          });
+        }
+      }
     }
+  }
+
+  return result;
+}
+
+/* ── Permissions: nested UI object → API flat array ─────────────────────── */
+function nestedPermsToApi(permsObj) {
+  const result = [];
+  for (const group of PERMISSION_GROUPS) {
+    for (const feature of group.features) {
+      const fp = permsObj?.[group.key]?.[feature.key] ?? {};
+      result.push({
+        feature_name:  feature.label,
+        can_view:      fp.view          ?? false,
+        can_create:    fp.create        ?? false,
+        can_edit:      fp.edit          ?? false,
+        can_delete:    fp.delete        ?? false,
+        can_export:    fp.export        ?? false,
+        can_duplicate: fp.duplicate     ?? false,
+        can_lock:      fp.locked        ?? false,
+        can_import:    fp.import        ?? false,
+        can_configure: fp.configuration ?? false,
+        can_publish:   fp.publish       ?? false,
+      });
+    }
+  }
+  return result;
+}
+
+/* ── Response normalizer ─────────────────────────────────────────────────── */
+function normalize(raw) {
+  return {
+    id:          raw.role_id        ?? raw.id,
+    name:        raw.role_name      ?? raw.name ?? '',
+    description: raw.description    ?? '',
+    isSystem:    raw.is_system_role ?? raw.isSystem ?? false,
+    // Convert API flat array → nested UI object so the form can consume it
+    permissions: apiPermsToNested(raw.permissions ?? []),
+    createdAt:   raw.created_at     ?? raw.createdAt,
+    updatedAt:   raw.updated_at     ?? raw.updatedAt,
+  };
+}
+
+function extractList(res) {
+  const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? res?.roles ?? []);
+  return arr.map(normalize);
+}
+
+/* ── Client ──────────────────────────────────────────────────────────────── */
+export const rolesClient = {
+  async list() {
+    const res = await axiosClient.get('/api/v1/roles');
+    return extractList(res);
   },
+
+  async getById(id) {
+    const res = await axiosClient.get(`/api/v1/roles/${id}`);
+    return normalize(res?.item ?? res);
+  },
+
+  async create(data) {
+    const res = await axiosClient.post('/api/v1/roles', {
+      role_name:   data.name,
+      description: data.description ?? '',
+      // data.permissions is the nested UI object — convert to API array
+      permissions: nestedPermsToApi(data.permissions),
+    });
+    return normalize(res?.item ?? res);
+  },
+
+  async update(id, data) {
+    const res = await axiosClient.put(`/api/v1/roles/${id}`, {
+      role_name:   data.name,
+      description: data.description ?? '',
+      permissions: nestedPermsToApi(data.permissions),
+    });
+    return normalize(res?.item ?? res);
+  },
+
+  async delete(id) {
+    return axiosClient.delete(`/api/v1/roles/${id}`);
+  },
+
+  // Validation stubs — backend enforces uniqueness
+  nameExists: () => Promise.resolve(false),
+  isInUse:    () => Promise.resolve(false),
 };
