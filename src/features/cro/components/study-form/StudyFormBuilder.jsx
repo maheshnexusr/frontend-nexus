@@ -11,8 +11,8 @@ import {
   selectActivePanel, selectBlocks, selectIsDirty, selectFormMeta, markSaved,
 } from '@/features/cro/store/studyFormSlice';
 import { setStep4 }                 from '@/features/cro/store/studyWizardSlice';
-import { addToast }                 from '@/features/notifications/notificationSlice';
-import { base44 }                   from '@/features/form-builder/api/formsClient';
+import { addToast }                 from '@/app/notificationSlice';
+import apiClient                    from '@/api/axiosClient';
 import SFBLeft                      from './SFBLeft';
 import SFBCanvas                    from './SFBCanvas';
 import SFBRight                     from './SFBRight';
@@ -28,41 +28,42 @@ export default function StudyFormBuilder({ formId, formTitle, onPrevious, onNext
   const isDirty      = useSelector(selectIsDirty);
   const meta         = useSelector(selectFormMeta);
 
-  // ── Load form data from storage ──────────────────────────────────────────
+  // ── Load form data from backend ───────────────────────────────────────────
   useEffect(() => {
     if (!formId) {
       dispatch(initForm({ formId: null, formTitle: formTitle ?? '', data: null }));
       return;
     }
-    base44.entities.Form.filter({ id: formId }).then((results) => {
-      const form = results[0];
-      dispatch(initForm({
-        formId,
-        formTitle: form?.title ?? formTitle ?? '',
-        data: form?.studyFormData ?? null,
-      }));
-    });
+    apiClient.get(`/studies/forms/${formId}`)
+      .then((form) => {
+        dispatch(initForm({
+          formId,
+          formTitle: form?.title ?? formTitle ?? '',
+          data: form?.studyFormData ?? null,
+        }));
+      })
+      .catch(() => {
+        // form not yet saved — start fresh
+        dispatch(initForm({ formId: null, formTitle: formTitle ?? '', data: null }));
+      });
   }, [formId]);
 
   // ── Save ─────────────────────────────────────────────────────────────────
   const save = async (silent = false) => {
     try {
+      const payload = {
+        title: meta.formTitle || formTitle || 'Study Data Collection Form',
+        studyFormData: { blocks },
+        status: 'draft',
+      };
+
       if (formId) {
-        await base44.entities.Form.update(formId, {
-          title: meta.formTitle || formTitle,
-          studyFormData: {
-            blocks,
-            // triggers / controls saved via slice already
-          },
-        });
+        await apiClient.put(`/studies/forms/${formId}`, payload);
       } else {
-        const newForm = await base44.entities.Form.create({
-          title: formTitle || 'Study Data Collection Form',
-          studyFormData: { blocks },
-          status: 'draft',
-        });
+        const newForm = await apiClient.post('/studies/forms', payload);
         dispatch(setStep4({ formId: newForm.id, formTitle: newForm.title }));
       }
+
       dispatch(markSaved());
       if (!silent) {
         dispatch(addToast({ type: 'success', message: 'Study design saved successfully.', duration: 3000 }));

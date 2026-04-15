@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAppSelector } from '@/app/hooks';
 import { selectIsAuthenticated, selectCurrentUser } from '@/features/auth/authSlice';
 import { useGeoIP } from '@/hooks/useGeoIP';
-import { getRoleRedirect } from '@/lib/roleRedirect';
+import { getRoleRedirect } from '@/utils/roleRedirect';
 import SignInTabs  from '../components/SignInTabs';
 
 export default function SignInPage() {

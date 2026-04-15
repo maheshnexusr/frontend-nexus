@@ -1,5 +1,5 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
-import apiClient from '@/lib/api-client';
+import { authService } from '@/services/authService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // State shape
@@ -36,12 +36,19 @@ import apiClient from '@/lib/api-client';
  */
 
 /** @type {AuthState} */
+const _storedUser = (() => {
+  try { return JSON.parse(localStorage.getItem('authUser')); } catch { return null; }
+})();
+const _storedPerms = (() => {
+  try { return JSON.parse(localStorage.getItem('authPermissions')) ?? []; } catch { return []; }
+})();
+
 const initialState = {
-  user:            null,
-  accessToken:     sessionStorage.getItem('accessToken')  || null,
-  refreshToken:    sessionStorage.getItem('refreshToken') || null,
-  permissions:     [],
-  isAuthenticated: false,
+  user:            _storedUser,
+  accessToken:     localStorage.getItem('accessToken')  || null,
+  refreshToken:    localStorage.getItem('refreshToken') || null,
+  permissions:     _storedPerms,
+  isAuthenticated: Boolean(_storedUser && localStorage.getItem('accessToken')),
   status:          'idle',
   error:           null,
   geoInfo:         null,
@@ -51,173 +58,104 @@ const initialState = {
 // Async thunks
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** POST /api/v1/auth/register */
 export const signupAsync = createAsyncThunk(
   'auth/signup',
-  async ({ fullName, email, password }, { rejectWithValue }) => {
+  async (payload, { rejectWithValue }) => {
     try {
-      const { data } = await apiClient.post('/auth/signup', { fullName, email, password });
-      return data;
+      return await authService.register(payload);
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message ?? err.message);
+      return rejectWithValue(err.message ?? 'Registration failed.');
     }
   },
 );
 
-// ── Demo mode: mock users — enabled unless VITE_ENABLE_DEMO=false ─────────────
-const DEMO_MODE = import.meta.env.VITE_ENABLE_DEMO !== 'false';
-
-const DEV_MOCK_USERS = DEMO_MODE
-  ? {
-      'robert@domain.com':  { password: 'password123', role: 'cro_admin' },
-      'user@example.com':   { password: 'password123', role: 'cro'       },
-      'admin@sclin.com':    { password: 'Admin@123',   role: 'admin'     },
-      'sponsor@sclin.com':  { password: 'Sponsor@123', role: 'sponsor', studyId: 'st-101' },
+/** POST /api/v1/auth/activate */
+export const activateAccountAsync = createAsyncThunk(
+  'auth/activateAccount',
+  async (payload, { rejectWithValue }) => {
+    try {
+      return await authService.activate(payload);
+    } catch (err) {
+      return rejectWithValue(err.message ?? 'Account activation failed.');
     }
-  : null;
+  },
+);
 
+/** POST /api/v1/auth/login/password */
 export const loginAsync = createAsyncThunk(
   'auth/login',
-  async ({ email, password, geoInfo }, { rejectWithValue }) => {
-    // Demo: short-circuit with mock credentials so the UI works without a backend
-    if (DEMO_MODE && DEV_MOCK_USERS) {
-      const mockUser = DEV_MOCK_USERS[email?.toLowerCase()];
-      if (mockUser) {
-        if (mockUser.password !== password) {
-          return rejectWithValue('Incorrect password. Please try again.');
-        }
-        const session = {
-          accessToken:  'dev-mock-access-token',
-          refreshToken: 'dev-mock-refresh-token',
-          user: {
-            id:            'dev-001',
-            fullName:      email.split('@')[0],
-            email,
-            role:          mockUser.role,
-            studyId:       mockUser.studyId ?? null,
-            photograph:    null,
-            contactNumber: null,
-          },
-          permissions: ['team:read', 'masters:read', 'sponsors:read', 'studies:read'],
-        };
-        localStorage.setItem('dev_mock_session', JSON.stringify(session));
-        return session;
-      }
-    }
-
+  async ({ emailAddress, password }, { rejectWithValue }) => {
     try {
-      const { data } = await apiClient.post('/auth/signin', { email, password, geoInfo });
-      return data;
+      return await authService.login({ emailAddress, password });
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message ?? err.message);
+      return rejectWithValue(err.message ?? 'Sign-in failed.');
     }
   },
 );
 
-export const loginWithOtpAsync = createAsyncThunk(
-  'auth/loginWithOtp',
-  async ({ email, otp, geoInfo }, { rejectWithValue }) => {
-    try {
-      const { data } = await apiClient.post('/auth/verify-otp', { email, otp, geoInfo });
-      return data;
-    } catch (err) {
-      return rejectWithValue(err.response?.data?.message ?? err.message);
-    }
-  },
-);
-
+/** POST /api/v1/auth/login/otp/request */
 export const requestOtpAsync = createAsyncThunk(
   'auth/requestOtp',
-  async ({ email }, { rejectWithValue }) => {
+  async ({ emailAddress }, { rejectWithValue }) => {
     try {
-      const { data } = await apiClient.post('/auth/request-otp', { email });
-      return data;
+      return await authService.requestOtp({ emailAddress });
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message ?? err.message);
+      return rejectWithValue(err.message ?? 'Failed to send OTP.');
     }
   },
 );
 
-export const verifyEmailAsync = createAsyncThunk(
-  'auth/verifyEmail',
-  async ({ token }, { rejectWithValue }) => {
+/** POST /api/v1/auth/login/otp/verify */
+export const loginWithOtpAsync = createAsyncThunk(
+  'auth/loginWithOtp',
+  async ({ emailAddress, otp }, { rejectWithValue }) => {
     try {
-      const { data } = await apiClient.post('/auth/verify-email', { token });
-      return data;
+      return await authService.verifyOtp({ emailAddress, otp });
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message ?? err.message);
+      return rejectWithValue(err.message ?? 'OTP verification failed.');
     }
   },
 );
 
+/** POST /api/v1/auth/refresh */
 export const refreshTokenAsync = createAsyncThunk(
   'auth/refreshToken',
   async (_, { getState, rejectWithValue }) => {
     try {
       const storedRefresh =
-        getState().auth.refreshToken ?? sessionStorage.getItem('refreshToken');
-      const { data } = await apiClient.post('/auth/refresh-token', {
-        refreshToken: storedRefresh,
-      });
-      return data;
+        getState().auth.refreshToken ?? localStorage.getItem('refreshToken');
+      return await authService.refreshToken(storedRefresh);
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message ?? err.message);
+      return rejectWithValue(err.message ?? 'Session expired.');
     }
   },
 );
 
-export const fetchCurrentUserAsync = createAsyncThunk(
-  'auth/fetchCurrentUser',
-  async (_, { rejectWithValue }) => {
-    // Demo: restore mock session from localStorage without hitting the API
-    if (DEMO_MODE) {
-      const stored = localStorage.getItem('dev_mock_session');
-      if (stored) {
-        try { return JSON.parse(stored); } catch { /* fall through */ }
-      }
-    }
-    try {
-      const { data } = await apiClient.get('/auth/me');
-      return data;
-    } catch (err) {
-      return rejectWithValue(err.response?.data?.message ?? err.message);
-    }
-  },
-);
-
-export const changePasswordAsync = createAsyncThunk(
-  'auth/changePassword',
-  async ({ oldPassword, newPassword }, { rejectWithValue }) => {
-    try {
-      const { data } = await apiClient.put('/auth/change-password', {
-        oldPassword,
-        newPassword,
-      });
-      return data;
-    } catch (err) {
-      return rejectWithValue(err.response?.data?.message ?? err.message);
-    }
-  },
-);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Persist tokens to sessionStorage and update state */
+/** Persist tokens to localStorage and update state */
 function applyTokens(state, { accessToken, refreshToken }) {
   state.accessToken  = accessToken  ?? state.accessToken;
   state.refreshToken = refreshToken ?? state.refreshToken;
-  if (accessToken)  sessionStorage.setItem('accessToken',  accessToken);
-  if (refreshToken) sessionStorage.setItem('refreshToken', refreshToken);
+  if (accessToken)  localStorage.setItem('accessToken',  accessToken);
+  if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
 }
 
-/** Write user + auth flags to state */
+/** Write user + auth flags to state and persist to localStorage */
 function applyUser(state, { user, permissions }) {
   state.user            = user        ?? null;
   state.permissions     = permissions ?? [];
   state.isAuthenticated = Boolean(user);
   state.status          = 'succeeded';
   state.error           = null;
+  if (user) {
+    localStorage.setItem('authUser',        JSON.stringify(user));
+    localStorage.setItem('authPermissions', JSON.stringify(permissions ?? []));
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -228,6 +166,11 @@ const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
+    updateUser(state, { payload }) {
+      if (state.user) {
+        state.user = { ...state.user, ...payload };
+      }
+    },
     logout(state) {
       state.user            = null;
       state.accessToken     = null;
@@ -236,9 +179,10 @@ const authSlice = createSlice({
       state.isAuthenticated = false;
       state.status          = 'idle';
       state.error           = null;
-      sessionStorage.removeItem('accessToken');
-      sessionStorage.removeItem('refreshToken');
-      localStorage.removeItem('dev_mock_session');
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('authUser');
+      localStorage.removeItem('authPermissions');
     },
     setGeoInfo(state, action) {
       state.geoInfo = action.payload;
@@ -255,6 +199,12 @@ const authSlice = createSlice({
       .addCase(signupAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
       .addCase(signupAsync.fulfilled, (state) => { state.status = 'succeeded'; })
       .addCase(signupAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
+
+    // ── activateAccountAsync ─────────────────────────────────────────────────
+    builder
+      .addCase(activateAccountAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
+      .addCase(activateAccountAsync.fulfilled, (state) => { state.status = 'succeeded'; })
+      .addCase(activateAccountAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
 
     // ── loginAsync ──────────────────────────────────────────────────────────
     builder
@@ -280,12 +230,6 @@ const authSlice = createSlice({
       .addCase(requestOtpAsync.fulfilled, (state) => { state.status = 'succeeded'; })
       .addCase(requestOtpAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
 
-    // ── verifyEmailAsync ────────────────────────────────────────────────────
-    builder
-      .addCase(verifyEmailAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
-      .addCase(verifyEmailAsync.fulfilled, (state) => { state.status = 'succeeded'; })
-      .addCase(verifyEmailAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
-
     // ── refreshTokenAsync ───────────────────────────────────────────────────
     builder
       .addCase(refreshTokenAsync.pending,   (state) => { state.status = 'loading'; })
@@ -294,38 +238,21 @@ const authSlice = createSlice({
         state.status = 'succeeded';
       })
       .addCase(refreshTokenAsync.rejected,  (state, { payload }) => {
-        // Treat failed refresh as a session expiry
         state.status          = 'failed';
         state.error           = payload;
         state.isAuthenticated = false;
         state.accessToken     = null;
         state.refreshToken    = null;
-        sessionStorage.removeItem('accessToken');
-        sessionStorage.removeItem('refreshToken');
-        localStorage.removeItem('dev_mock_session');
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('authUser');
+        localStorage.removeItem('authPermissions');
       });
 
-    // ── fetchCurrentUserAsync ───────────────────────────────────────────────
-    builder
-      .addCase(fetchCurrentUserAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
-      .addCase(fetchCurrentUserAsync.fulfilled, (state, { payload }) => {
-        applyUser(state, payload);
-      })
-      .addCase(fetchCurrentUserAsync.rejected,  (state, { payload }) => {
-        state.status          = 'failed';
-        state.error           = payload;
-        state.isAuthenticated = false;
-      });
-
-    // ── changePasswordAsync ─────────────────────────────────────────────────
-    builder
-      .addCase(changePasswordAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
-      .addCase(changePasswordAsync.fulfilled, (state) => { state.status = 'succeeded'; })
-      .addCase(changePasswordAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
   },
 });
 
-export const { logout, setGeoInfo, clearError } = authSlice.actions;
+export const { logout, setGeoInfo, clearError, updateUser } = authSlice.actions;
 
 // ── Selectors ────────────────────────────────────────────────────────────────
 export const selectAuth            = (state) => state.auth;

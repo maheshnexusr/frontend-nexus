@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '@/app/hooks';
 import { requestOtpAsync, loginWithOtpAsync } from '@/features/auth/authSlice';
-import { getRoleRedirect } from '@/lib/roleRedirect';
+import { getRoleRedirect } from '@/utils/roleRedirect';
 import OTPInput from './OTPInput';
 import styles   from './OTPLoginForm.module.css';
 
@@ -24,7 +24,7 @@ export default function OTPLoginForm() {
   const navigate = useNavigate();
 
   const [step,     setStep]     = useState(1);        // 1 = email, 2 = otp
-  const [email,    setEmail]    = useState('');
+  const [emailAddress, setEmailAddress] = useState('');
   const [otp,      setOtp]      = useState('');
   const [loading,  setLoading]  = useState(false);
   const [emailErr, setEmailErr] = useState('');
@@ -41,13 +41,13 @@ export default function OTPLoginForm() {
   /* ── Step 1: request OTP ───────────────────────────────────────── */
   const handleSendOtp = async (e) => {
     e.preventDefault();
-    const trimmed = email.trim();
-    if (!trimmed)              return setEmailErr('Email is required.');
+    const trimmed = emailAddress.trim();
+    if (!trimmed)                return setEmailErr('Email is required.');
     if (!EMAIL_RE.test(trimmed)) return setEmailErr('Enter a valid email address.');
     setEmailErr('');
     setLoading(true);
     try {
-      await dispatch(requestOtpAsync({ email: trimmed })).unwrap();
+      await dispatch(requestOtpAsync({ emailAddress: trimmed })).unwrap();
       setStep(2);
       setCooldown(COOLDOWN_SECONDS);
     } catch (err) {
@@ -64,7 +64,7 @@ export default function OTPLoginForm() {
     setOtpErr('');
     setLoading(true);
     try {
-      const result = await dispatch(loginWithOtpAsync({ email, otp: otpCode })).unwrap();
+      const result = await dispatch(loginWithOtpAsync({ emailAddress, otp: otpCode })).unwrap();
       navigate(getRoleRedirect(result?.user));
     } catch (err) {
       setOtpErr(err?.message ?? 'Invalid or expired code. Please try again.');
@@ -79,7 +79,7 @@ export default function OTPLoginForm() {
     setOtp('');
     setLoading(true);
     try {
-      await dispatch(requestOtpAsync({ email })).unwrap();
+      await dispatch(requestOtpAsync({ emailAddress })).unwrap();
       setCooldown(COOLDOWN_SECONDS);
     } catch (err) {
       setOtpErr(err?.message ?? 'Failed to resend code.');
@@ -101,8 +101,8 @@ export default function OTPLoginForm() {
             type="email"
             className={styles.input}
             placeholder="you@organisation.com"
-            value={email}
-            onChange={(e) => { setEmail(e.target.value); setEmailErr(''); }}
+            value={emailAddress}
+            onChange={(e) => { setEmailAddress(e.target.value); setEmailErr(''); }}
             autoComplete="email"
             aria-invalid={emailErr ? 'true' : undefined}
             aria-describedby={emailErr ? 'otp-email-error' : undefined}
@@ -133,11 +133,11 @@ export default function OTPLoginForm() {
       {/* Email summary + change */}
       <div className={styles.otpHeader}>
         <p className={styles.sentMsg}>A 6-digit code was sent to</p>
-        <p className={styles.sentEmail}>{email}</p>
+        <p className={styles.sentEmail}>{emailAddress}</p>
         <button
           type="button"
           className={styles.changeEmailBtn}
-          onClick={() => { setStep(1); setOtp(''); setOtpErr(''); }}
+          onClick={() => { setStep(1); setEmailAddress(''); setOtp(''); setOtpErr(''); }}
           disabled={loading}
         >
           Change email

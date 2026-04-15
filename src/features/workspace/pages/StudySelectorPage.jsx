@@ -16,7 +16,7 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Search, FlaskConical, ChevronRight } from 'lucide-react';
 import { useAppDispatch } from '@/app/hooks';
-import { selectStudy }    from '@/features/workspace/workspaceSlice';
+import { selectStudy }    from '@/features/workspace/store/workspaceSlice';
 import StatusBadge            from '@/components/feedback/StatusBadge';
 import styles                 from './StudySelectorPage.module.css';
 

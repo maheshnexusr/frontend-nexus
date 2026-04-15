@@ -1,7 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
 import authReducer          from '@/features/auth/authSlice';
-import workspaceReducer     from '@/features/workspace/workspaceSlice';
-import notificationReducer  from '@/features/notifications/notificationSlice';
+import workspaceReducer     from '@/features/workspace/store/workspaceSlice';
+import notificationReducer  from '@/app/notificationSlice';
 import formReducer          from '@/features/form-builder/store/formSlice';
 import studyWizardReducer   from '@/features/cro/store/studyWizardSlice';
 import studyFormReducer     from '@/features/cro/store/studyFormSlice';

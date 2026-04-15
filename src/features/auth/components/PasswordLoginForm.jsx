@@ -7,24 +7,23 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { loginAsync, selectGeoInfo } from '@/features/auth/authSlice';
-import { getRoleRedirect } from '@/lib/roleRedirect';
+import { useAppDispatch } from '@/app/hooks';
+import { loginAsync }    from '@/features/auth/authSlice';
+import { getRoleRedirect } from '@/utils/roleRedirect';
 import FormField     from '@/components/form/FormField';
 import PasswordInput from '@/components/form/PasswordInput';
 import styles        from './PasswordLoginForm.module.css';
 
 /* ── Validation schema ───────────────────────────────────────────────────── */
 const loginSchema = z.object({
-  email:    z.string().email('Enter a valid email address'),
-  password: z.string().min(1, 'Password is required'),
+  emailAddress: z.string().email('Enter a valid email address'),
+  password:     z.string().min(1, 'Password is required'),
 });
 
 /* ── Component ───────────────────────────────────────────────────────────── */
 export default function PasswordLoginForm() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const geoInfo  = useAppSelector(selectGeoInfo);
 
   const {
     register,
@@ -38,7 +37,7 @@ export default function PasswordLoginForm() {
 
   const onSubmit = async (data) => {
     try {
-      const result = await dispatch(loginAsync({ ...data, geoInfo })).unwrap();
+      const result = await dispatch(loginAsync(data)).unwrap();
       navigate(getRoleRedirect(result?.user));
     } catch (err) {
       setError('root', {
@@ -51,15 +50,15 @@ export default function PasswordLoginForm() {
 
   return (
     <form className={styles.form} onSubmit={handleSubmit(onSubmit)} noValidate>
-      <FormField label="Email Address" name="email" required error={errors.email?.message}>
+      <FormField label="Email Address" name="emailAddress" required error={errors.emailAddress?.message}>
         <input
-          id="email"
+          id="emailAddress"
           type="email"
           className={styles.input}
           placeholder="you@organisation.com"
           autoComplete="email"
-          aria-invalid={errors.email ? 'true' : undefined}
-          {...register('email')}
+          aria-invalid={errors.emailAddress ? 'true' : undefined}
+          {...register('emailAddress')}
         />
       </FormField>
 

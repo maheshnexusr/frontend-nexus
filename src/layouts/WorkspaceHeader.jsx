@@ -30,7 +30,7 @@ import { selectCurrentUser, logout }      from '@/features/auth/authSlice';
 import {
   selectActiveStudy,
   selectEnvironment,
-} from '@/features/workspace/workspaceSlice';
+} from '@/features/workspace/store/workspaceSlice';
 import styles from './WorkspaceHeader.module.css';
 
 const clx = (...a) => a.filter(Boolean).join(' ');

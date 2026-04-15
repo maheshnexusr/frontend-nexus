@@ -4,8 +4,6 @@ import { useAppDispatch, useAppSelector } from "@/app/hooks";
 import { logout, selectCurrentUser } from "@/features/auth/authSlice";
 import {
   LayoutGrid,
-  Plus,
-  ArrowLeftRight,
   User,
   Settings,
   Bell,
@@ -19,85 +17,19 @@ import styles from "./Sidebar.module.css";
 
 const clx = (...a) => a.filter(Boolean).join(" ");
 
-const WORKSPACES = [
-  { id: 1, name: "Clinical Trials 1", initials: null, useGrid: true  },
-  { id: 2, name: "Clinical Trials 2", initials: "A",  useGrid: false },
-  { id: 3, name: "Clinical Trials 3", initials: "AC", useGrid: false },
-];
-
-// ─── WorkspaceSwitcher ────────────────────────────────────────────────────────
+// ─── WorkspaceSwitcher (top header) ──────────────────────────────────────────
 function WorkspaceSwitcher({ collapsed }) {
-  const [open, setOpen]     = useState(false);
-  const [active, setActive] = useState(WORKSPACES[0]);
-  const ref                 = useRef(null);
-
-  useEffect(() => {
-    const close = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, []);
-
   return (
-    <div ref={ref} className={styles.wsArea}>
+    <div className={styles.wsArea}>
       <div className={clx(styles.wsHeader, collapsed && styles.isCollapsed)}>
         <div className={styles.wsLogo}>
           <LayoutGrid size={16} strokeWidth={2} />
         </div>
-
         <div className={clx(styles.wsInfo, collapsed && styles.wsInfoHidden)}>
           <p className={styles.wsTitle}>Clinical Trials</p>
           <p className={styles.wsSubtitle}>Admin Dashboard</p>
         </div>
-
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className={clx(styles.wsToggleBtn, collapsed && styles.wsToggleBtnHidden)}
-          aria-label="Switch workspace"
-        >
-          <ArrowLeftRight size={14} />
-        </button>
-
-        {collapsed && (
-          <button
-            onClick={() => setOpen((v) => !v)}
-            className={styles.wsCollapsedBtn}
-            aria-label="Switch workspace"
-          />
-        )}
       </div>
-
-      {open && (
-        <div className={styles.wsDropdown}>
-          <div className={styles.wsTeamList}>
-            {WORKSPACES.map((ws) => (
-              <button
-                key={ws.id}
-                onClick={() => { setActive(ws); setOpen(false); }}
-                className={clx(styles.wsTeamBtn, active.id === ws.id && styles.wsTeamActive)}
-              >
-                <div className={styles.wsTeamIcon}>
-                  {ws.useGrid
-                    ? <LayoutGrid size={14} strokeWidth={2} />
-                    : <span>{ws.initials}</span>
-                  }
-                </div>
-                <span className={styles.wsTeamName}>{ws.name}</span>
-                {active.id === ws.id && (
-                  <span className={styles.wsTeamBadge}>active</span>
-                )}
-              </button>
-            ))}
-          </div>
-          <div className={styles.wsDropdownFooter}>
-            <button className={styles.wsAddBtn}>
-              <div className={styles.wsAddIcon}><Plus size={14} /></div>
-              <span className={styles.wsAddLabel}>Add team</span>
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -152,19 +84,11 @@ function ProfileCard({ collapsed, profilePath, settingsPath }) {
 
       {open && (
         <div className={styles.profileDropdown}>
-          <Link
-            to={profilePath}
-            onClick={() => setOpen(false)}
-            className={styles.pdLink}
-          >
+          <Link to={profilePath} onClick={() => setOpen(false)} className={styles.pdLink}>
             <User size={16} className={styles.pdIcon} />
             Profile
           </Link>
-          <Link
-            to={settingsPath}
-            onClick={() => setOpen(false)}
-            className={styles.pdLink}
-          >
+          <Link to={settingsPath} onClick={() => setOpen(false)} className={styles.pdLink}>
             <Settings size={16} className={styles.pdIcon} />
             Settings
           </Link>
@@ -188,16 +112,12 @@ function CollapseTooltip({ label }) {
 function NavItem({ item, collapsed }) {
   const Icon        = item.icon;
   const hasChildren = Boolean(item.children?.length);
-
   const [open, setOpen] = useState(false);
 
   if (hasChildren && !collapsed) {
     return (
       <div>
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className={styles.navGroup}
-        >
+        <button onClick={() => setOpen((v) => !v)} className={styles.navGroup}>
           <div className={styles.navGroupLeft}>
             {Icon && <Icon size={17} />}
             <span className={styles.navGroupLabel}>{item.label}</span>
@@ -207,7 +127,6 @@ function NavItem({ item, collapsed }) {
             className={clx(styles.navGroupChevron, open && styles.chevronOpen)}
           />
         </button>
-
         {open && (
           <div className={styles.navSublist}>
             {item.children.map((child) => (
@@ -248,11 +167,7 @@ function NavItem({ item, collapsed }) {
       to={item.path}
       end
       className={({ isActive }) =>
-        clx(
-          styles.navItem,
-          isActive && styles.navActive,
-          collapsed && styles.navCollapsed,
-        )
+        clx(styles.navItem, isActive && styles.navActive, collapsed && styles.navCollapsed)
       }
     >
       {Icon && <Icon size={17} />}
@@ -282,11 +197,7 @@ export default function Sidebar({
         mobileOpen && styles.mobileOpen,
       )}
     >
-      <button
-        onClick={onMobileClose}
-        className={styles.mobileCloseBtn}
-        aria-label="Close sidebar"
-      >
+      <button onClick={onMobileClose} className={styles.mobileCloseBtn} aria-label="Close sidebar">
         <X size={18} />
       </button>
 
@@ -320,7 +231,7 @@ export default function Sidebar({
           className={({ isActive }) =>
             clx(
               styles.footerLink,
-              isActive && styles.footerActive,
+              isActive && notificationsPath && styles.footerActive,
               collapsed && styles.footerCollapsed,
             )
           }

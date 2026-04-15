@@ -9,7 +9,7 @@ import { useDispatch }         from 'react-redux';
 import { ArrowLeft }           from 'lucide-react';
 import { sponsorsClient }      from '@/features/cro/api/sponsorsClient';
 import { countriesClient }     from '@/features/cro/api/countriesClient';
-import { addToast }            from '@/features/notifications/notificationSlice';
+import { addToast }            from '@/app/notificationSlice';
 import FormField               from '@/components/form/FormField';
 import TextArea                from '@/components/form/TextArea';
 import SearchableDropdown      from '@/components/form/SearchableDropdown';

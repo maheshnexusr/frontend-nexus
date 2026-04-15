@@ -1,6 +1,8 @@
-#env
-.env
-.env.*
+# Environment files
+# .env / .env.development / .env.production  → safe to commit (no secrets)
+# .env.local / .env.*.local                  → never commit (machine-specific / secrets)
+.env.local
+.env.*.local
 
 # Logs
 /logs
@@ -14,8 +16,6 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
-*.local
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -26,5 +26,3 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
-.env

@@ -1,107 +1,115 @@
 /**
- * teamMembersClient — localStorage CRUD for CRO Team Members.
- * Storage key: 'edc_team_members'
+ * teamMembersClient — real API client for CRO Team Members.
+ * Normalizes snake_case API ↔ camelCase UI.
  */
 
-const KEY = 'edc_team_members';
+import axiosClient from '@/api/axiosClient';
 
-function now() { return new Date().toISOString(); }
-
-let _counter = Date.now();
-function uid() { return `tm-${++_counter}`; }
-
-function getAll() {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  localStorage.setItem(KEY, JSON.stringify([]));
-  return [];
+/* ── Response normalizer ─────────────────────────────────────────────────── */
+function normalize(raw) {
+  return {
+    id:             raw.team_member_id  ?? raw.id,
+    userId:         raw.user_id         ?? raw.userId,
+    fullName:       raw.full_name       ?? raw.fullName ?? '',
+    email:          raw.email_address   ?? raw.email ?? '',
+    roleId:         raw.role_id         ?? raw.roleId ?? '',
+    roleName:       raw.role_name       ?? raw.roleName ?? '',
+    photograph:     raw.photograph_path ?? raw.photograph ?? null,
+    contactNumber:  raw.contact_number  ?? raw.contactNumber ?? '',
+    isActive:       raw.is_active       ?? true,
+    assignedStudies: raw.assigned_studies ?? raw.assignedStudies ?? [],
+    studyIds:       raw.study_ids       ?? raw.studyIds ?? [],
+    createdAt:      raw.created_at      ?? raw.createdAt,
+    updatedAt:      raw.updated_at      ?? raw.updatedAt,
+  };
 }
 
-function persist(data) {
-  localStorage.setItem(KEY, JSON.stringify(data));
+function extractList(res) {
+  const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
+  return arr.map(normalize);
 }
 
-export const teamMembersClient = {
-  list() {
-    return Promise.resolve(getAll());
-  },
+/* ── Request builder ─────────────────────────────────────────────────────── */
+function toFormData(form) {
+  const fd  = new FormData();
+  const add = (key, val) => { if (val !== undefined && val !== null && val !== '') fd.append(key, val); };
 
-  create(data) {
-    const all    = getAll();
-    const record = { id: uid(), ...data, createdAt: now(), updatedAt: now() };
-    persist([...all, record]);
-    return Promise.resolve(record);
-  },
+  add('full_name',      form.fullName);
+  add('email_address',  form.email ?? form.emailAddress);
+  add('role_id',        form.roleId);
+  add('contact_number', form.contactNumber);
 
-  update(id, data) {
-    const all = getAll();
-    let updated;
-    const next = all.map((r) => {
-      if (r.id !== id) return r;
-      updated = { ...r, ...data, updatedAt: now() };
-      return updated;
-    });
-    persist(next);
-    return Promise.resolve(updated ?? null);
-  },
+  if (Array.isArray(form.studyIds)) {
+    form.studyIds.forEach((id) => fd.append('study_ids[]', id));
+  }
+  if (Array.isArray(form.assignedStudies)) {
+    form.assignedStudies.forEach((s) => fd.append('study_ids[]', s.studyId ?? s));
+  }
 
-  delete(id) {
-    persist(getAll().filter((r) => r.id !== id));
-    return Promise.resolve();
-  },
+  if (form.photograph) {
+    if (form.photograph instanceof File || form.photograph instanceof Blob) {
+      fd.append('photograph', form.photograph);
+    } else if (typeof form.photograph === 'string' && form.photograph.startsWith('data:')) {
+      const [meta, b64] = form.photograph.split(',');
+      const mime = meta.match(/:(.*?);/)[1];
+      const bin  = atob(b64);
+      const buf  = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      fd.append('photograph', new Blob([buf], { type: mime }), 'photo.jpg');
+    }
+  }
 
-  getById(id) {
-    return Promise.resolve(getAll().find((r) => r.id === id) ?? null);
-  },
-
-  /** Returns true if the email is already taken (optionally exclude one record by id). */
-  emailExists(email, excludeId = null) {
-    const norm = (email ?? '').toLowerCase().trim();
-    const exists = getAll().some(
-      (r) => r.email?.toLowerCase().trim() === norm && r.id !== excludeId,
-    );
-    return Promise.resolve(exists);
-  },
-};
-
-// ── CSV Export ────────────────────────────────────────────────────────────────
-
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-function buildFilename() {
-  const d    = new Date();
-  const dd   = String(d.getDate()).padStart(2, '0');
-  const mmm  = MONTHS[d.getMonth()];
-  const yyyy = d.getFullYear();
-  const hh   = String(d.getHours()).padStart(2, '0');
-  const mm   = String(d.getMinutes()).padStart(2, '0');
-  return `Team_Members_${dd}_${mmm}_${yyyy}_${hh}${mm}.csv`;
+  return fd;
 }
 
-export function exportTeamMembersCSV(data) {
-  const headers = ['Full Name', 'Email Address', 'Assigned Role', 'Contact Number', 'Assigned Studies', 'Created Date'];
-  const esc     = (v) => `"${(v ?? '').toString().replace(/"/g, '""')}"`;
-  const rows    = data.map((m) => {
-    const studies = Array.isArray(m.assignedStudies)
-      ? m.assignedStudies.map((s) => s.studyId).join('; ')
-      : '';
-    return [
-      esc(m.fullName),
-      esc(m.email),
-      esc(m.roleName),
-      esc(m.contactNumber),
-      esc(studies),
-      esc(m.createdAt ? new Date(m.createdAt).toLocaleDateString('en-US') : ''),
-    ].join(',');
-  });
-  const csv      = [headers.join(','), ...rows].join('\n');
-  const blob     = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url      = URL.createObjectURL(blob);
-  const a        = document.createElement('a');
-  a.href         = url;
-  a.download     = buildFilename();
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/* ── Client ──────────────────────────────────────────────────────────────── */
+export const teamMembersClient = {
+  async list() {
+    const res = await axiosClient.get('/api/v1/team-members');
+    return extractList(res);
+  },
+
+  async getById(id) {
+    const res = await axiosClient.get(`/api/v1/team-members/${id}`);
+    return normalize(res?.item ?? res);
+  },
+
+  async create(form) {
+    const res = await axiosClient.post('/api/v1/team-members', toFormData(form), {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return normalize(res?.item ?? res);
+  },
+
+  async update(id, form) {
+    const res = await axiosClient.put(`/api/v1/team-members/${id}`, toFormData(form), {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return normalize(res?.item ?? res);
+  },
+
+  async delete(id) {
+    return axiosClient.delete(`/api/v1/team-members/${id}`);
+  },
+
+  // Validation stub — backend enforces email uniqueness (409)
+  emailExists: () => Promise.resolve(false),
+};
+
+export async function exportTeamMembersCSV() {
+  const res      = await axiosClient.get('/api/v1/team-members/export', { responseType: 'blob' });
+  const blob     = res instanceof Blob ? res : new Blob([res], { type: 'text/csv' });
+  const d        = new Date();
+  const filename = `Team_Members_${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.csv`;
+  triggerDownload(blob, filename);
+  return filename;
 }
