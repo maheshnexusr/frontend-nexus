@@ -118,6 +118,18 @@ export const loginWithOtpAsync = createAsyncThunk(
   },
 );
 
+/** POST /api/v1/auth/verify-email */
+export const verifyEmailAsync = createAsyncThunk(
+  'auth/verifyEmail',
+  async ({ token }, { rejectWithValue }) => {
+    try {
+      return await authService.verifyEmail({ token });
+    } catch (err) {
+      return rejectWithValue(err.message ?? 'Email verification failed.');
+    }
+  },
+);
+
 /** POST /api/v1/auth/refresh */
 export const refreshTokenAsync = createAsyncThunk(
   'auth/refreshToken',
@@ -229,6 +241,12 @@ const authSlice = createSlice({
       .addCase(requestOtpAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
       .addCase(requestOtpAsync.fulfilled, (state) => { state.status = 'succeeded'; })
       .addCase(requestOtpAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
+
+    // ── verifyEmailAsync ─────────────────────────────────────────────────────
+    builder
+      .addCase(verifyEmailAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
+      .addCase(verifyEmailAsync.fulfilled, (state) => { state.status = 'succeeded'; })
+      .addCase(verifyEmailAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
 
     // ── refreshTokenAsync ───────────────────────────────────────────────────
     builder
