@@ -15,7 +15,9 @@ import axios from 'axios';
 import { normalizeError } from './apiHelpers';
 
 /* ── Instance ─────────────────────────────────────────────────────────────── */
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+const BASE_URL = import.meta.env.VITE_USE_LOCAL === 'true'
+  ? (import.meta.env.VITE_LOCAL_API_URL ?? 'http://localhost:4050')
+  : (import.meta.env.VITE_PROD_API_URL  ?? 'https://backend-nexusr.onrender.com');
 
 // Print the active API server on every page load so you know where calls go
 console.info(`%c[API] Connected to: ${BASE_URL}`, 'color:#7c3aed;font-weight:bold');
@@ -35,13 +37,18 @@ const REFRESH_KEY = 'refreshToken';
 
 const getAccessToken  = () => localStorage.getItem(TOKEN_KEY);
 const getRefreshToken = () => localStorage.getItem(REFRESH_KEY);
-const saveTokens      = ({ accessToken, refreshToken }) => {
+const saveTokens      = (data) => {
+  // API may return camelCase or snake_case field names
+  const accessToken  = data?.accessToken  ?? data?.access_token;
+  const refreshToken = data?.refreshToken ?? data?.refresh_token;
   if (accessToken)  localStorage.setItem(TOKEN_KEY,   accessToken);
   if (refreshToken) localStorage.setItem(REFRESH_KEY, refreshToken);
 };
 const clearSession    = () => {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_KEY);
+  localStorage.removeItem('authUser');
+  localStorage.removeItem('authPermissions');
   localStorage.removeItem('dev_mock_session');
 };
 
@@ -156,13 +163,14 @@ axiosClient.interceptors.response.use(
       try {
         /* Raw axios call — bypass our interceptors to avoid infinite loops */
         const { data } = await axios.post(
-          `${import.meta.env.VITE_API_BASE_URL ?? '/api'}/api/v1/auth/refresh`,
+          `${BASE_URL}/api/v1/auth/refresh`,
           { refresh_token: refresh },
         );
         saveTokens(data);
-        notifySubscribers(data.accessToken);
+        const newAccessToken = data?.accessToken ?? data?.access_token;
+        notifySubscribers(newAccessToken);
 
-        original.headers.Authorization = `Bearer ${data.accessToken}`;
+        original.headers.Authorization = `Bearer ${newAccessToken}`;
         return axiosClient(original);
       } catch {
         notifySubscribers(null);
