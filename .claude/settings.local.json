@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where python3 *)",
+      "Bash(where node *)",
+      "Bash(python3 -c ' *)",
+      "Bash(node *)",
+      "Bash(npm list *)",
+      "Bash(npx adm-zip *)",
+      "Bash(npx vite *)",
+      "Bash(npm run *)",
+      "Bash(awk 'NR>=200 && NR<=220')",
+      "Bash(awk 'NR>=5150 && NR<=5300' \"/c/Users/admin/Downloads/EDC/EDC/tmp_reqs/Sponsor_requirements.txt\")",
+      "Bash(awk '/^Sponsor Dashboard/,/^[A-Z][a-zA-Z]+ [A-Z]/' \"/c/Users/admin/Downloads/EDC/EDC/tmp_reqs/Sponsor_requirements.txt\")",
+      "Bash(awk NR>=5200 && NR<=5450 *)",
+      "Bash(awk NR>=5400 && NR<=5600 *)",
+      "Bash(awk NR>=5550 && NR<=5900 *)",
+      "Bash(npx eslint *)"
+    ]
+  }
+}

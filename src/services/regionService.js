@@ -14,9 +14,20 @@ function csvDownload(blob) {
 }
 
 export const regionService = {
-  /** GET /api/v1/masters/regions — params: { page, pageSize, search, status } */
-  list: (params = {}) =>
-    axiosClient.get(`/api/v1/masters/regions${buildQueryString(params)}`),
+  /**
+   * GET /api/v1/masters/regions (spec §5.5)
+   * Accepts camelCase: { page, pageSize, search, status }
+   * Sends snake_case:  ?page=&limit=&search=&status=
+   */
+  list: (params = {}) => {
+    const query = {
+      page:   params.page,
+      limit:  params.limit ?? params.pageSize,
+      search: params.search,
+      status: params.status,
+    };
+    return axiosClient.get(`/api/v1/masters/regions${buildQueryString(query)}`);
+  },
 
   /** POST /api/v1/masters/regions — { regionName, description?, displayOrder, status? } */
   create: (data) =>

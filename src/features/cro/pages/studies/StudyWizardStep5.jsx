@@ -13,7 +13,8 @@ import {
   UserPlus, Search, Trash2, Edit2, X, ChevronDown,
   ArrowLeft, ArrowRight, Users,
 } from 'lucide-react';
-import { setStep5, selectStep5 }         from '@/features/cro/store/studyWizardSlice';
+import { setStep5, selectStep1, selectStep5 } from '@/features/cro/store/studyWizardSlice';
+import { studiesClient }                 from '@/features/cro/api/studiesClient';
 import { teamMembersClient }             from '@/features/cro/api/teamMembersClient';
 import { rolesClient }                   from '@/features/cro/api/rolesClient';
 import { addToast }                      from '@/app/notificationSlice';
@@ -23,12 +24,14 @@ const uid = () => `assign_${Date.now()}_${Math.random().toString(36).slice(2, 6)
 
 export default function StudyWizardStep5({ onPrevious, onNext, onCancel }) {
   const dispatch    = useDispatch();
+  const step1       = useSelector(selectStep1);
   const saved       = useSelector(selectStep5);
 
   const [assignments, setAssignments] = useState(saved.assignments ?? []);
   const [showModal,   setShowModal]   = useState(false);
   const [editingId,   setEditingId]   = useState(null);
   const [roleOptions, setRoleOptions] = useState([]);
+  const [saving,      setSaving]      = useState(false);
 
   useEffect(() => {
     rolesClient.list().then((all) =>
@@ -84,12 +87,20 @@ export default function StudyWizardStep5({ onPrevious, onNext, onCancel }) {
   };
 
   // ── Navigation ────────────────────────────────────────────────────────
-  const handleNext = () => {
+  const handleNext = async () => {
     if (assignments.length === 0) {
       dispatch(addToast({ type: 'error', message: 'Please assign at least one team member to the study.', duration: 4000 }));
       return;
     }
-    onNext?.();
+    setSaving(true);
+    try {
+      await studiesClient.step5(step1.studyDbId, { assignments });
+      onNext?.();
+    } catch {
+      dispatch(addToast({ type: 'error', message: 'Failed to save team assignments. Please try again.', duration: 4000 }));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -172,9 +183,11 @@ export default function StudyWizardStep5({ onPrevious, onNext, onCancel }) {
 
                   {/* Assigned date */}
                   <td className={styles.dateCell}>
-                    {new Date(a.assignedDate).toLocaleDateString('en-US', {
-                      day: '2-digit', month: 'short', year: 'numeric',
-                    })}
+                    {a.assignedDate && !Number.isNaN(new Date(a.assignedDate).getTime())
+                      ? new Date(a.assignedDate).toLocaleDateString('en-US', {
+                          day: '2-digit', month: 'short', year: 'numeric',
+                        })
+                      : '—'}
                   </td>
 
                   {/* Actions */}
@@ -214,8 +227,8 @@ export default function StudyWizardStep5({ onPrevious, onNext, onCancel }) {
           <button type="button" className={styles.btnCancel} onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className={styles.btnNext} onClick={handleNext}>
-            Next <ArrowRight size={14} />
+          <button type="button" className={styles.btnNext} onClick={handleNext} disabled={saving}>
+            {saving ? 'Saving…' : <><span>Next</span> <ArrowRight size={14} /></>}
           </button>
         </div>
       </div>

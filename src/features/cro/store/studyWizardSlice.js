@@ -7,7 +7,8 @@
 import { createSlice } from '@reduxjs/toolkit';
 
 const STEP1_INIT = {
-  studyId:          '',
+  studyDbId:        null, // DB id returned by POST /step-1; used by steps 2-6
+  studyId:          '',   // protocol_number (human-readable)
   studyTitle:       '',
   studyPhaseId:     '',
   studyPhaseName:   '',

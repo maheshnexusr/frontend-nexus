@@ -26,11 +26,15 @@ import {
   ArrowLeftRight,
 } from 'lucide-react';
 import { useAppSelector, useAppDispatch } from '@/app/hooks';
-import { selectCurrentUser, logout }      from '@/features/auth/authSlice';
+import { selectCurrentUser, logoutAsync } from '@/features/auth/authSlice';
 import {
   selectActiveStudy,
   selectEnvironment,
 } from '@/features/workspace/store/workspaceSlice';
+import {
+  exitSponsorView,
+  selectIsSponsorReadOnly,
+} from '@/features/workspace/store/sponsorViewSlice';
 import styles from './WorkspaceHeader.module.css';
 
 const clx = (...a) => a.filter(Boolean).join(' ');
@@ -90,8 +94,17 @@ export default function WorkspaceHeader({
     if (e.key === 'Escape') setSearchOpen(false);
   };
 
+  const isSponsorReadOnly = useAppSelector(selectIsSponsorReadOnly);
+
   const handleLogout = () => {
-    dispatch(logout());
+    // In read-only sponsor view, "logout" only exits the viewer state.
+    // The CRO session stays alive — return them to the CRO dashboard.
+    if (isSponsorReadOnly) {
+      dispatch(exitSponsorView());
+      navigate('/cro/dashboard');
+      return;
+    }
+    dispatch(logoutAsync());
     navigate('/');
   };
 

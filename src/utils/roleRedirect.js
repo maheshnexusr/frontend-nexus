@@ -2,26 +2,29 @@
  * getRoleRedirect — returns the post-login destination path.
  *
  * Logic:
- *   CRO roles   → /cro/dashboard
- *   Sponsor roles
- *     with studyId  → /sponsor/:studyId/dashboard   (single study, go straight in)
- *     without studyId → /sponsor/select-study        (multiple studies, pick one)
+ *   CRO roles     → /cro/dashboard
+ *   Sponsor roles → /sponsor/select-study
+ *                   (SponsorStudySelectorPage picks a study; if the user is
+ *                    assigned to exactly one and has "remember my choice" set,
+ *                    it auto-routes to /sponsor/:studyId/dashboard.)
  *
- * The `user` object comes directly from the API login response.
- * When the real backend is connected, include `studyId` in the response
- * for single-study sponsor users, or omit it to show the study picker.
+ * The `user` object comes directly from the API login response, normalized
+ * in authSlice. `roleName` examples: "CRO Admin", "Sponsor", "Sponsor Admin".
  *
- * @param {object|null|undefined} user  - Full user object from authSlice
+ * @param {object|null|undefined} user
  * @returns {string}
  */
 export function getRoleRedirect(user) {
-  // API login response uses `roleName` (e.g. "CRO Admin", "Sponsor")
   const roleName = (user?.roleName ?? '').toLowerCase();
 
   if (roleName.includes('sponsor')) {
-    return '/workspace';
+    return '/sponsor/select-study';
   }
 
-  // All CRO / admin roles → CRO dashboard
   return '/cro/dashboard';
+}
+
+/** True if the role should enter the sponsor workspace (separate token scope). */
+export function isSponsorRole(user) {
+  return (user?.roleName ?? '').toLowerCase().includes('sponsor');
 }

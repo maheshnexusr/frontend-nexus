@@ -21,6 +21,7 @@ import { studyPhasesClient }   from '@/features/cro/api/studyPhasesClient';
 import { sponsorsClient }      from '@/features/cro/api/sponsorsClient';
 import { studiesClient }       from '@/features/cro/api/studiesClient';
 import { setStep1, selectStep1 } from '@/features/cro/store/studyWizardSlice';
+import { addToast }            from '@/app/notificationSlice';
 import FormField               from '@/components/form/FormField';
 import TextArea                from '@/components/form/TextArea';
 import SearchableDropdown      from '@/components/form/SearchableDropdown';
@@ -71,7 +72,7 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
   });
 
   const [errors,          setErrors]          = useState({});
-  const [validating,      setValidating]      = useState(false);
+  const [saving,          setSaving]          = useState(false);
   const [phaseOptions,    setPhaseOptions]    = useState([]);
   const [sponsorOptions,  setSponsorOptions]  = useState([]);
   const [sponsorsLoading, setSponsorsLoading] = useState(true);
@@ -91,20 +92,25 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
   // Load sponsors — callable on demand (mount, window focus, manual refresh)
   const loadSponsors = useCallback(() => {
     setSponsorsLoading(true);
-    sponsorsClient.list().then((all) => {
-      setSponsorOptions(
-        all
-          .filter((s) => s.status === 'Active')
-          .sort((a, b) => a.organizationName.localeCompare(b.organizationName))
-          .map((s) => ({
-            value:   s.id,
-            label:   `${s.organizationName}${s.registrationNumber ? ` (${s.registrationNumber})` : ''}`,
-            orgName: s.organizationName,
-          })),
-      );
-      setSponsorsLoading(false);
-    });
-  }, []);
+    sponsorsClient.list()
+      .then((all) => {
+        setSponsorOptions(
+          all
+            .filter((s) => s.status === 'Active')
+            .sort((a, b) => (a.organizationName || '').localeCompare(b.organizationName || ''))
+            .map((s) => ({
+              value:   s.id,
+              label:   `${s.organizationName || s.fullName || '(unnamed)'}${s.registrationNumber ? ` (${s.registrationNumber})` : ''}`,
+              orgName: s.organizationName || s.fullName || '',
+            })),
+        );
+      })
+      .catch(() => {
+        setSponsorOptions([]);
+        dispatch(addToast({ type: 'error', message: 'Failed to load sponsors. Please refresh.', duration: 4000 }));
+      })
+      .finally(() => setSponsorsLoading(false));
+  }, [dispatch]);
 
   useEffect(() => {
     loadSponsors();
@@ -157,7 +163,7 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
     navigate('/cro/sponsors/new');
   };
 
-  // ── validation + next ────────────────────────────────────────────────────────
+  // ── validation + API call + next ─────────────────────────────────────────────
   const handleNext = async () => {
     const errs = {};
     if (!form.studyId.trim())    errs.studyId    = 'Study ID / Protocol Number is required.';
@@ -168,18 +174,7 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
 
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
 
-    setValidating(true);
-    try {
-      const idTaken = await studiesClient.studyIdExists(form.studyId.trim());
-      if (idTaken) {
-        setErrors({ studyId: 'Study ID already exists. Please use a unique identifier.' });
-        return;
-      }
-    } finally {
-      setValidating(false);
-    }
-
-    dispatch(setStep1({
+    const payload = {
       studyId:          form.studyId.trim(),
       studyTitle:       form.studyTitle.trim(),
       studyPhaseId:     form.studyPhaseId,
@@ -189,9 +184,25 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
       studyDescription: form.studyDescription.trim(),
       sponsorId:        form.sponsorId,
       sponsorName:      form.sponsorName,
-    }));
+    };
 
-    onNext();
+    setSaving(true);
+    try {
+      let study;
+      if (saved.studyDbId) {
+        // Edit — update existing study
+        study = await studiesClient.update(saved.studyDbId, payload);
+      } else {
+        // Create — POST /step-1 returns the new study with its DB id
+        study = await studiesClient.create(payload);
+      }
+      dispatch(setStep1({ ...payload, studyDbId: study.id }));
+      onNext();
+    } catch {
+      dispatch(addToast({ type: 'error', message: 'Failed to save basic info. Please try again.', duration: 4000 }));
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── render ───────────────────────────────────────────────────────────────────
@@ -339,9 +350,9 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
           type="button"
           className={styles.btnNext}
           onClick={handleNext}
-          disabled={validating}
+          disabled={saving}
         >
-          {validating ? 'Validating…' : 'Next'}
+          {saving ? 'Saving…' : 'Next'}
         </button>
       </div>
     </div>

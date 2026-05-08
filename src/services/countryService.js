@@ -14,9 +14,20 @@ function csvDownload(blob) {
 }
 
 export const countryService = {
-  /** GET /api/v1/masters/countries — params: { page, pageSize, search, status } */
-  list: (params = {}) =>
-    axiosClient.get(`/api/v1/masters/countries${buildQueryString(params)}`),
+  /**
+   * GET /api/v1/masters/countries (spec §5.3)
+   * Accepts camelCase: { page, pageSize, search, status }
+   * Sends snake_case:  ?page=&limit=&search=&status=
+   */
+  list: (params = {}) => {
+    const query = {
+      page:   params.page,
+      limit:  params.limit ?? params.pageSize,
+      search: params.search,
+      status: params.status,
+    };
+    return axiosClient.get(`/api/v1/masters/countries${buildQueryString(query)}`);
+  },
 
   /** POST /api/v1/masters/countries — { countryName, status? } */
   create: (data) =>
@@ -37,7 +48,6 @@ export const countryService = {
    */
   import: (formData) =>
     axiosClient.post('/api/v1/masters/countries/import', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
   /** GET /api/v1/masters/countries/export — CSV download */

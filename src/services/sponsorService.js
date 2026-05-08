@@ -20,12 +20,19 @@ function csvDownload(blob, filename = 'sponsors.csv') {
 
 export const sponsorService = {
   /**
-   * GET /api/v1/sponsors
-   * params: { page, pageSize, search, status }
-   * Returns: { success, items, pagination }
+   * GET /api/v1/sponsors (spec §6.1)
+   * Accepts camelCase: { page, pageSize, search, status }
+   * Sends snake_case:  ?page=&limit=&search=&status=
    */
-  list: (params = {}) =>
-    axiosClient.get(`/api/v1/sponsors${buildQueryString(params)}`),
+  list: (params = {}) => {
+    const query = {
+      page:   params.page,
+      limit:  params.limit ?? params.pageSize,
+      search: params.search,
+      status: params.status,
+    };
+    return axiosClient.get(`/api/v1/sponsors${buildQueryString(query)}`);
+  },
 
   /**
    * GET /api/v1/sponsors/:id
@@ -43,7 +50,6 @@ export const sponsorService = {
    */
   create: (formData) =>
     axiosClient.post('/api/v1/sponsors', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
   /**
@@ -52,7 +58,6 @@ export const sponsorService = {
    */
   update: (id, formData) =>
     axiosClient.put(`/api/v1/sponsors/${id}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
   /**

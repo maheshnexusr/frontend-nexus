@@ -22,8 +22,39 @@ import styles from './EmailTemplateModal.module.css';
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CATEGORY_OPTIONS = [
-  'Onboarding', 'Study Invitation', 'Reminder', 'Notification',
-  'System Alert', 'Welcome', 'Password Reset', 'Other',
+  /* ── 3.1 Team Member Management ──────────────────────────────────────── */
+  'CRO Team Member Welcome Email',
+  'Team Member Role Assignment',
+  'Team Member Study Assignment',
+  'CRO Team Member Account Activation',
+  'Team Member Account Deactivation',
+  'Team Member Password Reset',
+  'Team Member Login (New Device)',
+
+  /* ── 3.2 Study Management ─────────────────────────────────────────────── */
+  'Study Published to UAT',
+  'Study Published to LIVE',
+  'Study Status Change Notification',
+  'Study Closed Out',
+  'Study Locked',
+
+  /* ── 3.3 Sponsor Management ───────────────────────────────────────────── */
+  'Sponsor Invitation Email',
+  'Study Assignment Notification',
+  'Sponsor Account Created',
+  'Sponsor Account Activated',
+  'Sponsor Account Deactivated',
+
+  /* ── 3.4 Password & Security ──────────────────────────────────────────── */
+  'Password Reset Request',
+  'Password Changed Confirmation',
+  'New Login Detection',
+  'Account Locked Notification',
+
+  /* ── Other ────────────────────────────────────────────────────────────── */
+  'System Alert',
+  'Reminder',
+  'Custom',
 ].map((c) => ({ value: c, label: c }));
 
 const TEMPLATE_TYPE_OPTIONS = [
@@ -36,17 +67,40 @@ const STATUS_OPTIONS = [
 ];
 
 const PLACEHOLDERS = [
-  { key: '{FullName}',    desc: "Recipient's full name"       },
-  { key: '{Email}',       desc: "Recipient's email address"   },
-  { key: '{StudyName}',   desc: 'Name of the study'           },
-  { key: '{SponsorName}', desc: 'Name of the sponsor'         },
-  { key: '{SiteName}',    desc: 'Name of the site'            },
-  { key: '{RoleName}',    desc: "Recipient's role"            },
-  { key: '{Link}',        desc: 'Action link / URL'           },
-  { key: '{OTP}',         desc: 'One-time password'           },
-  { key: '{ExpiryDate}',  desc: 'Link expiry date'            },
-  { key: '{SystemName}',  desc: 'Platform name'               },
-  { key: '{Date}',        desc: 'Current date'                },
+  /* Person */
+  { key: '{FullName}',          desc: "Recipient's full name"              },
+  { key: '{Email}',             desc: "Recipient's email address"          },
+  { key: '{RoleName}',          desc: "Recipient's assigned role"          },
+  { key: '{OldRole}',           desc: 'Previous role (before reassignment)'},
+  { key: '{NewRole}',           desc: 'New role (after reassignment)'      },
+  /* Account / Auth */
+  { key: '{ActivationLink}',    desc: 'Account activation URL'             },
+  { key: '{PasswordResetLink}', desc: 'Password reset URL'                 },
+  { key: '{LoginLink}',         desc: 'Platform login URL'                 },
+  { key: '{OTP}',               desc: 'One-time password / verification code' },
+  { key: '{DeviceInfo}',        desc: 'Browser / device of new login'      },
+  { key: '{DeviceLocation}',    desc: 'Geographic location of new login'   },
+  { key: '{LoginTime}',         desc: 'Timestamp of the login event'       },
+  { key: '{ExpiryDate}',        desc: 'Link / token expiry date'           },
+  { key: '{AccountLockedReason}', desc: 'Reason the account was locked'    },
+  { key: '{UnlockLink}',        desc: 'Account self-unlock or support URL'  },
+  /* Study */
+  { key: '{StudyName}',         desc: 'Name of the study'                  },
+  { key: '{StudyID}',           desc: 'Study identifier'                   },
+  { key: '{StudyPhase}',        desc: 'Study phase (e.g. Phase II)'        },
+  { key: '{StudyEnvironment}',  desc: 'Environment (UAT / LIVE)'           },
+  { key: '{OldStatus}',         desc: 'Previous study/record status'       },
+  { key: '{NewStatus}',         desc: 'New study/record status'            },
+  { key: '{PublishedDate}',     desc: 'Date the study was published'       },
+  /* Organisation */
+  { key: '{SponsorName}',       desc: 'Name of the sponsor organisation'   },
+  { key: '{CROName}',           desc: 'CRO organisation name'              },
+  { key: '{SiteName}',          desc: 'Name of the site'                   },
+  /* System */
+  { key: '{SystemName}',        desc: 'Platform name (SclinNexus)'         },
+  { key: '{SupportEmail}',      desc: 'Support contact email'              },
+  { key: '{Date}',              desc: 'Current date'                       },
+  { key: '{Time}',              desc: 'Current time'                       },
 ];
 
 const QUILL_MODULES = {

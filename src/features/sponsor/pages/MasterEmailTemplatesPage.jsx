@@ -10,61 +10,117 @@ import 'react-quill/dist/quill.snow.css';
 import DataTable from '@/components/data-table/DataTable';
 import { addToast } from '@/app/notificationSlice';
 import { selectCurrentUser } from '@/features/auth/authSlice';
+import { useReadOnlyView } from '@/features/workspace/hooks/useReadOnlyView';
 import { emailTemplateService } from '@/services/emailTemplateService';
 import styles from './MasterEmailTemplatesPage.module.css';
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
 
 const CATEGORIES = [
+  /* ── 2.1 User Account ─────────────────────────────────────────────────── */
+  'Welcome Email (First-time Login)',
+  'Password Reset Request',
+  'Password Changed Confirmation',
+  'Login Confirmation (New Device)',
+
+  /* ── 2.2 Site Personnel ───────────────────────────────────────────────── */
   'Site Personnel Invitation',
+  'Resend Invitation',
   'Site Personnel Removal',
-  'Site Personnel Status Change (Active/Inactive)',
-  'Adverse Event Trigger',
+  'Site Personnel Status Change (Active → Inactive)',
+  'Site Personnel Status Change (Inactive → Active)',
+
+  /* ── 2.3 Study Status ─────────────────────────────────────────────────── */
   'Study Close Out',
   'Study Lock Out',
-  'Data Entry Reminder',
-  'Query Raised',
-  'Query Resolved',
-  'Consent Request',
-  'Consent Approved',
-  'Enrollment Target Reached',
+
+  /* ── 2.4 Site Management ──────────────────────────────────────────────── */
+  'Site Locked',
+  'Site Unlock',
   'Site Activation',
   'Site Deactivation',
+  'Enrollment Target Reached',
+
+  /* ── 2.5 Query Management ─────────────────────────────────────────────── */
+  'Query Raised',
+  'Query Responded',
+  'Query Resolved',
+  'Query Escalated',
+  'Query Overdue Reminder',
+
+  /* ── Other ────────────────────────────────────────────────────────────── */
+  'Consent Request',
+  'Consent Approved',
+  'Consent Rejected',
+  'Consent Expiry Reminder',
+  'Data Verification Approved',
+  'Data Verification Rejected',
+  'Adverse Event Trigger',
+  'Data Entry Reminder',
   'Custom',
 ];
 
 const PLACEHOLDERS = [
-  '{StudyName}', '{StudyID}', '{SiteName}', '{SiteCode}', '{PersonName}',
-  '{PersonEmail}', '{PersonRole}', '{InvitationLink}', '{LoginLink}',
+  /* Study & Site */
+  '{StudyName}', '{StudyID}', '{SiteName}', '{SiteCode}',
+  /* Person */
+  '{PersonName}', '{PersonEmail}', '{PersonRole}',
+  '{OldStatus}', '{NewStatus}',
+  /* Links */
+  '{InvitationLink}', '{LoginLink}', '{PasswordResetLink}', '{ActivationLink}',
+  /* Auth / Account */
+  '{DeviceInfo}', '{DeviceLocation}', '{LoginTime}',
+  /* Adverse Event */
   '{AdverseEventID}', '{AdverseEventDescription}', '{Severity}',
-  '{QueryID}', '{QueryField}', '{QueryDescription}',
-  '{EnrollmentCount}', '{EnrollmentTarget}', '{CloseOutDate}',
-  '{LockOutDate}', '{SupportEmail}', '{CurrentDate}', '{CurrentTime}',
+  /* Query */
+  '{QueryID}', '{QueryField}', '{QueryDescription}', '{QueryStatus}',
+  /* Enrollment / Dates */
+  '{EnrollmentCount}', '{EnrollmentTarget}',
+  '{CloseOutDate}', '{LockOutDate}', '{LockReason}',
+  /* Consent / Verification */
+  '{ConsentTemplateName}', '{ExpiryDate}',
+  '{VerificationStatus}', '{ReviewerName}', '{RejectionReason}',
+  /* General */
+  '{SupportEmail}', '{CurrentDate}', '{CurrentTime}',
 ];
 
 const SAMPLE_VALUES = {
-  '{StudyName}':               'CardioSafe Phase II',
-  '{StudyID}':                 'TRIAL-001',
-  '{SiteName}':                'General Hospital',
-  '{SiteCode}':                'GH-01',
-  '{PersonName}':              'John Doe',
-  '{PersonEmail}':             'john.doe@example.com',
-  '{PersonRole}':              'Principal Investigator',
-  '{InvitationLink}':          'https://app.example.com/invite/abc123',
-  '{LoginLink}':               'https://app.example.com/login',
-  '{AdverseEventID}':          'AE-2026-042',
+  '{StudyName}':             'CardioSafe Phase II',
+  '{StudyID}':               'TRIAL-001',
+  '{SiteName}':              'General Hospital',
+  '{SiteCode}':              'GH-01',
+  '{PersonName}':            'John Doe',
+  '{PersonEmail}':           'john.doe@example.com',
+  '{PersonRole}':            'Principal Investigator',
+  '{OldStatus}':             'Active',
+  '{NewStatus}':             'Inactive',
+  '{InvitationLink}':        'https://app.example.com/invite/abc123',
+  '{LoginLink}':             'https://app.example.com/login',
+  '{PasswordResetLink}':     'https://app.example.com/reset/xyz789',
+  '{ActivationLink}':        'https://app.example.com/activate/def456',
+  '{DeviceInfo}':            'Chrome on Windows 11',
+  '{DeviceLocation}':        'Chennai, India',
+  '{LoginTime}':             new Date().toLocaleString(),
+  '{AdverseEventID}':        'AE-2026-042',
   '{AdverseEventDescription}': 'Mild headache reported after dose 2.',
-  '{Severity}':                'Mild',
-  '{QueryID}':                 'QRY-0099',
-  '{QueryField}':              'Date of Birth',
-  '{QueryDescription}':        'Value entered does not match source document.',
-  '{EnrollmentCount}':         '120',
-  '{EnrollmentTarget}':        '120',
-  '{CloseOutDate}':            '2026-12-31',
-  '{LockOutDate}':             '2026-11-30',
-  '{SupportEmail}':            'support@sclin.com',
-  '{CurrentDate}':             new Date().toLocaleDateString(),
-  '{CurrentTime}':             new Date().toLocaleTimeString(),
+  '{Severity}':              'Mild',
+  '{QueryID}':               'QRY-0099',
+  '{QueryField}':            'Date of Birth',
+  '{QueryDescription}':      'Value entered does not match source document.',
+  '{QueryStatus}':           'Open',
+  '{EnrollmentCount}':       '120',
+  '{EnrollmentTarget}':      '120',
+  '{CloseOutDate}':          '2026-12-31',
+  '{LockOutDate}':           '2026-11-30',
+  '{LockReason}':            'Database lock for interim analysis.',
+  '{ConsentTemplateName}':   'Informed Consent Form v2.1',
+  '{ExpiryDate}':            '2026-06-30',
+  '{VerificationStatus}':    'Approved',
+  '{ReviewerName}':          'Dr. Sarah Kim',
+  '{RejectionReason}':       'Incomplete CRF data on Visit 3.',
+  '{SupportEmail}':          'support@sclin.com',
+  '{CurrentDate}':           new Date().toLocaleDateString(),
+  '{CurrentTime}':           new Date().toLocaleTimeString(),
 };
 
 const QUILL_MODULES = {
@@ -97,18 +153,33 @@ function resolveSampleValues(text) {
 function getCatClass(category) {
   if (!category) return styles.catCustom;
   const c = category.toLowerCase();
+  /* 2.1 User Account */
+  if (c.includes('welcome') || c.includes('first-time'))  return styles.catAccount;
+  if (c.includes('password reset'))                        return styles.catAccount;
+  if (c.includes('password changed'))                      return styles.catAccount;
+  if (c.includes('login confirmation') || c.includes('new device')) return styles.catAccount;
+  /* 2.2 Site Personnel */
   if (c.includes('site personnel')) {
-    if (c.includes('invitation'))       return styles.catSitePersonnel;
-    if (c.includes('removal'))          return styles.catRemoval;
-    if (c.includes('status'))           return styles.catSitePersonnel;
+    if (c.includes('invitation'))  return styles.catSitePersonnel;
+    if (c.includes('removal'))     return styles.catRemoval;
+    if (c.includes('status'))      return styles.catSitePersonnel;
     return styles.catSitePersonnel;
   }
-  if (c.includes('adverse'))            return styles.catAdverse;
-  if (c.includes('close out') || c.includes('lock out')) return styles.catStudy;
+  /* 2.3 Study Status */
+  if (c.includes('study close out') || c.includes('study lock out')) return styles.catStudy;
+  /* 2.4 Site Management */
+  if (c.includes('site locked') || c.includes('site unlock'))        return styles.catSiteLock;
   if (c.includes('site activation') || c.includes('site deactivation')) return styles.catSite;
-  if (c.includes('query'))              return styles.catQuery;
-  if (c.includes('consent'))            return styles.catConsent;
-  if (c.includes('data entry') || c.includes('enrollment')) return styles.catData;
+  if (c.includes('enrollment'))     return styles.catData;
+  /* 2.5 Query */
+  if (c.includes('query'))          return styles.catQuery;
+  /* Consent */
+  if (c.includes('consent'))        return styles.catConsent;
+  /* Verification */
+  if (c.includes('verification'))   return styles.catVerification;
+  /* Other */
+  if (c.includes('adverse'))        return styles.catAdverse;
+  if (c.includes('data entry'))     return styles.catData;
   return styles.catCustom;
 }
 
@@ -500,6 +571,7 @@ function DeleteConfirmModal({ template, onClose, onConfirm, deleting }) {
 export default function MasterEmailTemplatesPage() {
   const dispatch    = useDispatch();
   const currentUser = useSelector(selectCurrentUser);
+  const ro          = useReadOnlyView();
 
   // Table state
   const [data,      setData]      = useState([]);
@@ -702,15 +774,17 @@ export default function MasterEmailTemplatesPage() {
         <div className={styles.actionCell}>
           <button
             className={styles.iconBtn}
-            title="Edit"
+            title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
             onClick={() => openEdit(row)}
+            {...ro.disabledProps('Edit template')}
           >
             <Pencil size={15} />
           </button>
           <button
             className={styles.iconBtn}
-            title="Duplicate"
+            title={ro.isReadOnly ? ro.readOnlyMessage : 'Duplicate'}
             onClick={() => handleDuplicate(row)}
+            {...ro.disabledProps('Duplicate template')}
           >
             <Copy size={15} />
           </button>
@@ -723,15 +797,17 @@ export default function MasterEmailTemplatesPage() {
           </button>
           <button
             className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-            title="Delete"
+            title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
             onClick={() => openDelete(row)}
+            {...ro.disabledProps('Delete template')}
           >
             <Trash2 size={15} />
           </button>
           <button
             className={`${styles.iconBtn} ${styles.toggleBtn}`}
-            title={row.status === 'Active' ? 'Deactivate' : 'Activate'}
+            title={ro.isReadOnly ? ro.readOnlyMessage : (row.status === 'Active' ? 'Deactivate' : 'Activate')}
             onClick={() => handleToggleStatus(row)}
+            {...ro.disabledProps('Toggle status')}
           >
             {row.status === 'Active'
               ? <ToggleRight size={18} style={{ color: 'var(--color-success)' }} />
@@ -752,7 +828,7 @@ export default function MasterEmailTemplatesPage() {
           <h1 className={styles.title}>Email Templates</h1>
           <p className={styles.sub}>Manage system and custom email templates for study communications.</p>
         </div>
-        <button className={styles.newBtn} onClick={openCreate}>
+        <button className={styles.newBtn} onClick={openCreate} {...ro.disabledProps('New template')}>
           <Plus size={16} /> New Template
         </button>
       </div>

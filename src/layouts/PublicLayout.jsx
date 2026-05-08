@@ -17,8 +17,7 @@ export default function PublicLayout() {
         </Link>
 
         <nav className={styles.navLinks}>
-          <Link to="/signin"  className={styles.navLink}>Sign In</Link>
-          <Link to="/signup"  className={styles.navCta}>Get Started</Link>
+          <Link to="/signin" className={styles.navLink}>Sign In</Link>
         </nav>
       </header>
 

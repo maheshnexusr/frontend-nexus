@@ -18,7 +18,6 @@ import {
   Layers,
   FlaskConical,
   Users,
-  Building2,
   UserCircle,
   Activity,
 } from 'lucide-react';
@@ -28,30 +27,32 @@ import {
   toggleSidebar,
 } from '@/features/workspace/store/workspaceSlice';
 import { selectPermissions } from '@/features/auth/authSlice';
-import Sidebar         from '@/components/layout/Sidebar';
-import WorkspaceHeader from './WorkspaceHeader';
-import styles          from './CROLayout.module.css';
+import Sidebar                 from '@/components/layout/Sidebar';
+import WorkspaceHeader         from './WorkspaceHeader';
+import SponsorWorkspacePicker  from '@/features/workspace/components/SponsorWorkspacePicker';
+import styles                  from './CROLayout.module.css';
 
 const clx = (...a) => a.filter(Boolean).join(' ');
 
 /* ── Nav definitions ──────────────────────────────────────────────────────── */
 const NAV_ITEMS = [
   {
-    key:   'dashboard',
-    label: 'Dashboard',
-    icon:  LayoutDashboard,
-    path:  '/cro/dashboard',
+    key:        'dashboard',
+    label:      'Dashboard',
+    icon:       LayoutDashboard,
+    path:       '/cro/dashboard',
+    permission: 'dashboard.studyPortfolio.view',
   },
   {
     key:   'masters',
     label: 'Masters',
     icon:  Layers,
     children: [
-      { key: 'email-templates', label: 'Email Templates', path: '/cro/masters/email-templates' },
-      { key: 'study-phases',    label: 'Study Phases',    path: '/cro/masters/study-phases'    },
-      { key: 'country',         label: 'Country',         path: '/cro/masters/country'         },
-      { key: 'locations',       label: 'Locations',       path: '/cro/masters/locations'       },
-      { key: 'regions',         label: 'Regions',         path: '/cro/masters/regions'         },
+      { key: 'email-templates', label: 'Email Templates', path: '/cro/masters/email-templates', permission: 'masters.emailTemplates.view' },
+      { key: 'study-phases',    label: 'Study Phases',    path: '/cro/masters/study-phases',    permission: 'masters.studyPhases.view'    },
+      { key: 'country',         label: 'Country',         path: '/cro/masters/country',         permission: 'masters.country.view'        },
+      { key: 'locations',       label: 'Locations',       path: '/cro/masters/locations',       permission: 'masters.locations.view'      },
+      { key: 'regions',         label: 'Regions',         path: '/cro/masters/regions'                                                   },
     ],
   },
   {
@@ -59,8 +60,8 @@ const NAV_ITEMS = [
     label: 'Clinical Programs',
     icon:  FlaskConical,
     children: [
-      { key: 'sponsors', label: 'Sponsors', path: '/cro/sponsors' },
-      { key: 'studies',  label: 'Studies',  path: '/cro/studies'  },
+      { key: 'sponsors', label: 'Sponsors', path: '/cro/sponsors', permission: 'clinicalPrograms.sponsors.view' },
+      { key: 'studies',  label: 'Studies',  path: '/cro/studies',  permission: 'clinicalPrograms.studies.view'  },
     ],
   },
   {
@@ -68,21 +69,16 @@ const NAV_ITEMS = [
     label: 'CRO Team Administration',
     icon:  Users,
     children: [
-      { key: 'team-members', label: 'Team Members',       path: '/cro/team/members' },
-      { key: 'team-roles',   label: 'Roles & Permissions', path: '/cro/team/roles'  },
+      { key: 'team-members', label: 'Team Members',        path: '/cro/team/members', permission: 'teamAdmin.teamMembers.view'      },
+      { key: 'team-roles',   label: 'Roles & Permissions', path: '/cro/team/roles',   permission: 'teamAdmin.rolesPermissions.view' },
     ],
   },
   {
-    key:   'activity-log',
-    label: 'Activity Log',
-    icon:  Activity,
-    path:  '/cro/activity-log',
-  },
-  {
-    key:   'workspace',
-    label: 'Choose Sponsor Workspace',
-    icon:  Building2,
-    path:  '/cro/workspace',
+    key:        'activity-log',
+    label:      'Activity Log',
+    icon:       Activity,
+    path:       '/cro/activity-log',
+    permission: 'masters.activityLog.view',
   },
 ];
 
@@ -103,13 +99,14 @@ export default function CROLayout() {
   const dispatch    = useAppDispatch();
   const collapsed   = useAppSelector(selectSidebarCollapsed);
   const permissions = useAppSelector(selectPermissions);
+  const isAdmin     = permissions.includes('*');
 
   const [mobileOpen, setMobileOpen] = useState(false);
 
   /* Permission-filter a flat or nested items array */
   const filterItems = (items) =>
     items
-      .filter((item) => !item.permission || permissions.includes(item.permission))
+      .filter((item) => isAdmin || !item.permission || permissions.includes(item.permission))
       .map((item) => ({
         ...item,
         children: item.children ? filterItems(item.children) : undefined,
@@ -163,6 +160,7 @@ export default function CROLayout() {
           onToggleSidebar={handleToggleSidebar}
           showBreadcrumb
           showGlobalSearch
+          rightActions={<SponsorWorkspacePicker />}
         />
         <main className={styles.main}>
           <Outlet />

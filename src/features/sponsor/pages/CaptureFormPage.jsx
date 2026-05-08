@@ -6,15 +6,20 @@
  */
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
+import { useDispatch } from 'react-redux';
 import { Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import DynamicForm from '@/components/dynamic-form/DynamicForm';
 import apiClient from '@/api/axiosClient';
+import { useReadOnlyView } from '@/features/workspace/hooks/useReadOnlyView';
+import { addToast } from '@/app/notificationSlice';
 import s from './CaptureFormPage.module.css';
 
 export default function CaptureFormPage() {
   const { studyId, formId, subjectId } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const ro       = useReadOnlyView();
 
   const [schema,   setSchema]   = useState(null);
   const [loading,  setLoading]  = useState(true);
@@ -57,6 +62,10 @@ export default function CaptureFormPage() {
 
   /* ── submit handler ── */
   const handleSubmit = useCallback(async (formData) => {
+    if (ro.isReadOnly) {
+      dispatch(addToast({ type: 'info', message: ro.readOnlyMessage }));
+      throw new Error('read-only');
+    }
     const payload = {
       studyId,
       formId,
@@ -69,7 +78,7 @@ export default function CaptureFormPage() {
       `/studies/${studyId}/forms/${formId}/subjects${subjectId ? `/${subjectId}` : ''}/data`,
       payload,
     );
-  }, [studyId, formId, subjectId]);
+  }, [studyId, formId, subjectId, ro.isReadOnly, ro.readOnlyMessage, dispatch]);
 
   /* ── loading ── */
   if (loading) {
@@ -105,7 +114,8 @@ export default function CaptureFormPage() {
         schema={schema}
         onSubmit={handleSubmit}
         defaultValues={defaults}
-        submitLabel="Submit eCRF"
+        submitLabel={ro.isReadOnly ? 'Read-only view' : 'Submit eCRF'}
+        readOnly={ro.isReadOnly}
       />
     </div>
   );

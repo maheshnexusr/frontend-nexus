@@ -10,6 +10,8 @@ function normalize(raw) {
   return {
     id:          raw.country_id        ?? raw.id,
     countryName: raw.country_name      ?? raw.countryName ?? '',
+    isoCode:     raw.iso_code          ?? raw.isoCode     ?? '',
+    phoneCode:   raw.phone_code        ?? raw.phoneCode   ?? '',
     status:      raw.status            ?? 'Active',
     isSystem:    raw.is_system_country ?? false,
     createdAt:   raw.created_at        ?? raw.createdAt,
@@ -32,6 +34,8 @@ export const countriesClient = {
   async create(data) {
     const res = await axiosClient.post('/api/v1/masters/countries', {
       country_name: data.countryName,
+      iso_code:     data.isoCode   || undefined,
+      phone_code:   data.phoneCode || undefined,
       status:       data.status ?? 'Active',
     });
     return normalize(res?.item ?? res);
@@ -40,6 +44,8 @@ export const countriesClient = {
   async update(id, data) {
     const res = await axiosClient.put(`/api/v1/masters/countries/${id}`, {
       country_name: data.countryName,
+      iso_code:     data.isoCode   || undefined,
+      phone_code:   data.phoneCode || undefined,
       status:       data.status,
     });
     return normalize(res?.item ?? res);
@@ -53,7 +59,6 @@ export const countriesClient = {
     const fd = new FormData();
     fd.append('file', file);
     return axiosClient.post('/api/v1/masters/countries/import', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
 

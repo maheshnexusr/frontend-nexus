@@ -42,8 +42,14 @@ export default function SponsorListPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    sponsorsClient.list().then((data) => { setSponsors(data); setLoading(false); });
-  }, []);
+    sponsorsClient.list()
+      .then((data) => setSponsors(data))
+      .catch(() => {
+        setSponsors([]);
+        dispatch(addToast({ type: 'error', message: 'Failed to load sponsors. Please refresh.', duration: 4000 }));
+      })
+      .finally(() => setLoading(false));
+  }, [dispatch]);
 
   useEffect(() => { load(); }, [load]);
 

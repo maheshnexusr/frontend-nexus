@@ -25,7 +25,9 @@ import {
   switchWorkspace,
   selectActiveSponsor,
 } from '@/features/workspace/store/workspaceSlice';
-import { sponsorService } from '@/services/sponsorService';
+import { enterSponsorWorkspaceAsync } from '@/features/workspace/store/sponsorViewSlice';
+import { workspaceSponsorClient } from '@/features/workspace/api/workspaceSponsorClient';
+import { addToast } from '@/app/notificationSlice';
 import styles from './WorkspaceSelectorPage.module.css';
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
@@ -34,38 +36,40 @@ function getInitials(name = '') {
 }
 
 /* ── Sponsor card ────────────────────────────────────────────────────────── */
-function SponsorCard({ sponsor, isActive, onSelect }) {
-  const orgName  = sponsor.organizationName ?? sponsor.orgName ?? '';
-  const count    = sponsor.activeStudies ?? sponsor.studyCount ?? null;
-  const isOnline = sponsor.status?.toLowerCase() !== 'inactive';
+function SponsorCard({ sponsor, isActive, isEntering, onSelect }) {
+  const displayName = sponsor.fullName || sponsor.organizationName || '(unnamed)';
+  const orgName     = sponsor.organizationName ?? '';
+  const count       = sponsor.activeStudies ?? sponsor.studyCount ?? null;
+  const isOnline    = sponsor.status?.toLowerCase() !== 'inactive';
 
   return (
     <button
       type="button"
       className={`${styles.card} ${isActive ? styles.cardActive : ''}`}
       onClick={() => onSelect(sponsor)}
-      aria-label={`Open ${sponsor.name} workspace`}
+      disabled={isEntering}
+      aria-label={`View ${displayName} workspace as read-only`}
     >
       {/* Avatar */}
       <div className={styles.cardAvatar}>
-        {sponsor.photo || sponsor.photograph ? (
+        {sponsor.photograph ? (
           <img
-            src={sponsor.photo ?? sponsor.photograph}
+            src={sponsor.photograph}
             alt=""
             className={styles.cardAvatarImg}
           />
         ) : (
-          <span className={styles.cardAvatarInitials}>{getInitials(sponsor.name)}</span>
+          <span className={styles.cardAvatarInitials}>{getInitials(displayName)}</span>
         )}
       </div>
 
       {/* Info */}
       <div className={styles.cardInfo}>
         <div className={styles.cardNameRow}>
-          <p className={styles.cardName}>{sponsor.name}</p>
+          <p className={styles.cardName}>{displayName}</p>
           <span className={`${styles.statusDot} ${isOnline ? styles.statusDotOn : ''}`} />
         </div>
-        {orgName && <p className={styles.cardOrg}>{orgName}</p>}
+        {orgName && orgName !== displayName && <p className={styles.cardOrg}>{orgName}</p>}
         {count !== null && (
           <div className={styles.cardMeta}>
             <FlaskConical size={12} />
@@ -75,7 +79,10 @@ function SponsorCard({ sponsor, isActive, onSelect }) {
         {isActive && <span className={styles.activeBadge}>Currently Active</span>}
       </div>
 
-      <ChevronRight size={16} className={styles.cardChevron} />
+      <span className={styles.viewBadge} aria-hidden="true">
+        {isEntering ? <Loader2 size={14} className={styles.spinner} /> : 'View Workspace'}
+        {!isEntering && <ChevronRight size={14} />}
+      </span>
     </button>
   );
 }
@@ -86,41 +93,56 @@ export default function WorkspaceSelectorPage() {
   const navigate      = useNavigate();
   const activeSponsor = useAppSelector(selectActiveSponsor);
 
-  const [sponsors, setSponsors] = useState([]);
-  const [query,    setQuery]    = useState('');
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState(null);
+  const [sponsors,    setSponsors]    = useState([]);
+  const [query,       setQuery]       = useState('');
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState(null);
+  const [enteringId,  setEnteringId]  = useState(null);
+  const [reloadTick,  setReloadTick]  = useState(0);
 
-  const load = () => {
-    setLoading(true);
-    setError(null);
-    sponsorService
-      .list()
-      .then((data) => setSponsors(Array.isArray(data) ? data : (data?.items ?? data?.data ?? [])))
-      .catch(() => setError('Failed to load workspaces. Please try again.'))
-      .finally(() => setLoading(false));
-  };
+  // Server-side search: re-fetches with ?search= when query changes (debounced).
+  // Reload via setReloadTick(n => n + 1).
+  useEffect(() => {
+    const delay = query ? 250 : 0;
+    const handle = setTimeout(() => {
+      setLoading(true);
+      setError(null);
+      workspaceSponsorClient
+        .list({ search: query.trim() || undefined })
+        .then((data) => setSponsors(data))
+        .catch(() => setError('Failed to load workspaces. Please try again.'))
+        .finally(() => setLoading(false));
+    }, delay);
+    return () => clearTimeout(handle);
+  }, [query, reloadTick]);
 
-  useEffect(() => { load(); }, []);
-
-  const filtered = sponsors.filter((s) => {
-    const q = query.toLowerCase();
-    return (
-      !q ||
-      s.name?.toLowerCase().includes(q) ||
-      s.organizationName?.toLowerCase().includes(q) ||
-      s.orgName?.toLowerCase().includes(q)
-    );
-  });
+  const reload = () => setReloadTick((n) => n + 1);
 
   const handleMainDashboard = () => {
     dispatch(switchWorkspace('cro'));
     navigate('/cro/dashboard');
   };
 
-  const handleSelect = (sponsor) => {
-    dispatch(selectSponsor({ id: sponsor.id, name: sponsor.name }));
-    navigate(`/workspace/${sponsor.id}/studies`);
+  const handleSelect = async (sponsor) => {
+    if (!sponsor.id || enteringId) return;
+    setEnteringId(sponsor.id);
+    try {
+      const action = await dispatch(enterSponsorWorkspaceAsync(sponsor.id));
+      if (enterSponsorWorkspaceAsync.fulfilled.match(action)) {
+        // Keep activeSponsor reflected for the selector UI.
+        const name = sponsor.fullName || sponsor.organizationName || '';
+        dispatch(selectSponsor({ id: sponsor.id, name }));
+        navigate('/sponsor/select-study');
+      } else {
+        dispatch(addToast({
+          type:     'error',
+          message:  action.payload || 'Failed to open sponsor workspace. Please try again.',
+          duration: 5000,
+        }));
+      }
+    } finally {
+      setEnteringId(null);
+    }
   };
 
   return (
@@ -130,7 +152,8 @@ export default function WorkspaceSelectorPage() {
       <div className={styles.header}>
         <h1 className={styles.title}>Choose Workspace</h1>
         <p className={styles.sub}>
-          Select a sponsor to browse their studies and open a study workspace.
+          Open a sponsor workspace as a read-only viewer. Your CRO session stays active —
+          return to the main dashboard at any time.
         </p>
       </div>
 
@@ -162,7 +185,7 @@ export default function WorkspaceSelectorPage() {
           <h2 className={styles.sectionHeading}>Sponsor Workspaces</h2>
           {!loading && !error && (
             <span className={styles.countBadge}>
-              {filtered.length} of {sponsors.length}
+              {sponsors.length} {sponsors.length === 1 ? 'sponsor' : 'sponsors'}
             </span>
           )}
         </div>
@@ -198,42 +221,44 @@ export default function WorkspaceSelectorPage() {
           <div className={styles.stateBox}>
             <AlertCircle size={28} className={styles.errorIcon} />
             <p className={styles.errorText}>{error}</p>
-            <button className={styles.retryBtn} onClick={load}>
+            <button className={styles.retryBtn} onClick={reload}>
               <RefreshCw size={13} /> Try again
             </button>
           </div>
         )}
 
-        {/* Empty — no sponsors at all */}
+        {/* Empty — no sponsors at all (or no results for current search) */}
         {!loading && !error && sponsors.length === 0 && (
           <div className={styles.stateBox}>
-            <Building2 size={36} strokeWidth={1.25} className={styles.emptyIcon} />
-            <p className={styles.emptyTitle}>No sponsor workspaces available.</p>
-            <p className={styles.emptySub}>
-              Sponsors assigned to you will appear here.
-            </p>
-          </div>
-        )}
-
-        {/* Empty — search no results */}
-        {!loading && !error && sponsors.length > 0 && filtered.length === 0 && (
-          <div className={styles.stateBox}>
-            <Search size={28} className={styles.emptyIcon} />
-            <p className={styles.emptyTitle}>No sponsors match &ldquo;{query}&rdquo;</p>
-            <button className={styles.clearSearchBtn} onClick={() => setQuery('')}>
-              Clear search
-            </button>
+            {query ? (
+              <>
+                <Search size={28} className={styles.emptyIcon} />
+                <p className={styles.emptyTitle}>No sponsors match &ldquo;{query}&rdquo;</p>
+                <button className={styles.clearSearchBtn} onClick={() => setQuery('')}>
+                  Clear search
+                </button>
+              </>
+            ) : (
+              <>
+                <Building2 size={36} strokeWidth={1.25} className={styles.emptyIcon} />
+                <p className={styles.emptyTitle}>No sponsor workspaces available.</p>
+                <p className={styles.emptySub}>
+                  Sponsors assigned to you will appear here.
+                </p>
+              </>
+            )}
           </div>
         )}
 
         {/* Sponsor list */}
-        {!loading && !error && filtered.length > 0 && (
+        {!loading && !error && sponsors.length > 0 && (
           <div className={styles.list}>
-            {filtered.map((sponsor) => (
+            {sponsors.map((sponsor) => (
               <SponsorCard
                 key={sponsor.id}
                 sponsor={sponsor}
                 isActive={activeSponsor?.id === sponsor.id}
+                isEntering={enteringId === sponsor.id}
                 onSelect={handleSelect}
               />
             ))}

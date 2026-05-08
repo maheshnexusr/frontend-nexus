@@ -81,10 +81,8 @@ const CookiePolicyPage    = lazy(() => import('@/features/public/pages/CookiePol
 // Lazy page imports — Auth
 // ─────────────────────────────────────────────────────────────────────────────
 
-const AuthLayout              = lazy(() => import('@/layouts/AuthLayout'));
-const SignUpPage               = lazy(() => import('@/features/auth/pages/SignUpPage'));
+const AuthLayout               = lazy(() => import('@/layouts/AuthLayout'));
 const SignInPage               = lazy(() => import('@/features/auth/pages/SignInPage'));
-const EmailVerificationPage    = lazy(() => import('@/features/auth/pages/EmailVerificationPage'));
 const ForgotPasswordPage       = lazy(() => import('@/features/auth/pages/ForgotPasswordPage'));
 const AccountActivationPage    = lazy(() => import('@/features/auth/pages/AccountActivationPage'));
 
@@ -143,6 +141,10 @@ const SponsorActivityLogPage      = lazy(() => import('@/features/sponsor/pages/
 const MasterEmailTemplatesPage    = lazy(() => import('@/features/sponsor/pages/MasterEmailTemplatesPage'));
 const MasterCountriesPage         = lazy(() => import('@/features/sponsor/pages/MasterCountriesPage'));
 const MasterLocationsPage         = lazy(() => import('@/features/sponsor/pages/MasterLocationsPage'));
+const MasterRegionsPage           = lazy(() => import('@/features/sponsor/pages/MasterRegionsPage'));
+const MasterEmailTriggersPage     = lazy(() => import('@/features/sponsor/pages/MasterEmailTriggersPage'));
+const SponsorProfilePage          = lazy(() => import('@/features/cro/pages/profile/CROProfilePage'));
+const SponsorChangePasswordPage   = lazy(() => import('@/features/cro/pages/profile/ChangePasswordPage'));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inline 404 page
@@ -248,9 +250,7 @@ export const router = createBrowserRouter([
       {
         element: sp(AuthLayout),
         children: [
-          { path: 'signup',            element: sp(SignUpPage) },
           { path: 'signin',            element: sp(SignInPage) },
-          { path: 'verify/:token',     element: sp(EmailVerificationPage) },
           { path: 'forgot-password',   element: sp(ForgotPasswordPage) },
           { path: 'activate',          element: sp(AccountActivationPage) },
         ],
@@ -334,7 +334,7 @@ export const router = createBrowserRouter([
       {
         path: 'sponsor/select-study',
         element: (
-          <ProtectedRoute>
+          <ProtectedRoute scope="sponsor">
             {sp(SponsorStudySelectorPage)}
           </ProtectedRoute>
         ),
@@ -344,7 +344,7 @@ export const router = createBrowserRouter([
       {
         path: 'sponsor/:studyId',
         element: (
-          <ProtectedRoute>
+          <ProtectedRoute scope="sponsor">
             <Suspense fallback={<PageLoader />}>
               <SponsorLayout />
             </Suspense>
@@ -369,6 +369,10 @@ export const router = createBrowserRouter([
           { path: 'masters/email-templates',   element: sp(MasterEmailTemplatesPage) },
           { path: 'masters/countries',         element: sp(MasterCountriesPage)      },
           { path: 'masters/locations',         element: sp(MasterLocationsPage)      },
+          { path: 'masters/regions',           element: sp(MasterRegionsPage)        },
+          { path: 'masters/email-triggers',    element: sp(MasterEmailTriggersPage)  },
+          { path: 'profile',                   element: sp(SponsorProfilePage)       },
+          { path: 'change-password',           element: sp(SponsorChangePasswordPage) },
         ],
       },
 

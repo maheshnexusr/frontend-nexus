@@ -13,6 +13,7 @@ import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { regionsClient }        from '@/features/cro/api/regionsClient';
 import { countriesClient }      from '@/features/cro/api/countriesClient';
+import { studiesClient }        from '@/features/cro/api/studiesClient';
 import { setStep2, selectStep1, selectStep2 } from '@/features/cro/store/studyWizardSlice';
 import { addToast }             from '@/app/notificationSlice';
 import FormField                from '@/components/form/FormField';
@@ -137,7 +138,9 @@ export default function StudyWizardStep2({ onCancel, onNext }) {
     return errs;
   };
 
-  const buildPayload = () => ({
+  const [saving, setSaving] = useState(false);
+
+  const buildReduxPayload = () => ({
     startDate:             form.startDate,
     expectedEndDate:       form.expectedEndDate,
     maxSites:              hasEDC          ? form.maxSites              : '',
@@ -150,16 +153,35 @@ export default function StudyWizardStep2({ onCancel, onNext }) {
     randomizationApproach: hasSurveyOrEPRO ? form.randomizationApproach : '',
   });
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
-    dispatch(setStep2(buildPayload()));
-    dispatch(addToast({ type: 'success', message: 'Timeline details saved.', duration: 3000 }));
-    onNext?.();
+
+    const reduxPayload = buildReduxPayload();
+    dispatch(setStep2(reduxPayload));
+
+    // coverage_type / coverage_id for the API
+    const coverageType = hasEDC ? 'REGION' : 'COUNTRY';
+    const coverageId   = hasEDC ? form.regionId : form.countryId;
+
+    setSaving(true);
+    try {
+      await studiesClient.step2(step1.studyDbId, {
+        ...reduxPayload,
+        coverageType,
+        coverageId,
+      });
+      dispatch(addToast({ type: 'success', message: 'Timeline details saved.', duration: 3000 }));
+      onNext?.();
+    } catch {
+      dispatch(addToast({ type: 'error', message: 'Failed to save timeline. Please try again.', duration: 4000 }));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSaveAsDraft = () => {
-    dispatch(setStep2(buildPayload()));
+    dispatch(setStep2(buildReduxPayload()));
     dispatch(addToast({ type: 'success', message: 'Draft progress saved.', duration: 3000 }));
   };
 
@@ -304,8 +326,8 @@ export default function StudyWizardStep2({ onCancel, onNext }) {
           <button type="button" className={styles.btnCancel} onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className={styles.btnNext} onClick={handleSave}>
-            Save
+          <button type="button" className={styles.btnNext} onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>

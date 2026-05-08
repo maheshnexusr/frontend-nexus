@@ -4,6 +4,11 @@
  * Step 1: Enter email → dispatch requestOtpAsync → start 60 s cooldown.
  * Step 2: Enter 6-digit OTP (auto-submits on completion) → dispatch loginWithOtpAsync.
  *
+ * Scope handling: the backend serves both CRO and sponsor scopes from the
+ * shared /api/v1/auth/login/otp/* endpoints. loginWithOtpAsync detects the
+ * role from the response and mirrors tokens into sponsor-scope storage when
+ * appropriate — the UI doesn't need to pick a scope.
+ *
  * Resend is disabled during the 60 s cooldown; a countdown timer shows remaining time.
  */
 
@@ -119,10 +124,6 @@ export default function OTPLoginForm() {
           {loading ? 'Sending…' : 'Send OTP'}
         </button>
 
-        <p className={styles.switchLink}>
-          Don&apos;t have an account?{' '}
-          <Link to="/signup" className={styles.link}>Create one</Link>
-        </p>
       </form>
     );
   }

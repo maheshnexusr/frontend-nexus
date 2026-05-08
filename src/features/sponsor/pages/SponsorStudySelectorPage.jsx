@@ -1,56 +1,31 @@
 /**
  * SponsorStudySelectorPage — /sponsor/select-study
  *
- * Shown when a sponsor user is assigned to multiple studies and needs to
+ * Shown when a sponsor user is assigned to one or more studies and needs to
  * pick one before entering the study workspace.
  *
- * On study selection:
- *   1. Dispatches selectStudy to Redux
- *   2. Navigates to /sponsor/:studyId/dashboard
- *
- * NOTE: MOCK_SPONSOR_STUDIES will be replaced with an RTK Query hook that
- * fetches the studies assigned to the authenticated sponsor user.
+ * Data flow:
+ *   1. On mount: GET /api/v1/sponsor/studies (sponsorStudiesService.list())
+ *      — returns the assignments the sponsor user can open.
+ *   2. On select: POST /api/v1/sponsor/studies/choose — backend issues a
+ *      studyContextToken that sponsorAxiosClient auto-attaches to subsequent
+ *      /sponsor/workspace/* calls (handled inside sponsorStudiesService.choose).
+ *   3. Redux activeStudy is populated via selectStudy so the sponsor layout's
+ *      scope + config-driven sidebar has data to filter by.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, FlaskConical, ChevronRight } from 'lucide-react';
-import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { selectStudy }    from '@/features/workspace/store/workspaceSlice';
-import { selectCurrentUser } from '@/features/auth/authSlice';
-import StatusBadge        from '@/components/feedback/StatusBadge';
-import styles             from './SponsorStudySelectorPage.module.css';
+import { Search, FlaskConical, ChevronRight, Loader2, AlertTriangle } from 'lucide-react';
 
-/* ── Mock data (multi-study sponsor scenario) ────────────────────────────── */
-const MOCK_SPONSOR_STUDIES = [
-  {
-    id: 'st-101',
-    title: 'Phase III Oncology Trial',
-    protocolId: 'PFZ-ONC-2024-001',
-    scope: 'EDC',
-    status: 'Active',
-    environments: ['UAT', 'LIVE'],
-    config: { consentEnabled: true, queryEnabled: true, dataManagerEnabled: true, navBarEnabled: true },
-  },
-  {
-    id: 'st-102',
-    title: 'Cardiac Safety Study',
-    protocolId: 'PFZ-CAR-2024-002',
-    scope: 'EDC',
-    status: 'Draft',
-    environments: ['UAT'],
-    config: { consentEnabled: false, queryEnabled: true, dataManagerEnabled: false, navBarEnabled: true },
-  },
-  {
-    id: 'st-103',
-    title: 'Patient Reported Outcomes',
-    protocolId: 'PFZ-PRO-2023-015',
-    scope: 'ePRO',
-    status: 'Completed',
-    environments: ['LIVE'],
-    config: { consentEnabled: true, queryEnabled: false, dataManagerEnabled: true, navBarEnabled: true },
-  },
-];
+const REMEMBER_KEY = 'sponsor.rememberedStudyId';
+import { useAppDispatch, useAppSelector } from '@/app/hooks';
+import { selectStudy }          from '@/features/workspace/store/workspaceSlice';
+import { selectCurrentUser }    from '@/features/auth/authSlice';
+import { sponsorStudiesService }  from '@/services/sponsorAuthService';
+import StatusBadge               from '@/components/feedback/StatusBadge';
+import ReadOnlySponsorBanner     from '@/features/workspace/components/ReadOnlySponsorBanner';
+import styles                    from './SponsorStudySelectorPage.module.css';
 
 /* ── Badge helpers ───────────────────────────────────────────────────────── */
 const SCOPE_STYLE = {
@@ -76,12 +51,13 @@ const EnvBadge = ({ env }) => (
 );
 
 /* ── Study card ──────────────────────────────────────────────────────────── */
-function StudyCard({ study, onSelect }) {
+function StudyCard({ study, onSelect, busy }) {
   return (
     <button
       type="button"
       className={styles.card}
       onClick={() => onSelect(study)}
+      disabled={busy}
       aria-label={`Open study: ${study.title}`}
     >
       <div className={styles.cardHeader}>
@@ -113,35 +89,93 @@ function StudyCard({ study, onSelect }) {
 
 /* ── Page ────────────────────────────────────────────────────────────────── */
 export default function SponsorStudySelectorPage() {
-  const dispatch   = useAppDispatch();
-  const navigate   = useNavigate();
+  const dispatch    = useAppDispatch();
+  const navigate    = useNavigate();
   const currentUser = useAppSelector(selectCurrentUser);
-  const [query, setQuery] = useState('');
+  const [query,    setQuery]    = useState('');
+  const [studies,  setStudies]  = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState(null);
+  const [selectingId, setSelectingId] = useState(null);
+  const [remember, setRemember] = useState(() => {
+    try { return Boolean(localStorage.getItem(REMEMBER_KEY)); } catch { return false; }
+  });
 
-  // TODO: replace with RTK Query hook — fetch studies for currentUser.id
-  const studies  = MOCK_SPONSOR_STUDIES;
+  /* ── Fetch assignments on mount ──────────────────────────────── */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const list = await sponsorStudiesService.list();
+        if (cancelled) return;
+        setStudies(list);
+      } catch (err) {
+        if (cancelled) return;
+        setError(err?.message ?? 'Failed to load studies. Please try again.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  /* ── Auto-redirect for "remember my choice" once studies are loaded ── */
+  useEffect(() => {
+    if (loading || studies.length === 0) return;
+    let rememberedId = null;
+    try { rememberedId = localStorage.getItem(REMEMBER_KEY); } catch { /* ignore */ }
+    if (!rememberedId) return;
+    const match = studies.find((s) => s.id === rememberedId);
+    if (!match) {
+      try { localStorage.removeItem(REMEMBER_KEY); } catch { /* ignore */ }
+      return;
+    }
+    handleSelect(match, { replace: true });
+  }, [loading, studies]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const filtered = studies.filter(
     (s) =>
       s.title.toLowerCase().includes(query.toLowerCase()) ||
       s.protocolId.toLowerCase().includes(query.toLowerCase()),
   );
 
-  const handleSelect = (study) => {
-    dispatch(
-      selectStudy({
-        id:     study.id,
-        title:  study.title,
-        scope:  study.scope,
-        config: study.config,
-      }),
-    );
-    navigate(`/sponsor/${study.id}/dashboard`);
+  const handleSelect = async (study, { replace = false } = {}) => {
+    if (selectingId) return;
+    setSelectingId(study.id);
+    setError(null);
+    try {
+      try {
+        if (remember || replace) localStorage.setItem(REMEMBER_KEY, study.id);
+        else                     localStorage.removeItem(REMEMBER_KEY);
+      } catch { /* ignore */ }
+
+      // Tell the backend which study + environment to scope subsequent calls to.
+      // sponsorStudiesService.choose() persists the returned studyContextToken
+      // so sponsorAxiosClient can attach it automatically.
+      await sponsorStudiesService.choose(study.id, { environment: study.environment });
+
+      dispatch(
+        selectStudy({
+          id:     study.id,
+          title:  study.title,
+          scope:  study.scope,
+          config: study.config,
+        }),
+      );
+      navigate(`/sponsor/${study.id}/dashboard`, { replace });
+    } catch (err) {
+      setError(err?.message ?? 'Failed to open the selected study.');
+      setSelectingId(null);
+    }
   };
 
   const displayName = currentUser?.fullName ?? currentUser?.email ?? 'Sponsor';
 
   return (
     <div className={styles.page}>
+      <ReadOnlySponsorBanner />
       {/* ── Header ─────────────────────────────────────────────── */}
       <div className={styles.header}>
         <p className={styles.greeting}>Welcome back, {displayName}</p>
@@ -152,40 +186,73 @@ export default function SponsorStudySelectorPage() {
         </p>
       </div>
 
-      {/* ── Search ─────────────────────────────────────────────── */}
-      {studies.length > 0 && (
-        <div className={styles.searchWrap}>
-          <Search size={16} className={styles.searchIcon} aria-hidden="true" />
-          <input
-            type="search"
-            className={styles.searchInput}
-            placeholder="Search by title or protocol ID…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search studies"
-          />
+      {/* ── Error banner ───────────────────────────────────────── */}
+      {error && (
+        <div className={styles.empty} role="alert">
+          <AlertTriangle size={32} strokeWidth={1.5} aria-hidden="true" />
+          <p className={styles.emptyText}>{error}</p>
         </div>
       )}
 
-      {/* ── Grid ───────────────────────────────────────────────── */}
-      {studies.length === 0 ? (
+      {/* ── Search (hidden while loading or empty) ─────────────── */}
+      {!loading && !error && studies.length > 0 && (
+        <div className={styles.toolbar}>
+          <div className={styles.searchWrap}>
+            <Search size={16} className={styles.searchIcon} aria-hidden="true" />
+            <input
+              type="search"
+              className={styles.searchInput}
+              placeholder="Search by title or protocol ID…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search studies"
+            />
+          </div>
+          <label className={styles.remember}>
+            <input
+              type="checkbox"
+              checked={remember}
+              onChange={(e) => {
+                setRemember(e.target.checked);
+                if (!e.target.checked) {
+                  try { localStorage.removeItem(REMEMBER_KEY); } catch { /* ignore */ }
+                }
+              }}
+            />
+            <span>Remember my choice</span>
+          </label>
+        </div>
+      )}
+
+      {/* ── Body ───────────────────────────────────────────────── */}
+      {loading ? (
+        <div className={styles.empty}>
+          <Loader2 size={32} strokeWidth={1.5} aria-hidden="true" />
+          <p className={styles.emptyText}>Loading your studies…</p>
+        </div>
+      ) : !error && studies.length === 0 ? (
         <div className={styles.empty}>
           <FlaskConical size={40} strokeWidth={1.25} aria-hidden="true" />
           <p className={styles.emptyText}>No studies have been assigned to your account.</p>
           <p className={styles.emptyHint}>Contact your CRO administrator if you believe this is an error.</p>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : !error && filtered.length === 0 ? (
         <div className={styles.empty}>
           <Search size={40} strokeWidth={1.25} aria-hidden="true" />
           <p className={styles.emptyText}>No studies match &ldquo;{query}&rdquo;</p>
         </div>
-      ) : (
+      ) : !error ? (
         <div className={styles.grid}>
           {filtered.map((study) => (
-            <StudyCard key={study.id} study={study} onSelect={handleSelect} />
+            <StudyCard
+              key={study.assignmentId ?? `${study.id}-${study.environment}`}
+              study={study}
+              onSelect={handleSelect}
+              busy={selectingId === study.id}
+            />
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

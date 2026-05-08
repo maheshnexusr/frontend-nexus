@@ -82,48 +82,41 @@ export default function StudyWizardStep6({ onPrevious, onCancel }) {
     setShowConfirm(false);
     setPublishing(true);
 
-    const wizardData = {
-      studyId:         step1.studyId,
-      studyTitle:      step1.studyTitle,
-      studyPhaseId:    step1.studyPhaseId,
-      studyPhaseName:  step1.studyPhaseName,
-      scope:           step1.scope,
-      therapeuticArea: step1.therapeuticArea,
-      description:     step1.studyDescription,
-      sponsorId:       step1.sponsorId,
-      sponsorName:     step1.sponsorName,
-      timeline:        step2,
-      configuration:   step3,
-      formId:          step4.formId,
-      formTitle:       step4.formTitle,
-      team:            step5.assignments ?? [],
-    };
-
     try {
-      const { release } = await studiesClient.publish(wizardData, { environment: env, status, description });
+      // POST /api/v1/studies/:id/publish — study was already saved step-by-step
+      const release = await studiesClient.publish(step1.studyDbId, { environment: env, status, notes: description });
 
       // refresh version history
       const updated = await studiesClient.getReleasesByProtocolId(step1.studyId);
       setReleases(updated);
       setPublished(release);
 
-      const dbName = release.databaseName;
+      const dbName = release.databaseName ?? release.database_name;
       dispatch(addToast({
         type:     'success',
         message:  env === 'UAT'
-          ? `Study published to UAT successfully. Database '${dbName}' created. Version ${release.version} released.`
-          : `Study published to LIVE successfully. Database '${dbName}' created. Version ${release.version} released.`,
+          ? `Study published to UAT successfully.${dbName ? ` Database '${dbName}' created.` : ''}`
+          : `Study published to LIVE successfully.${dbName ? ` Database '${dbName}' created.` : ''}`,
         duration: 6000,
       }));
     } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to create study database. Please contact system administrator.', duration: 5000 }));
+      dispatch(addToast({ type: 'error', message: 'Failed to publish study. Please contact system administrator.', duration: 5000 }));
     } finally {
       setPublishing(false);
     }
   };
 
-  const handleSendInvitations = () => {
-    dispatch(addToast({ type: 'success', message: 'Invitation emails sent successfully.', duration: 3000 }));
+  const handleSendInvitations = async (rel) => {
+    try {
+      await studiesClient.sendInvitations(step1.studyDbId, {
+        version_id:  rel.id,
+        environment: rel.environment,
+        recipients:  [],   // caller can extend; empty triggers system defaults
+      });
+      dispatch(addToast({ type: 'success', message: 'Invitation emails sent successfully.', duration: 3000 }));
+    } catch {
+      dispatch(addToast({ type: 'error', message: 'Failed to send invitations. Please try again.', duration: 4000 }));
+    }
   };
 
   const handleDone = () => {
@@ -236,7 +229,7 @@ export default function StudyWizardStep6({ onPrevious, onCancel }) {
                 <button className={styles.copyBtn} onClick={() => copyLink(rel.accessLink)} title="Copy link">
                   <Copy size={13} />
                 </button>
-                <button className={styles.inviteBtn} onClick={handleSendInvitations}>
+                <button className={styles.inviteBtn} onClick={() => handleSendInvitations(rel)}>
                   <Send size={13} /> Send Invitations
                 </button>
               </div>

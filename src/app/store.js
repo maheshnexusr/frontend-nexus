@@ -1,6 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
 import authReducer          from '@/features/auth/authSlice';
 import workspaceReducer     from '@/features/workspace/store/workspaceSlice';
+import sponsorViewReducer   from '@/features/workspace/store/sponsorViewSlice';
 import notificationReducer  from '@/app/notificationSlice';
 import formReducer          from '@/features/form-builder/store/formSlice';
 import studyWizardReducer   from '@/features/cro/store/studyWizardSlice';
@@ -34,6 +35,7 @@ const store = configureStore({
   reducer: {
     auth:          authReducer,
     workspace:     workspaceReducer,
+    sponsorView:   sponsorViewReducer,
     notifications: notificationReducer,
     form:          formReducer,
     studyWizard:   studyWizardReducer,

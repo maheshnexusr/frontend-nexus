@@ -15,12 +15,19 @@ function csvDownload(blob) {
 
 export const emailTemplateService = {
   /**
-   * GET /api/v1/masters/email-templates
-   * params: { page, pageSize, search, status }
-   * Returns: { success, items, pagination }
+   * GET /api/v1/masters/email-templates (spec §5.1)
+   * Accepts camelCase: { page, pageSize, search, status }
+   * Sends snake_case:  ?page=&limit=&search=&status=
    */
-  list: (params = {}) =>
-    axiosClient.get(`/api/v1/masters/email-templates${buildQueryString(params)}`),
+  list: (params = {}) => {
+    const query = {
+      page:   params.page,
+      limit:  params.limit ?? params.pageSize,
+      search: params.search,
+      status: params.status,
+    };
+    return axiosClient.get(`/api/v1/masters/email-templates${buildQueryString(query)}`);
+  },
 
   /**
    * GET /api/v1/masters/email-templates/:id
@@ -67,7 +74,6 @@ export const emailTemplateService = {
    */
   addAttachment: (id, formData) =>
     axiosClient.post(`/api/v1/masters/email-templates/${id}/attachments`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
   /**
@@ -78,12 +84,23 @@ export const emailTemplateService = {
     axiosClient.delete(`/api/v1/masters/email-templates/${id}/attachments/${attachmentId}`),
 
   /**
-   * POST /api/v1/masters/email-templates/preview
-   * Payload: { subjectLine, emailBody, sampleData? }
+   * POST /api/v1/masters/email-templates/preview  (spec §5.1)
+   * Payload: { subject_line, email_body, sample_data }
    * Returns: { success, renderedSubject, renderedBody }
    */
-  preview: (data) =>
-    axiosClient.post('/api/v1/masters/email-templates/preview', data),
+  preview: ({ subjectLine, emailBody, sampleData = {} }) =>
+    axiosClient.post('/api/v1/masters/email-templates/preview', {
+      subject_line: subjectLine,
+      email_body:   emailBody,
+      sample_data:  sampleData,
+    }),
+
+  /**
+   * POST /api/v1/masters/email-templates/:id/test-send
+   * Sends a test email with sample values to the given address.
+   */
+  testSend: (id, email) =>
+    axiosClient.post(`/api/v1/masters/email-templates/${id}/test-send`, { email }),
 
   /** GET /api/v1/masters/email-templates/export — CSV download */
   export: async () => {

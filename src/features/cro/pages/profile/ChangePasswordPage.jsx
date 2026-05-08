@@ -15,6 +15,7 @@ import { useDispatch }       from 'react-redux';
 import { useNavigate }       from 'react-router-dom';
 import { Eye, EyeOff, Lock, ShieldCheck, CheckCircle2, XCircle } from 'lucide-react';
 import { userService } from '@/services/userService';
+import { useReadOnlyView } from '@/features/workspace/hooks/useReadOnlyView';
 import { addToast }          from '@/app/notificationSlice';
 import styles from './ChangePasswordPage.module.css';
 
@@ -110,6 +111,7 @@ function StrengthMeter({ password }) {
 export default function ChangePasswordPage() {
   const dispatch  = useDispatch();
   const navigate  = useNavigate();
+  const ro        = useReadOnlyView();
 
   const [current,  setCurrent]  = useState('');
   const [newPwd,   setNewPwd]   = useState('');
@@ -147,6 +149,10 @@ export default function ChangePasswordPage() {
   /* ── Submit ── */
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (ro.isReadOnly) {
+      dispatch(addToast({ type: 'info', message: ro.readOnlyMessage }));
+      return;
+    }
     if (!validate()) return;
     setSaving(true);
 
@@ -249,7 +255,13 @@ export default function ChangePasswordPage() {
           <button type="button" className={styles.cancelBtn} onClick={handleCancel} disabled={saving}>
             Cancel
           </button>
-          <button type="submit" className={styles.saveBtn} disabled={saving}>
+          <button
+            type="submit"
+            className={styles.saveBtn}
+            disabled={saving || ro.isReadOnly}
+            aria-disabled={saving || ro.isReadOnly}
+            title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
+          >
             {saving
               ? <><span className={styles.spinner} /> Changing…</>
               : 'Change Password'

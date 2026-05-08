@@ -1,0 +1,95 @@
+.body { display: flex; flex-direction: column; gap: 14px; }
+
+/* ── Summary ─────────────────────────────────────────────────────────────── */
+.summary {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 16px;
+  background: var(--bg-subtle, #f8fafc);
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+.summaryKpi { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.kpiVal     { font-size: 22px; font-weight: 800; color: var(--text-primary, #0f172a); line-height: 1; }
+.kpiLabel   { font-size: 11px; color: var(--text-secondary, #94a3b8); font-weight: 500; }
+.desc       { font-size: 12.5px; color: var(--text-secondary, #374151); margin: 0; flex: 1; }
+
+/* ── Matrix ──────────────────────────────────────────────────────────────── */
+.matrixWrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 7px;
+  background: var(--bg-card, #fff);
+}
+.matrix { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 560px; }
+
+.mthModule {
+  padding: 8px 12px;
+  background: var(--bg-subtle, #f1f5f9);
+  border-bottom: 1px solid var(--border-default, #e2e8f0);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-secondary, #64748b);
+  text-align: left;
+  min-width: 180px;
+}
+.mthPerm {
+  padding: 8px 6px;
+  background: var(--bg-subtle, #f1f5f9);
+  border-bottom: 1px solid var(--border-default, #e2e8f0);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-secondary, #64748b);
+  text-align: center;
+  width: 62px;
+  white-space: nowrap;
+}
+
+.groupRow { background: #f8fafc; }
+.groupCell { padding: 7px 12px; border-bottom: 1px solid var(--border-default, #e2e8f0); }
+.groupLabel { font-size: 12.5px; font-weight: 700; color: var(--text-primary, #0f172a); }
+
+.leafRow { border-bottom: 1px solid var(--border-default, #f1f5f9); }
+.leafRow:last-child { border-bottom: none; }
+.childRow { }
+
+.moduleCell { padding: 8px 12px; }
+.moduleLabel { font-size: 12.5px; font-weight: 600; color: var(--text-primary, #0f172a); }
+.childLabel  { font-size: 12.5px; color: var(--text-primary, #374151); padding-left: 18px; display: block; }
+
+.permCell { padding: 7px 4px; text-align: center; }
+
+.grantedIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ecfdf5;
+  color: #059669;
+}
+.deniedIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: #cbd5e1;
+}
+.na { color: #e2e8f0; font-size: 11px; }
+
+/* Footer */
+.btnClose {
+  padding: 7px 20px;
+  background: var(--bg-subtle, #f8fafc);
+  color: var(--text-secondary, #374151);
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btnClose:hover { background: #f1f5f9; }

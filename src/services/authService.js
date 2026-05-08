@@ -7,17 +7,6 @@
 import axiosClient from '@/api/axiosClient';
 
 export const authService = {
-  /** POST /api/v1/auth/register */
-  register: ({ fullName, emailAddress, contactNumber, jobTitle, organizationCode, organizationName }) =>
-    axiosClient.post('/api/v1/auth/register', {
-      full_name:         fullName,
-      email_address:     emailAddress,
-      contact_number:    contactNumber   || undefined,
-      job_title:         jobTitle        || undefined,
-      organization_code: organizationCode || undefined,
-      organization_name: organizationName || undefined,
-    }),
-
   /** POST /api/v1/auth/activate */
   activate: ({ token, password, confirmPassword }) =>
     axiosClient.post('/api/v1/auth/activate', {
@@ -49,10 +38,6 @@ export const authService = {
   /** POST /api/v1/auth/refresh */
   refreshToken: (refreshToken) =>
     axiosClient.post('/api/v1/auth/refresh', { refresh_token: refreshToken }),
-
-  /** POST /api/v1/auth/verify-email */
-  verifyEmail: ({ token }) =>
-    axiosClient.post('/api/v1/auth/verify-email', { token }),
 
   /** POST /api/v1/auth/logout */
   logout: () =>

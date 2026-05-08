@@ -33,21 +33,24 @@ function extractList(res) {
   return arr.map(normalize);
 }
 
-/* ── Request serializer (camelCase → snake_case) ─────────────────────────── */
+/* ── Request serializer (camelCase → snake_case, spec §5.1) ──────────────── */
 function serialize(data) {
   return {
-    template_name:  data.templateName,
-    template_code:  data.templateCode,
-    subject_line:   data.subjectLine,
-    email_body:     data.emailBody,
-    from_email:     data.fromEmail     || undefined,
-    from_name:      data.fromName      || undefined,
-    cc_emails:      data.ccEmails      || undefined,
-    bcc_emails:     data.bccEmails     || undefined,
-    category:       data.category      || undefined,
-    description:    data.description   || undefined,
-    template_type:  data.templateType  || undefined,
-    status:         data.status        || undefined,
+    template_name:      data.templateName,
+    template_code:      data.templateCode,
+    category:           data.category          || undefined,
+    description:        data.description       || undefined,
+    subject_line:       data.subjectLine,
+    email_body:         data.emailBody,
+    from_name:          data.fromName          || undefined,
+    from_email:         data.fromEmail         || undefined,
+    reply_to:           data.replyTo           || undefined,
+    cc_emails:          data.ccEmails          || undefined,
+    bcc_emails:         data.bccEmails         || undefined,
+    placeholders:       data.placeholders      || undefined,
+    template_type:      data.templateType      || undefined,
+    is_system_template: typeof data.isSystem === 'boolean' ? data.isSystem : undefined,
+    status:             data.status            || undefined,
   };
 }
 
@@ -82,7 +85,12 @@ export const emailTemplatesClient = {
     return normalize(res?.item ?? res);
   },
 
-  async preview({ subjectLine, emailBody, sampleData }) {
+  /**
+   * POST /api/v1/masters/email-templates/preview (spec §5.1)
+   * Body: { subject_line, email_body, sample_data }
+   * Returns: { success, renderedSubject, renderedBody }
+   */
+  async preview({ subjectLine, emailBody, sampleData = {} }) {
     return axiosClient.post('/api/v1/masters/email-templates/preview', {
       subject_line: subjectLine,
       email_body:   emailBody,

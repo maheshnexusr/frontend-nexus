@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { selectCurrentUser, updateUser } from '@/features/auth/authSlice';
 import { userService }                   from '@/services/userService';
+import { useReadOnlyView }               from '@/features/workspace/hooks/useReadOnlyView';
 import { addToast }                      from '@/app/notificationSlice';
 import styles from './CROProfilePage.module.css';
 
@@ -44,6 +45,7 @@ function AvatarPlaceholder({ name }) {
 export default function CROProfilePage() {
   const dispatch = useDispatch();
   const authUser = useSelector(selectCurrentUser);
+  const ro       = useReadOnlyView();
 
   const [editing,       setEditing]       = useState(false);
   const [fullName,      setFullName]      = useState('');
@@ -161,7 +163,11 @@ export default function CROProfilePage() {
           <p className={styles.sub}>View and manage your personal account information.</p>
         </div>
         {!editing && (
-          <button className={styles.editBtn} onClick={() => setEditing(true)}>
+          <button
+            className={styles.editBtn}
+            onClick={() => setEditing(true)}
+            {...ro.disabledProps('Edit profile')}
+          >
             <Pencil size={14} /> Edit Profile
           </button>
         )}
@@ -289,7 +295,13 @@ export default function CROProfilePage() {
               <button className={styles.cancelBtn} onClick={cancelEdit} disabled={saving}>
                 <X size={14} /> Cancel
               </button>
-              <button className={styles.saveBtn} onClick={handleSave} disabled={saving}>
+              <button
+                className={styles.saveBtn}
+                onClick={() => !ro.isReadOnly && handleSave()}
+                disabled={saving || ro.isReadOnly}
+                aria-disabled={saving || ro.isReadOnly}
+                title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
+              >
                 {saving
                   ? <><span className={styles.spinner} /> Saving…</>
                   : <><Save size={14} /> Save Changes</>

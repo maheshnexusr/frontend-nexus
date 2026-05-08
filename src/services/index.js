@@ -13,3 +13,9 @@ export { studyPhaseService }    from './studyPhaseService';
 export { countryService }       from './countryService';
 export { locationService }      from './locationService';
 export { regionService }        from './regionService';
+export {
+  sponsorAuthService,
+  sponsorStudiesService,
+  sponsorTokenStore,
+  sponsorStudyContextStore,
+} from './sponsorAuthService';

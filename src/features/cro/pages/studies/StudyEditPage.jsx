@@ -12,7 +12,7 @@ import { ArrowLeft, Lock }      from 'lucide-react';
 import { studiesClient }        from '@/features/cro/api/studiesClient';
 import {
   resetWizard,
-  setStep1, setStep2, setStep3, setStep4, setStep5,
+  setStep1, setStep2, setStep3, setStep4, setStep5, setStep6,
 } from '@/features/cro/store/studyWizardSlice';
 import StudyWizardStep1 from './StudyWizardStep1';
 import StudyWizardStep2 from './StudyWizardStep2';
@@ -49,9 +49,11 @@ export default function StudyEditPage() {
     studiesClient.getById(studyId).then((study) => {
       if (!study) { setNotFound(true); setLoading(false); return; }
 
-      // Populate each step from the flat study record
+      // Step 1 — Basic Info. studyDbId threads the study PK to every
+      // subsequent PUT /step-N call in the wizard.
       dispatch(setStep1({
-        studyId:          study.studyId          ?? '',
+        studyDbId:        study.id                ?? null,
+        studyId:          study.protocolNumber    ?? study.studyId ?? '',
         studyTitle:       study.studyTitle        ?? '',
         studyPhaseId:     study.studyPhaseId      ?? '',
         studyPhaseName:   study.studyPhaseName    ?? '',
@@ -62,17 +64,19 @@ export default function StudyEditPage() {
         sponsorName:      study.sponsorName       ?? '',
       }));
 
+      // Step 2 — Timeline & Coverage. Region/Country name will hydrate once
+      // the dropdown options load in the step component (it matches on id).
       dispatch(setStep2({
-        startDate:             study.startDate             ?? '',
-        expectedEndDate:       study.expectedEndDate       ?? '',
-        maxSites:              study.maxSites              ?? '',
-        maxEnrollments:        study.maxEnrollments        ?? '',
-        regionId:              study.regionId              ?? '',
-        regionName:            study.regionName            ?? '',
-        randomizationMethod:   study.randomizationMethod   ?? '',
-        countryId:             study.countryId             ?? '',
-        countryName:           study.countryName           ?? '',
-        randomizationApproach: study.randomizationApproach ?? '',
+        startDate:             study.startDate           ?? '',
+        expectedEndDate:       study.expectedEndDate     ?? '',
+        maxSites:              study.maxSites            ?? '',
+        maxEnrollments:        study.maxEnrollments      ?? '',
+        regionId:              study.regionId            ?? '',
+        regionName:            '',
+        randomizationMethod:   study.randomizationMethod ?? '',
+        countryId:             study.countryId           ?? '',
+        countryName:           '',
+        randomizationApproach: '',
       }));
 
       dispatch(setStep3({
@@ -84,11 +88,17 @@ export default function StudyEditPage() {
 
       dispatch(setStep4({
         formId:    study.formId    ?? null,
-        formTitle: study.formTitle ?? '',
+        formTitle: study.studyTitle ? `${study.studyTitle} — Data Collection Form` : '',
       }));
 
       dispatch(setStep5({
         assignments: study.assignments ?? [],
+      }));
+
+      dispatch(setStep6({
+        environment: study.currentEnvironment ?? '',
+        status:      study.status ?? 'Published',
+        description: '',
       }));
 
       setLoading(false);

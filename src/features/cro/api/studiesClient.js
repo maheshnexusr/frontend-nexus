@@ -5,8 +5,36 @@
 
 import axiosClient from '@/api/axiosClient';
 
+/* ── snake_case → camelCase (used when hydrating persisted form structure) ── */
+const toCamel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+function deepToCamel(value) {
+  if (Array.isArray(value)) return value.map(deepToCamel);
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([k, v]) => [toCamel(k), deepToCamel(v)]),
+  );
+}
+
+/* ── region_covered → { type, id } ──────────────────────────────────────────
+ * Backend stores coverage as "REGION:<id>" (EDC) or "COUNTRY:<id>" (Survey/ePRO).
+ */
+function parseCoverage(raw) {
+  if (typeof raw !== 'string' || !raw.includes(':')) return { type: '', id: '' };
+  const [type, id] = raw.split(':');
+  return { type, id };
+}
+
 /* ── Response normalizer ─────────────────────────────────────────────────── */
 function normalize(raw) {
+  const scope = [];
+  if (raw.scope_edc    ?? raw.scopeEdc)    scope.push('EDC');
+  if (raw.scope_survey ?? raw.scopeSurvey) scope.push('Survey');
+  if (raw.scope_epro   ?? raw.scopeEpro)   scope.push('ePRO');
+
+  const coverage = parseCoverage(raw.region_covered ?? raw.regionCovered ?? '');
+
+  const cfg = raw.configuration ?? {};
+
   return {
     id:                  raw.study_id           ?? raw.id,
     studyId:             raw.protocol_number    ?? raw.protocolNumber ?? raw.studyId ?? '',
@@ -14,9 +42,10 @@ function normalize(raw) {
     studyTitle:          raw.study_title        ?? raw.studyTitle ?? '',
     studyPhaseId:        raw.study_phase_id     ?? raw.studyPhaseId ?? '',
     studyPhaseName:      raw.phase_name         ?? raw.studyPhaseName ?? '',
-    scopeEdc:            raw.scope_edc          ?? false,
-    scopeSurvey:         raw.scope_survey       ?? false,
-    scopeEpro:           raw.scope_epro         ?? false,
+    scope,
+    scopeEdc:            Boolean(raw.scope_edc    ?? raw.scopeEdc),
+    scopeSurvey:         Boolean(raw.scope_survey ?? raw.scopeSurvey),
+    scopeEpro:           Boolean(raw.scope_epro   ?? raw.scopeEpro),
     therapeuticArea:     raw.therapeutic_area   ?? raw.therapeuticArea ?? '',
     studyDescription:    raw.study_description  ?? raw.studyDescription ?? '',
     sponsorId:           raw.sponsor_id         ?? raw.sponsorId ?? '',
@@ -26,19 +55,64 @@ function normalize(raw) {
     maxSites:            raw.max_sites          ?? raw.maxSites ?? null,
     maxEnrollments:      raw.max_enrollments    ?? raw.maxEnrollments ?? null,
     regionCovered:       raw.region_covered     ?? raw.regionCovered ?? '',
+    coverageType:        coverage.type,
+    coverageId:          coverage.id,
+    regionId:            coverage.type === 'REGION'  ? coverage.id : '',
+    countryId:           coverage.type === 'COUNTRY' ? coverage.id : '',
     randomizationMethod: raw.randomization_method ?? raw.randomizationMethod ?? '',
     status:              raw.status             ?? 'Draft',
     lastCompletedStep:   raw.last_completed_step ?? raw.lastCompletedStep ?? 0,
     currentEnvironment:  raw.current_environment ?? raw.currentEnvironment ?? '',
     tenantDbName:        raw.tenant_db_name     ?? raw.tenantDbName ?? '',
+    // Flat module toggles from configuration sub-object
+    consentManager:      Boolean(cfg.enable_consent_manager ?? cfg.enableConsentManager),
+    queryManager:        Boolean(cfg.enable_query_manager   ?? cfg.enableQueryManager),
+    dataManager:         Boolean(cfg.enable_data_manager    ?? cfg.enableDataManager),
+    navigationBar:       Boolean(cfg.enable_navigation_bar  ?? cfg.enableNavigationBar),
     configuration:       raw.configuration      ?? null,
-    formDefinition:      raw.form_definition    ?? null,
+    formId:              raw.form_definition?.form_id ?? raw.formDefinition?.formId ?? null,
+    formDefinition:      normalizeFormDefinition(raw.form_definition ?? raw.formDefinition),
     triggers:            raw.triggers           ?? [],
-    teamAssignments:     raw.team_assignments   ?? [],
+    teamAssignments:     raw.team_assignments   ?? raw.teamAssignments ?? [],
+    assignments:         normalizeAssignments(raw.team_assignments ?? raw.teamAssignments),
     versions:            (raw.versions ?? []).map(normalizeVersion),
     createdAt:           raw.created_at         ?? raw.createdAt,
-    updatedAt:           raw.updated_at         ?? raw.updatedAt,
+    updatedAt:           raw.updated_at         ?? raw.updatedAt, 
   };
+}
+
+/**
+ * Reshape the persisted form_definition payload for the study form slice.
+ * Backend shape: { form_id, form_structure: { blocks, submission_controls }, version, ... }
+ * Slice expects:  { blocks, submissionControls, triggers, comments }
+ * Nested field keys (help_text, default_value, min_length, etc.) are also
+ * deep-converted to camelCase to round-trip cleanly with the snake-case
+ * request interceptor on save.
+ */
+function normalizeFormDefinition(raw) {
+  if (!raw) return null;
+  const struct = raw.form_structure ?? raw.formStructure ?? {};
+  const blocks             = deepToCamel(struct.blocks ?? []);
+  const submissionControls = deepToCamel(struct.submission_controls ?? struct.submissionControls ?? {});
+  return {
+    blocks,
+    submissionControls,
+    triggers: deepToCamel(struct.triggers ?? raw.triggers ?? []),
+    comments: deepToCamel(struct.comments ?? raw.comments ?? []),
+  };
+}
+
+function normalizeAssignments(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map((a) => ({
+    id:           a.assignmentId ?? a.assignment_id ?? a.id,
+    memberId:     a.teamMemberId ?? a.team_member_id ?? a.memberId ?? '',
+    memberName:   a.fullName     ?? a.full_name     ?? a.memberName ?? '',
+    memberEmail:  a.emailAddress ?? a.email_address ?? a.memberEmail ?? '',
+    croRole:      a.croRole      ?? a.cro_role      ?? a.roleName ?? '',
+    studyRole:    a.studyRole    ?? a.study_role    ?? '',
+    assignedDate: a.assignedDate ?? a.assigned_date ?? a.createdAt ?? a.created_at ?? '',
+  }));
 }
 
 function normalizeVersion(v) {
@@ -79,47 +153,99 @@ export const studiesClient = {
     return axiosClient.delete(`/api/v1/studies/${id}`);
   },
 
-  // Step 1 create
+  // ── Step 1: Create study (POST) ──────────────────────────────────────────
   async create(data) {
     const res = await axiosClient.post('/api/v1/studies/step-1', {
-      protocol_number:    data.protocolNumber ?? data.studyId,
-      study_title:        data.studyTitle,
-      study_phase_id:     data.studyPhaseId,
-      sponsor_id:         data.sponsorId,
-      scopes:             data.scopes ?? [],
-      therapeutic_area:   data.therapeuticArea  || undefined,
-      study_description:  data.studyDescription || undefined,
-    });
-    return normalize(res?.item ?? res);
-  },
-
-  // Generic step update
-  async saveStep(id, step, data) {
-    const res = await axiosClient.put(`/api/v1/studies/${id}/step-${step}`, data);
-    return normalize(res?.item ?? res);
-  },
-
-  // Convenience aliases kept for wizard steps
-  async update(id, data) {
-    return studiesClient.saveStep(id, 1, {
-      protocol_number:   data.protocolNumber ?? data.studyId,
+      protocol_number:   data.studyId          ?? data.protocolNumber,
       study_title:       data.studyTitle,
       study_phase_id:    data.studyPhaseId,
       sponsor_id:        data.sponsorId,
-      scopes:            data.scopes ?? [],
+      scopes:            data.scope            ?? data.scopes ?? [],
       therapeutic_area:  data.therapeuticArea  || undefined,
       study_description: data.studyDescription || undefined,
     });
+    return normalize(res?.item ?? res);
   },
 
-  // Publish
+  // ── Step 1: Update basic info (PUT) ──────────────────────────────────────
+  async update(id, data) {
+    const res = await axiosClient.put(`/api/v1/studies/${id}/step-1`, {
+      protocol_number:   data.studyId          ?? data.protocolNumber,
+      study_title:       data.studyTitle,
+      study_phase_id:    data.studyPhaseId,
+      sponsor_id:        data.sponsorId,
+      scopes:            data.scope            ?? data.scopes ?? [],
+      therapeutic_area:  data.therapeuticArea  || undefined,
+      study_description: data.studyDescription || undefined,
+    });
+    return normalize(res?.item ?? res);
+  },
+
+  // ── Step 2: Timeline & Coverage ───────────────────────────────────────────
+  async step2(id, data) {
+    // coverage_type: 'REGION' for EDC, 'COUNTRY' for Survey/ePRO
+    const res = await axiosClient.put(`/api/v1/studies/${id}/step-2`, {
+      start_date:        data.startDate,
+      expected_end_date: data.expectedEndDate,
+      max_enrollments:   Number(data.maxEnrollments),
+      coverage_type:     data.coverageType,          // 'COUNTRY' | 'REGION'
+      coverage_id:       data.coverageId,
+      max_sites:         data.maxSites ? Number(data.maxSites) : undefined,
+    });
+    return normalize(res?.item ?? res);
+  },
+
+  // ── Step 3: Module toggles ────────────────────────────────────────────────
+  async step3(id, data) {
+    const res = await axiosClient.put(`/api/v1/studies/${id}/step-3`, {
+      enable_consent_manager: Boolean(data.consentManager),
+      enable_query_manager:   Boolean(data.queryManager),
+      enable_data_manager:    Boolean(data.dataManager),
+      enable_navigation_bar:  Boolean(data.navigationBar),
+    });
+    return normalize(res?.item ?? res);
+  },
+
+  // ── Step 4: Form structure + triggers ────────────────────────────────────
+  async step4(id, data) {
+    const res = await axiosClient.put(`/api/v1/studies/${id}/step-4`, {
+      form_structure: data.formStructure ?? data.formDefinition ?? null,
+      version:        data.version       ?? 1,
+      triggers: (data.triggers ?? []).map((t) => ({
+        trigger_condition:  t.triggerCondition,
+        trigger_action:     t.triggerAction,      // 'Email' | 'Notification' | 'Both'
+        trigger_recipients: t.triggerRecipients   ?? [],
+        email_template_id:  t.emailTemplateId     ?? null,
+        is_active:          t.isActive            ?? true,
+      })),
+    });
+    return normalize(res?.item ?? res);
+  },
+
+  // ── Step 5: Team assignments ──────────────────────────────────────────────
+  async step5(id, data) {
+    const res = await axiosClient.put(`/api/v1/studies/${id}/step-5`, {
+      assignments: (data.assignments ?? []).map((a) => ({
+        team_member_id: a.memberId,
+        study_role:     a.studyRole,
+      })),
+    });
+    return normalize(res?.item ?? res);
+  },
+
+  // ── Publish ───────────────────────────────────────────────────────────────
   async publish(studyId, publishConfig) {
     const res = await axiosClient.post(`/api/v1/studies/${studyId}/publish`, {
       environment: publishConfig.environment,
-      status:      publishConfig.status      || undefined,
-      description: publishConfig.description || undefined,
+      status:      publishConfig.status || undefined,
     });
     return res?.item ?? res;
+  },
+
+  // ── Invitations ───────────────────────────────────────────────────────────
+  async sendInvitations(studyId, payload) {
+    // payload: { version_id, environment, recipients: [{ email, recipient_type }] }
+    return axiosClient.post(`/api/v1/studies/${studyId}/invitations`, payload);
   },
 
   // Releases
@@ -136,11 +262,6 @@ export const studiesClient = {
 
   async updateReleaseStatus(releaseId, status) {
     return axiosClient.patch(`/api/v1/studies/releases/${releaseId}`, { status });
-  },
-
-  // Invitations
-  async sendInvitation(studyId, payload) {
-    return axiosClient.post(`/api/v1/studies/${studyId}/invitations`, payload);
   },
 
   // Validation stub — backend enforces uniqueness

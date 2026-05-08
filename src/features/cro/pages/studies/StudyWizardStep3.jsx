@@ -12,6 +12,7 @@
 import { useState }              from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { addToast }              from '@/app/notificationSlice';
+import { studiesClient }         from '@/features/cro/api/studiesClient';
 import { setStep3, selectStep1, selectStep3 } from '@/features/cro/store/studyWizardSlice';
 import styles from './StudyWizardStep3.module.css';
 
@@ -64,13 +65,23 @@ export default function StudyWizardStep3({ onCancel, onNext }) {
     c.scopes.some((s) => scope.includes(s)),
   );
 
+  const [saving, setSaving] = useState(false);
+
   const toggle = (key) =>
     setForm((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  const handleSave = () => {
+  const handleSave = async () => {
     dispatch(setStep3({ ...form }));
-    dispatch(addToast({ type: 'success', message: 'Study configuration saved.', duration: 3000 }));
-    onNext?.();
+    setSaving(true);
+    try {
+      await studiesClient.step3(step1.studyDbId, form);
+      dispatch(addToast({ type: 'success', message: 'Study configuration saved.', duration: 3000 }));
+      onNext?.();
+    } catch {
+      dispatch(addToast({ type: 'error', message: 'Failed to save configuration. Please try again.', duration: 4000 }));
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Guard: scope not selected yet
@@ -128,8 +139,8 @@ export default function StudyWizardStep3({ onCancel, onNext }) {
         <button type="button" className={styles.btnCancel} onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" className={styles.btnSave} onClick={handleSave}>
-          Save
+        <button type="button" className={styles.btnSave} onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
     </div>

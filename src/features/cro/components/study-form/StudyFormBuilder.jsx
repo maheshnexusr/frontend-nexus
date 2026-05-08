@@ -8,11 +8,12 @@ import { useDispatch, useSelector } from 'react-redux';
 import { Settings2, Zap, Users, ArrowLeft, ArrowRight, Save, LayoutTemplate, Eye } from 'lucide-react';
 import {
   initForm, setActivePanel,
-  selectActivePanel, selectBlocks, selectIsDirty, selectFormMeta, markSaved,
+  selectActivePanel, selectBlocks, selectIsDirty, markSaved,
+  selectTriggers, selectSubmissionCtrl,
 } from '@/features/cro/store/studyFormSlice';
-import { setStep4 }                 from '@/features/cro/store/studyWizardSlice';
+import { selectStep1 }              from '@/features/cro/store/studyWizardSlice';
+import { studiesClient }            from '@/features/cro/api/studiesClient';
 import { addToast }                 from '@/app/notificationSlice';
-import apiClient                    from '@/api/axiosClient';
 import SFBLeft                      from './SFBLeft';
 import SFBCanvas                    from './SFBCanvas';
 import SFBRight                     from './SFBRight';
@@ -26,58 +27,64 @@ export default function StudyFormBuilder({ formId, formTitle, onPrevious, onNext
   const [previewing, setPreviewing] = useState(false);
   const blocks       = useSelector(selectBlocks);
   const isDirty      = useSelector(selectIsDirty);
-  const meta         = useSelector(selectFormMeta);
+  const triggers     = useSelector(selectTriggers);
+  const submissionControls = useSelector(selectSubmissionCtrl);
+  const step1        = useSelector(selectStep1);
 
-  // ── Load form data from backend ───────────────────────────────────────────
+  // ── Load form data from the study record ─────────────────────────────────
   useEffect(() => {
-    if (!formId) {
+    if (!step1.studyDbId) {
       dispatch(initForm({ formId: null, formTitle: formTitle ?? '', data: null }));
       return;
     }
-    apiClient.get(`/studies/forms/${formId}`)
-      .then((form) => {
+    studiesClient.getById(step1.studyDbId)
+      .then((study) => {
         dispatch(initForm({
-          formId,
-          formTitle: form?.title ?? formTitle ?? '',
-          data: form?.studyFormData ?? null,
+          formId: study.formId ?? null,
+          formTitle: formTitle ?? '',
+          data: study.formDefinition ?? null,
         }));
       })
       .catch(() => {
-        // form not yet saved — start fresh
         dispatch(initForm({ formId: null, formTitle: formTitle ?? '', data: null }));
       });
-  }, [formId]);
+  }, [step1.studyDbId]);
 
-  // ── Save ─────────────────────────────────────────────────────────────────
-  const save = async (silent = false) => {
+  // ── Save (hits PUT /api/v1/studies/{id}/step-4) ──────────────────────────
+  const persistStep4 = async () => {
+    if (!step1.studyDbId) {
+      throw new Error('Study record not found. Please complete Step 1 first.');
+    }
+    await studiesClient.step4(step1.studyDbId, {
+      formStructure: { blocks, submissionControls },
+      version: 1,
+      triggers: triggers.map((t) => ({
+        triggerCondition:  t.conditions ?? null,
+        triggerAction:     t.type === 'email' ? 'Email' : 'Notification',
+        triggerRecipients: t.recipients ?? [],
+        emailTemplateId:   t.emailTemplateId || null,
+        isActive:          t.isActive ?? true,
+      })),
+    });
+    dispatch(markSaved());
+  };
+
+  const handleSave = async () => {
     try {
-      const payload = {
-        title: meta.formTitle || formTitle || 'Study Data Collection Form',
-        studyFormData: { blocks },
-        status: 'draft',
-      };
-
-      if (formId) {
-        await apiClient.put(`/studies/forms/${formId}`, payload);
-      } else {
-        const newForm = await apiClient.post('/studies/forms', payload);
-        dispatch(setStep4({ formId: newForm.id, formTitle: newForm.title }));
-      }
-
-      dispatch(markSaved());
-      if (!silent) {
-        dispatch(addToast({ type: 'success', message: 'Study design saved successfully.', duration: 3000 }));
-      }
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to save. Please try again.', duration: 4000 }));
+      await persistStep4();
+      dispatch(addToast({ type: 'success', message: 'Study design saved successfully.', duration: 3000 }));
+    } catch (err) {
+      dispatch(addToast({ type: 'error', message: err.message || 'Failed to save. Please try again.', duration: 4000 }));
     }
   };
 
-  const handleSave = () => save(false);
-
   const handleNext = async () => {
-    await save(true);
-    onNext?.();
+    try {
+      await persistStep4();
+      onNext?.();
+    } catch (err) {
+      dispatch(addToast({ type: 'error', message: err.message || 'Failed to save Study Design. Please try again.', duration: 4000 }));
+    }
   };
 
   const TOOLBAR_TABS = [
