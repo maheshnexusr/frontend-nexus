@@ -10,10 +10,11 @@
  *     Survey → item 2 = "Take Survey"            (Site Management hidden)
  *
  *   study.config  — Step-3 module toggles from the study wizard
- *     consentEnabled:     gates the Consent Management section entirely
- *     queryEnabled:       gates Quality Management → Query Manager
- *     dataManagerEnabled: gates Quality Management → Data Verification Manager
- *     navBarEnabled:      reserved (not yet wired to a nav item)
+ *     consentManager      (legacy: consentEnabled)     → Consent Management section
+ *     queryManager        (legacy: queryEnabled)       → Quality Management → Query Manager
+ *     dataManager         (legacy: dataManagerEnabled) → Data Capture menu (EDC scope)
+ *     verificationManager                              → Quality Management → Data Verification Manager
+ *     navigationBar       (legacy: navBarEnabled)      → reserved (not yet wired to a nav item)
  *
  * A section with no remaining children after filtering is dropped entirely.
  *
@@ -50,6 +51,7 @@ import {
 import Sidebar              from '@/components/layout/Sidebar';
 import WorkspaceHeader      from './WorkspaceHeader';
 import ReadOnlySponsorBanner from '@/features/workspace/components/ReadOnlySponsorBanner';
+import { resolveStudyConfig } from '@/features/cro/utils/studyConfigGating';
 import styles               from './SponsorLayout.module.css';
 
 const clx = (...a) => a.filter(Boolean).join(' ');
@@ -75,26 +77,23 @@ export default function SponsorLayout() {
 
   const base   = `/sponsor/${studyId}`;
   const scope  = (study?.scope ?? 'EDC').toUpperCase(); // 'EDC' | 'EPRO' | 'SURVEY'
-  // Fallback to all-enabled so missing config doesn't hide every section.
-  const cfg    = study?.config ?? {
-    consentEnabled:     true,
-    queryEnabled:       true,
-    dataManagerEnabled: true,
-    navBarEnabled:      true,
-  };
+  // resolveStudyConfig handles both new (consentManager…) and legacy
+  // (consentEnabled…) keys, defaulting missing flags to enabled.
+  const cfg    = resolveStudyConfig(study?.config);
 
-  /* ── Item 2 varies by study scope ─────────────────────────────────────── */
-  const captureItem =
-    scope === 'EPRO'
-      ? { key: 'diary',   label: 'My Diary',    icon: Notebook,      path: `${base}/capture` }
-      : scope === 'SURVEY'
-      ? { key: 'survey',  label: 'Take Survey', icon: ClipboardList, path: `${base}/capture` }
-      : { key: 'capture', label: 'Data Capture', icon: Database,     path: `${base}/capture` };
+  /* ── Item 2 varies by study scope; gated by the dataManager toggle ────── */
+  const captureItem = cfg.dataManager
+    ? (scope === 'EPRO'
+        ? { key: 'diary',   label: 'My Diary',    icon: Notebook,      path: `${base}/capture` }
+        : scope === 'SURVEY'
+        ? { key: 'survey',  label: 'Take Survey', icon: ClipboardList, path: `${base}/capture` }
+        : { key: 'capture', label: 'Data Capture', icon: Database,     path: `${base}/capture` })
+    : null;
 
   /* ── Primary nav (unfiltered) ─────────────────────────────────────────── */
   const qualityChildren = [
-    cfg.queryEnabled       && { key: 'queries',      label: 'Query Manager',             path: `${base}/queries`      },
-    cfg.dataManagerEnabled && { key: 'verification', label: 'Data Verification Manager', path: `${base}/verification` },
+    cfg.queryManager        && { key: 'queries',      label: 'Query Manager',             path: `${base}/queries`      },
+    cfg.verificationManager && { key: 'verification', label: 'Data Verification Manager', path: `${base}/verification` },
   ].filter(Boolean);
 
   const rawNav = [
@@ -108,8 +107,8 @@ export default function SponsorLayout() {
     /* 2 — scope-driven */
     captureItem,
 
-    /* 3 — Consent Management (gated by config.consentEnabled) */
-    cfg.consentEnabled && {
+    /* 3 — Consent Management (gated by config.consentManager) */
+    cfg.consentManager && {
       key:   'consent',
       label: 'Consent Management',
       icon:  FileCheck,

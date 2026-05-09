@@ -13,7 +13,7 @@ function deepToCamel(value) {
   return Object.fromEntries(
     Object.entries(value).map(([k, v]) => [toCamel(k), deepToCamel(v)]),
   );
-}
+} 
 
 /* ── region_covered → { type, id } ──────────────────────────────────────────
  * Backend stores coverage as "REGION:<id>" (EDC) or "COUNTRY:<id>" (Survey/ePRO).
@@ -26,10 +26,11 @@ function parseCoverage(raw) {
 
 /* ── Response normalizer ─────────────────────────────────────────────────── */
 function normalize(raw) {
-  const scope = [];
-  if (raw.scope_edc    ?? raw.scopeEdc)    scope.push('EDC');
-  if (raw.scope_survey ?? raw.scopeSurvey) scope.push('Survey');
-  if (raw.scope_epro   ?? raw.scopeEpro)   scope.push('ePRO');
+  // Single-select scope: pick the first true flag (EDC > Survey > ePRO).
+  let scope = '';
+  if (raw.scope_edc    ?? raw.scopeEdc)    scope = 'EDC';
+  else if (raw.scope_survey ?? raw.scopeSurvey) scope = 'Survey';
+  else if (raw.scope_epro   ?? raw.scopeEpro)   scope = 'ePRO';
 
   const coverage = parseCoverage(raw.region_covered ?? raw.regionCovered ?? '');
 
@@ -65,10 +66,11 @@ function normalize(raw) {
     currentEnvironment:  raw.current_environment ?? raw.currentEnvironment ?? '',
     tenantDbName:        raw.tenant_db_name     ?? raw.tenantDbName ?? '',
     // Flat module toggles from configuration sub-object
-    consentManager:      Boolean(cfg.enable_consent_manager ?? cfg.enableConsentManager),
-    queryManager:        Boolean(cfg.enable_query_manager   ?? cfg.enableQueryManager),
-    dataManager:         Boolean(cfg.enable_data_manager    ?? cfg.enableDataManager),
-    navigationBar:       Boolean(cfg.enable_navigation_bar  ?? cfg.enableNavigationBar),
+    consentManager:      Boolean(cfg.enable_consent_manager      ?? cfg.enableConsentManager),
+    queryManager:        Boolean(cfg.enable_query_manager        ?? cfg.enableQueryManager),
+    dataManager:         Boolean(cfg.enable_data_manager         ?? cfg.enableDataManager),
+    verificationManager: Boolean(cfg.enable_verification_manager ?? cfg.enableVerificationManager),
+    navigationBar:       Boolean(cfg.enable_navigation_bar       ?? cfg.enableNavigationBar),
     configuration:       raw.configuration      ?? null,
     formId:              raw.form_definition?.form_id ?? raw.formDefinition?.formId ?? null,
     formDefinition:      normalizeFormDefinition(raw.form_definition ?? raw.formDefinition),
@@ -137,6 +139,14 @@ function extractList(res) {
   return arr.map(normalize);
 }
 
+/* Coerce single-string scope to the array shape the backend expects. */
+function toScopes(data) {
+  if (Array.isArray(data.scopes)) return data.scopes;
+  if (Array.isArray(data.scope))  return data.scope;
+  if (data.scope) return [data.scope];
+  return [];
+}
+
 /* ── Client ──────────────────────────────────────────────────────────────── */
 export const studiesClient = {
   async list() {
@@ -160,7 +170,7 @@ export const studiesClient = {
       study_title:       data.studyTitle,
       study_phase_id:    data.studyPhaseId,
       sponsor_id:        data.sponsorId,
-      scopes:            data.scope            ?? data.scopes ?? [],
+      scopes:            toScopes(data),
       therapeutic_area:  data.therapeuticArea  || undefined,
       study_description: data.studyDescription || undefined,
     });
@@ -174,7 +184,7 @@ export const studiesClient = {
       study_title:       data.studyTitle,
       study_phase_id:    data.studyPhaseId,
       sponsor_id:        data.sponsorId,
-      scopes:            data.scope            ?? data.scopes ?? [],
+      scopes:            toScopes(data),
       therapeutic_area:  data.therapeuticArea  || undefined,
       study_description: data.studyDescription || undefined,
     });
@@ -198,10 +208,11 @@ export const studiesClient = {
   // ── Step 3: Module toggles ────────────────────────────────────────────────
   async step3(id, data) {
     const res = await axiosClient.put(`/api/v1/studies/${id}/step-3`, {
-      enable_consent_manager: Boolean(data.consentManager),
-      enable_query_manager:   Boolean(data.queryManager),
-      enable_data_manager:    Boolean(data.dataManager),
-      enable_navigation_bar:  Boolean(data.navigationBar),
+      enable_consent_manager:      Boolean(data.consentManager),
+      enable_query_manager:        Boolean(data.queryManager),
+      enable_data_manager:         Boolean(data.dataManager),
+      enable_verification_manager: Boolean(data.verificationManager),
+      enable_navigation_bar:       Boolean(data.navigationBar),
     });
     return normalize(res?.item ?? res);
   },

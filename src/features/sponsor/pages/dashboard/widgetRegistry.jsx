@@ -3,9 +3,16 @@ import BarWidget     from './widgets/BarWidget';
 import DonutWidget   from './widgets/DonutWidget';
 import HeatmapWidget from './widgets/HeatmapWidget';
 import AlertsWidget  from './widgets/AlertsWidget';
+import { resolveStudyConfig } from '@/features/cro/utils/studyConfigGating';
 
 const fmtPct  = (v) => (v != null ? `${Math.round(v)}%` : '—');
 const fmtDays = (v) => (v != null ? `${Number(v).toFixed(1)} days` : '—');
+
+/* Read a Step 3 toggle from a config object, normalizing across the
+   legacy (consentEnabled / queryEnabled / dataManagerEnabled / navBarEnabled)
+   and current (consentManager / queryManager / dataManager /
+   verificationManager / navigationBar) shapes. */
+const cfgFlag = (cfg, key) => resolveStudyConfig(cfg)[key] !== false;
 
 /**
  * Each widget entry:
@@ -108,7 +115,7 @@ export const WIDGETS = [
   {
     id: 'crfCompletion', title: 'CRF Completion %', category: 'EDC Analytics',
     chart: 'kpi', visibleByDefault: true,
-    requires: (_s, cfg) => cfg?.dataManagerEnabled !== false || cfg?.queryEnabled !== false,
+    requires: (_s, cfg) => cfgFlag(cfg, 'dataManager') || cfgFlag(cfg, 'queryManager'),
     render: (k, { drillDown }) => (
       <KpiCard
         label="CRF Completion %"
@@ -122,7 +129,7 @@ export const WIDGETS = [
   {
     id: 'entryTimeliness', title: 'Data Entry Timeliness', category: 'EDC Analytics',
     chart: 'kpi', visibleByDefault: false,
-    requires: (_s, cfg) => cfg?.dataManagerEnabled !== false || cfg?.queryEnabled !== false,
+    requires: (_s, cfg) => cfgFlag(cfg, 'dataManager') || cfgFlag(cfg, 'queryManager'),
     render: (k, { drillDown }) => (
       <KpiCard
         label="Data Entry Timeliness"
@@ -138,7 +145,7 @@ export const WIDGETS = [
   {
     id: 'openQueries', title: 'Total Open Queries', category: 'Query Analytics',
     chart: 'kpi', visibleByDefault: true,
-    requires: (_s, cfg) => cfg?.queryEnabled !== false,
+    requires: (_s, cfg) => cfgFlag(cfg, 'queryManager'),
     render: (k, { drillDown }) => (
       <KpiCard
         label="Total Open Queries"
@@ -152,7 +159,7 @@ export const WIDGETS = [
   {
     id: 'escalationRate', title: 'Query Escalation Rate', category: 'Query Analytics',
     chart: 'kpi', visibleByDefault: false,
-    requires: (_s, cfg) => cfg?.queryEnabled !== false,
+    requires: (_s, cfg) => cfgFlag(cfg, 'queryManager'),
     render: (k) => (
       <KpiCard label="Query Escalation Rate" value={fmtPct(k.escalationRate)} accent="#d97706" />
     ),
@@ -161,7 +168,7 @@ export const WIDGETS = [
   {
     id: 'avgResolutionDays', title: 'Avg Resolution Time', category: 'Query Analytics',
     chart: 'kpi', visibleByDefault: false,
-    requires: (_s, cfg) => cfg?.queryEnabled !== false,
+    requires: (_s, cfg) => cfgFlag(cfg, 'queryManager'),
     render: (k) => (
       <KpiCard label="Avg Resolution Time" value={fmtDays(k.avgResolutionDays)} accent="#2563eb" />
     ),
@@ -170,7 +177,7 @@ export const WIDGETS = [
   {
     id: 'queryStatusDist', title: 'Query Status Distribution', category: 'Query Analytics',
     chart: 'donut', visibleByDefault: true,
-    requires: (_s, cfg) => cfg?.queryEnabled !== false,
+    requires: (_s, cfg) => cfgFlag(cfg, 'queryManager'),
     render: (k, { drillDown }) => (
       <DonutWidget
         title="Query Status Distribution"
@@ -189,7 +196,7 @@ export const WIDGETS = [
   {
     id: 'consentApprovalRate', title: 'Consent Approval Rate', category: 'Consent Analytics',
     chart: 'kpi', visibleByDefault: false,
-    requires: (_s, cfg) => cfg?.consentEnabled !== false,
+    requires: (_s, cfg) => cfgFlag(cfg, 'consentManager'),
     render: (k, { drillDown }) => (
       <KpiCard
         label="Consent Approval Rate"
@@ -203,7 +210,7 @@ export const WIDGETS = [
   {
     id: 'consentRejectionRate', title: 'Consent Rejection Rate', category: 'Consent Analytics',
     chart: 'kpi', visibleByDefault: false,
-    requires: (_s, cfg) => cfg?.consentEnabled !== false,
+    requires: (_s, cfg) => cfgFlag(cfg, 'consentManager'),
     render: (k, { drillDown }) => (
       <KpiCard
         label="Consent Rejection Rate"
@@ -219,7 +226,7 @@ export const WIDGETS = [
   {
     id: 'dataCompleteness', title: 'Data Completeness %', category: 'Data Verification',
     chart: 'kpi', visibleByDefault: false,
-    requires: (_s, cfg) => cfg?.dataManagerEnabled !== false,
+    requires: (_s, cfg) => cfgFlag(cfg, 'verificationManager'),
     render: (k) => (
       <KpiCard label="Data Completeness %" value={fmtPct(k.dataCompleteness)} accent="#059669" />
     ),
@@ -228,7 +235,7 @@ export const WIDGETS = [
   {
     id: 'pendingVerifications', title: 'Pending Verifications', category: 'Data Verification',
     chart: 'kpi', visibleByDefault: false,
-    requires: (_s, cfg) => cfg?.dataManagerEnabled !== false,
+    requires: (_s, cfg) => cfgFlag(cfg, 'verificationManager'),
     render: (k, { drillDown }) => (
       <KpiCard
         label="Pending Verifications"
@@ -242,7 +249,7 @@ export const WIDGETS = [
   {
     id: 'verificationRejectionRate', title: 'Verification Rejection %', category: 'Data Verification',
     chart: 'kpi', visibleByDefault: false,
-    requires: (_s, cfg) => cfg?.dataManagerEnabled !== false,
+    requires: (_s, cfg) => cfgFlag(cfg, 'verificationManager'),
     render: (k) => (
       <KpiCard label="Verification Rejection %" value={fmtPct(k.verificationRejectionRate)} accent="#dc2626" />
     ),

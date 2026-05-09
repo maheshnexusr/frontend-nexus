@@ -12,20 +12,34 @@ const STEP1_INIT = {
   studyTitle:       '',
   studyPhaseId:     '',
   studyPhaseName:   '',
-  scope:            [],   // e.g. ['EDC', 'Survey']
+  scope:            '',   // single-select: 'EDC' | 'Survey' | 'ePRO'
   therapeuticArea:  '',
   studyDescription: '',
   sponsorId:        '',
   sponsorName:      '',   // organizationName for display
 };
 
-// Placeholder shapes — filled out as each step requirement arrives
-const STEP2_INIT = {};
+const STEP2_INIT = {
+  startDate:             '',
+  expectedEndDate:       '',
+  maxSites:              '',
+  maxEnrollments:        '',
+  regionId:              '',
+  regionName:            '',
+  randomizationMethod:   '',
+  countryId:             '',
+  countryName:           '',
+  randomizationApproach: '',
+  contractCurrency:      'INR',
+  contractValue:         '',
+  milestones:            [],   // [{ id, name, startDate, endDate }]
+};
 const STEP3_INIT = {
-  consentManager: false,
-  queryManager:   false,
-  dataManager:    false,   // EDC only
-  navigationBar:  false,
+  consentManager:      false,
+  queryManager:        false,
+  dataManager:         false,   // EDC only
+  verificationManager: false,
+  navigationBar:       false,
 };
 const STEP4_INIT = {
   formId:    null,

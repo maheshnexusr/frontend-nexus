@@ -5,10 +5,10 @@
  * Detects edit mode from useParams().memberId.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { ArrowLeft, BookOpen } from 'lucide-react';
+import { ArrowLeft, BookOpen, ChevronDown, ChevronRight, Building2 } from 'lucide-react';
 import { teamMembersClient } from '@/features/cro/api/teamMembersClient';
 import { rolesClient }       from '@/features/cro/api/rolesClient';
 import { studiesClient }     from '@/features/cro/api/studiesClient';
@@ -16,6 +16,8 @@ import { addToast }          from '@/app/notificationSlice';
 import FormField             from '@/components/form/FormField';
 import SearchableDropdown    from '@/components/form/SearchableDropdown';
 import ImageUpload           from '@/components/form/ImageUpload';
+import SponsorPermissionsMatrix from '@/features/cro/components/team-members/SponsorPermissionsMatrix';
+import { buildEmptyPermissions } from '@/features/sponsor/components/roles/permissionsTree';
 import styles from './TeamMemberNewPage.module.css';
 
 const PHONE_RE = /^[+]?[\d\s\-().]{7,20}$/;
@@ -27,7 +29,8 @@ const EMPTY = {
   roleId:          '',
   roleName:        '',
   contactNumber:   '',
-  assignedStudies: [],   // [{ studyId, studyTitle }]
+  // [{ studyId, studyTitle, sponsorId, sponsorName, sponsorPermissions }]
+  assignedStudies: [],
 };
 
 export default function TeamMemberNewPage() {
@@ -58,9 +61,20 @@ export default function TeamMemberNewPage() {
         all
           .sort((a, b) => (a.studyId ?? '').localeCompare(b.studyId ?? ''))
           .map((s) => ({
-            id:         s.id,
-            studyId:    s.studyId,
-            studyTitle: s.studyTitle ?? '',
+            id:          s.id,
+            studyId:     s.studyId,
+            studyTitle:  s.studyTitle ?? '',
+            sponsorId:   s.sponsorId ?? '',
+            sponsorName: s.sponsorName ?? 'Unassigned Sponsor',
+            // Step 3 toggles — drive which modules show up in the per-study
+            // sponsor permissions matrix.
+            config: {
+              consentManager:      s.consentManager,
+              queryManager:        s.queryManager,
+              dataManager:         s.dataManager,
+              verificationManager: s.verificationManager,
+              navigationBar:       s.navigationBar,
+            },
           })),
       ),
     );
@@ -94,10 +108,48 @@ export default function TeamMemberNewPage() {
         ...prev,
         assignedStudies: already
           ? prev.assignedStudies.filter((s) => s.studyId !== study.studyId)
-          : [...prev.assignedStudies, { studyId: study.studyId, studyTitle: study.studyTitle }],
+          : [
+              ...prev.assignedStudies,
+              {
+                studyId:            study.studyId,
+                studyTitle:         study.studyTitle,
+                sponsorId:          study.sponsorId,
+                sponsorName:        study.sponsorName,
+                sponsorPermissions: buildEmptyPermissions(),
+              },
+            ],
       };
     });
   };
+
+  const setStudyPermissions = (studyId, nextPerms) => {
+    setForm((prev) => ({
+      ...prev,
+      assignedStudies: prev.assignedStudies.map((s) =>
+        s.studyId === studyId ? { ...s, sponsorPermissions: nextPerms } : s,
+      ),
+    }));
+  };
+
+  // Group studies by sponsor for display
+  const studiesBySponsor = useMemo(() => {
+    const map = new Map();
+    for (const s of studyOptions) {
+      const key = s.sponsorId || '__unassigned__';
+      if (!map.has(key)) map.set(key, { sponsorId: s.sponsorId, sponsorName: s.sponsorName, studies: [] });
+      map.get(key).studies.push(s);
+    }
+    return Array.from(map.values()).sort((a, b) => a.sponsorName.localeCompare(b.sponsorName));
+  }, [studyOptions]);
+
+  const [openSponsorGroups, setOpenSponsorGroups] = useState({});
+  const [openStudyPerms,    setOpenStudyPerms]    = useState({});
+
+  const toggleSponsorGroup = (key) =>
+    setOpenSponsorGroups((p) => ({ ...p, [key]: p[key] === undefined ? false : !p[key] }));
+
+  const toggleStudyPerms = (studyId) =>
+    setOpenStudyPerms((p) => ({ ...p, [studyId]: !p[studyId] }));
 
   // ── validation + submit ───────────────────────────────────────────────────
   const handleSubmit = async () => {
@@ -263,9 +315,10 @@ export default function TeamMemberNewPage() {
       <div className={styles.card}>
         <div className={styles.studyCardHeader}>
           <div>
-            <h2 className={styles.cardHeading}>Study Assignment</h2>
+            <h2 className={styles.cardHeading}>Study Assignment & Sponsor Permissions</h2>
             <p className={styles.cardSub}>
-              Select one or more studies to assign to this team member.
+              Select studies and grant sponsor-workspace permissions for each one.
+              CRO menu access is controlled by the role above.
             </p>
           </div>
           {form.assignedStudies.length > 0 && (
@@ -281,30 +334,87 @@ export default function TeamMemberNewPage() {
             <p>No studies available yet.</p>
           </div>
         ) : (
-          <div className={styles.studyList}>
-            {studyOptions.map((study) => {
-              const checked = form.assignedStudies.some((s) => s.studyId === study.studyId);
+          <div className={styles.sponsorGroupList}>
+            {studiesBySponsor.map((group) => {
+              const groupKey = group.sponsorId || '__unassigned__';
+              const groupOpen = openSponsorGroups[groupKey] !== false;
+              const checkedCount = group.studies.filter((s) =>
+                form.assignedStudies.some((a) => a.studyId === s.studyId),
+              ).length;
+
               return (
-                <button
-                  key={study.studyId}
-                  type="button"
-                  className={`${styles.studyItem} ${checked ? styles.studyItemActive : ''}`}
-                  onClick={() => toggleStudy(study)}
-                >
-                  <span className={`${styles.studyCheck} ${checked ? styles.studyCheckActive : ''}`}>
-                    {checked && (
-                      <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                        <path d="M1 4l3 3 5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    )}
-                  </span>
-                  <div className={styles.studyInfo}>
-                    <span className={styles.studyId}>{study.studyId}</span>
-                    {study.studyTitle && (
-                      <span className={styles.studyTitle}>{study.studyTitle}</span>
-                    )}
-                  </div>
-                </button>
+                <div key={groupKey} className={styles.sponsorGroup}>
+                  <button
+                    type="button"
+                    className={styles.sponsorGroupHead}
+                    onClick={() => toggleSponsorGroup(groupKey)}
+                  >
+                    {groupOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    <Building2 size={14} className={styles.sponsorGroupIcon} />
+                    <span className={styles.sponsorGroupName}>{group.sponsorName}</span>
+                    <span className={styles.sponsorGroupCount}>
+                      {checkedCount > 0 ? `${checkedCount}/${group.studies.length}` : group.studies.length}
+                    </span>
+                  </button>
+
+                  {groupOpen && (
+                    <div className={styles.studyList}>
+                      {group.studies.map((study) => {
+                        const checked = form.assignedStudies.some((s) => s.studyId === study.studyId);
+                        const assigned = form.assignedStudies.find((s) => s.studyId === study.studyId);
+                        const permsOpen = !!openStudyPerms[study.studyId];
+
+                        return (
+                          <div key={study.studyId} className={styles.studyRowBlock}>
+                            <div
+                              className={`${styles.studyItem} ${checked ? styles.studyItemActive : ''}`}
+                            >
+                              <button
+                                type="button"
+                                className={styles.studyItemMain}
+                                onClick={() => toggleStudy(study)}
+                              >
+                                <span className={`${styles.studyCheck} ${checked ? styles.studyCheckActive : ''}`}>
+                                  {checked && (
+                                    <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                                      <path d="M1 4l3 3 5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                                    </svg>
+                                  )}
+                                </span>
+                                <div className={styles.studyInfo}>
+                                  <span className={styles.studyId}>{study.studyId}</span>
+                                  {study.studyTitle && (
+                                    <span className={styles.studyTitle}>{study.studyTitle}</span>
+                                  )}
+                                </div>
+                              </button>
+
+                              {checked && (
+                                <button
+                                  type="button"
+                                  className={styles.studyExpandBtn}
+                                  onClick={() => toggleStudyPerms(study.studyId)}
+                                  title={permsOpen ? 'Hide permissions' : 'Configure sponsor permissions'}
+                                >
+                                  {permsOpen ? 'Hide permissions' : 'Configure permissions'}
+                                  {permsOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                                </button>
+                              )}
+                            </div>
+
+                            {checked && permsOpen && (
+                              <SponsorPermissionsMatrix
+                                value={assigned?.sponsorPermissions}
+                                onChange={(next) => setStudyPermissions(study.studyId, next)}
+                                studyConfig={study.config}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

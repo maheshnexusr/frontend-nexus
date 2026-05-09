@@ -51,17 +51,21 @@ export default function StudyEditPage() {
 
       // Step 1 — Basic Info. studyDbId threads the study PK to every
       // subsequent PUT /step-N call in the wizard.
+      // scope is single-select; normalizer may still emit a single-element array.
+      const seededScope = Array.isArray(study.scope) ? (study.scope[0] ?? '') : (study.scope ?? '');
+
       dispatch(setStep1({
         studyDbId:        study.id                ?? null,
         studyId:          study.protocolNumber    ?? study.studyId ?? '',
         studyTitle:       study.studyTitle        ?? '',
         studyPhaseId:     study.studyPhaseId      ?? '',
         studyPhaseName:   study.studyPhaseName    ?? '',
-        scope:            study.scope             ?? [],
+        scope:            seededScope,
         therapeuticArea:  study.therapeuticArea   ?? '',
         studyDescription: study.studyDescription  ?? '',
         sponsorId:        study.sponsorId         ?? '',
         sponsorName:      study.sponsorName       ?? '',
+        sponsorFullName:  study.sponsorFullName   ?? '',
       }));
 
       // Step 2 — Timeline & Coverage. Region/Country name will hydrate once
@@ -77,13 +81,17 @@ export default function StudyEditPage() {
         countryId:             study.countryId           ?? '',
         countryName:           '',
         randomizationApproach: '',
+        contractCurrency:      study.contractCurrency    ?? 'INR',
+        contractValue:         study.contractValue       ?? '',
+        milestones:            Array.isArray(study.milestones) ? study.milestones : [],
       }));
 
       dispatch(setStep3({
-        consentManager: study.consentManager ?? false,
-        queryManager:   study.queryManager   ?? false,
-        dataManager:    study.dataManager    ?? false,
-        navigationBar:  study.navigationBar  ?? false,
+        consentManager:      study.consentManager      ?? false,
+        queryManager:        study.queryManager        ?? false,
+        dataManager:         study.dataManager         ?? false,
+        verificationManager: study.verificationManager ?? false,
+        navigationBar:       study.navigationBar       ?? false,
       }));
 
       dispatch(setStep4({

@@ -5,7 +5,7 @@
  *   Study ID / Protocol Number (required, unique)
  *   Study Title                (required)
  *   Study Phase                (required — SearchableDropdown from studyPhasesClient)
- *   Scope of Study             (required — at least one of EDC / Survey / ePRO)
+ *   Scope of Study             (required — single-select: EDC / Survey / ePRO)
  *   Therapeutic Area           (optional)
  *   Study Description          (optional — TextArea)
  *   Sponsor Name               (required — SearchableDropdown from sponsorsClient)
@@ -59,16 +59,22 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
   const dispatch = useDispatch();
   const saved    = useSelector(selectStep1);
 
+  // Backwards-compat: older state may still hold scope as an array; coerce to string.
+  const initialScope = Array.isArray(saved.scope)
+    ? (saved.scope[0] ?? '')
+    : (saved.scope ?? '');
+
   const [form, setForm] = useState({
     studyId:          saved.studyId          ?? '',
     studyTitle:       saved.studyTitle       ?? '',
     studyPhaseId:     saved.studyPhaseId     ?? '',
     studyPhaseName:   saved.studyPhaseName   ?? '',
-    scope:            saved.scope?.length    ? saved.scope : [],
+    scope:            initialScope,
     therapeuticArea:  saved.therapeuticArea  ?? '',
     studyDescription: saved.studyDescription ?? '',
     sponsorId:        saved.sponsorId        ?? '',
     sponsorName:      saved.sponsorName      ?? '',
+    sponsorFullName:  saved.sponsorFullName  ?? '',
   });
 
   const [errors,          setErrors]          = useState({});
@@ -97,12 +103,26 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
         setSponsorOptions(
           all
             .filter((s) => s.status === 'Active')
-            .sort((a, b) => (a.organizationName || '').localeCompare(b.organizationName || ''))
-            .map((s) => ({
-              value:   s.id,
-              label:   `${s.organizationName || s.fullName || '(unnamed)'}${s.registrationNumber ? ` (${s.registrationNumber})` : ''}`,
-              orgName: s.organizationName || s.fullName || '',
-            })),
+            .sort((a, b) =>
+              (a.organizationName || a.fullName || '').localeCompare(
+                b.organizationName || b.fullName || '',
+              ),
+            )
+            .map((s) => {
+              const org    = s.organizationName  || '';
+              const person = s.fullName          || '';
+              const reg    = s.registrationNumber || '';
+              // Format: "Sponsor Name — Organisation (RegNumber)"; fall back if either is missing.
+              const head   = person || org || '(unnamed)';
+              const tail   = person && org ? ` — ${org}` : '';
+              const regSfx = reg ? ` (${reg})` : '';
+              return {
+                value:            s.id,
+                label:            `${head}${tail}${regSfx}`,
+                organizationName: org,
+                fullName:         person,
+              };
+            }),
         );
       })
       .catch(() => {
@@ -133,17 +153,18 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
 
   const handleSponsorChange = (id) => {
     const opt = sponsorOptions.find((o) => o.value === id);
-    setForm((prev) => ({ ...prev, sponsorId: id, sponsorName: opt?.orgName ?? '' }));
+    setForm((prev) => ({
+      ...prev,
+      sponsorId:        id,
+      // Canonical sponsorName for downstream display = organization name; fall back to person.
+      sponsorName:      opt?.organizationName || opt?.fullName || '',
+      sponsorFullName:  opt?.fullName || '',
+    }));
     setErrors((prev) => ({ ...prev, sponsorId: undefined }));
   };
 
-  const toggleScope = (val) => {
-    setForm((prev) => {
-      const next = prev.scope.includes(val)
-        ? prev.scope.filter((v) => v !== val)
-        : [...prev.scope, val];
-      return { ...prev, scope: next };
-    });
+  const selectScope = (val) => {
+    setForm((prev) => ({ ...prev, scope: val }));
     setErrors((prev) => ({ ...prev, scope: undefined }));
   };
 
@@ -159,6 +180,7 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
       studyDescription: form.studyDescription.trim(),
       sponsorId:        form.sponsorId,
       sponsorName:      form.sponsorName,
+      sponsorFullName:  form.sponsorFullName,
     }));
     navigate('/cro/sponsors/new');
   };
@@ -169,7 +191,7 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
     if (!form.studyId.trim())    errs.studyId    = 'Study ID / Protocol Number is required.';
     if (!form.studyTitle.trim()) errs.studyTitle  = 'Study Title is required.';
     if (!form.studyPhaseId)      errs.studyPhaseId = 'Please select a Study Phase.';
-    if (form.scope.length === 0) errs.scope       = 'Please select at least one Scope of Study.';
+    if (!form.scope)             errs.scope       = 'Please select a Scope of Study.';
     if (!form.sponsorId)         errs.sponsorId   = 'Please select a Sponsor.';
 
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
@@ -184,6 +206,7 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
       studyDescription: form.studyDescription.trim(),
       sponsorId:        form.sponsorId,
       sponsorName:      form.sponsorName,
+      sponsorFullName:  form.sponsorFullName,
     };
 
     setSaving(true);
@@ -257,16 +280,18 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
 
       {/* Scope of Study */}
       <FormField label="Scope of Study" name="scope" required error={errors.scope}>
-        <div className={styles.scopeCards}>
+        <div className={styles.scopeCards} role="radiogroup" aria-label="Scope of Study">
           {SCOPE_OPTIONS.map(({ value, label, desc, Icon, color, bg }) => {
-            const selected = form.scope.includes(value);
+            const selected = form.scope === value;
             return (
               <button
                 key={value}
                 type="button"
+                role="radio"
+                aria-checked={selected}
                 className={`${styles.scopeCard} ${selected ? styles.scopeCardActive : ''}`}
                 style={selected ? { borderColor: color, background: bg } : {}}
-                onClick={() => toggleScope(value)}
+                onClick={() => selectScope(value)}
               >
                 <span
                   className={styles.scopeCardIcon}

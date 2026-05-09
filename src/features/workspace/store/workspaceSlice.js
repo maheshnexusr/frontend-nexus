@@ -17,10 +17,16 @@ import {
 
 /**
  * @typedef {Object} StudyConfig
- * @property {boolean} consentEnabled
- * @property {boolean} queryEnabled
- * @property {boolean} dataManagerEnabled
- * @property {boolean} navBarEnabled
+ * Step 3 module toggles. Both the new key names (consentManager, queryManager,
+ * dataManager, verificationManager, navigationBar) and the legacy aliases
+ * (consentEnabled, queryEnabled, dataManagerEnabled, navBarEnabled) are
+ * supported via resolveStudyConfig in studyConfigGating.js.
+ *
+ * @property {boolean} [consentManager]
+ * @property {boolean} [queryManager]
+ * @property {boolean} [dataManager]
+ * @property {boolean} [verificationManager]
+ * @property {boolean} [navigationBar]
  */
 
 /**
