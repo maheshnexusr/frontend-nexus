@@ -15,17 +15,18 @@ import StudyWizardStep1      from './StudyWizardStep1';
 import StudyWizardStep2      from './StudyWizardStep2';
 import StudyWizardStep3      from './StudyWizardStep3';
 import StudyWizardStep4      from './StudyWizardStep4';
-import StudyWizardStep5      from './StudyWizardStep5';
 import StudyWizardStep6      from './StudyWizardStep6';
 import styles from './StudyNewPage.module.css';
 
+// Note: there is no "Study Team" step — assignments are managed on the
+// team-member page. StudyWizardStep6 (file name kept for inertia) renders
+// the Publish step here as tab 5.
 const TABS = [
   { id: 1, label: 'Basic Info'          },
   { id: 2, label: 'Timeline'            },
   { id: 3, label: 'Study Configuration' },
   { id: 4, label: 'Study Design'        },
-  { id: 5, label: 'Study Team'          },
-  { id: 6, label: 'Publish Study'       },
+  { id: 5, label: 'Publish Study'       },
 ];
 
 export default function StudyNewPage() {
@@ -81,15 +82,8 @@ export default function StudyNewPage() {
         />
       );
       case 5: return (
-        <StudyWizardStep5
-          onPrevious={() => setActiveTab(4)}
-          onNext={() => goNext(5)}
-          onCancel={handleCancel}
-        />
-      );
-      case 6: return (
         <StudyWizardStep6
-          onPrevious={() => setActiveTab(5)}
+          onPrevious={() => setActiveTab(4)}
           onCancel={handleCancel}
         />
       );

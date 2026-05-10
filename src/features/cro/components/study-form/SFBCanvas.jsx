@@ -8,7 +8,7 @@ import {
   Trash2, Copy, GripVertical,
   Type, Hash, Mail, Phone, Calendar, CheckSquare, List, Circle,
   FileUp, PenLine, AlignLeft, ToggleLeft, Clock, Star, Image,
-  Minus, AlignCenter,
+  Minus, AlignCenter, SlidersHorizontal,
   MessageSquare, StickyNote, HelpCircle, Paperclip, BadgeCheck, Eraser,
 } from 'lucide-react';
 import {
@@ -16,6 +16,13 @@ import {
   addField, removeField, duplicateField, reorderFields, selectField, deselectField,
   selectPage,
 } from '@/features/cro/store/studyFormSlice';
+import { selectFieldBucket, clearField } from '@/features/cro/store/formRuntimeSlice';
+import { selectCurrentUser } from '@/features/auth/authSlice';
+import AnnotationModal     from './runtime/AnnotationModal';
+import NotesPopover        from './runtime/NotesPopover';
+import QueryDrawer         from './runtime/QueryDrawer';
+import AttachmentDrawer    from './runtime/AttachmentDrawer';
+import VerificationPanel   from './runtime/VerificationPanel';
 import s from './SFBCanvas.module.css';
 
 const COLLAB_ICONS = [
@@ -32,8 +39,8 @@ const TYPE_ICON = {
   phone: Phone, date: Calendar, datetime: Calendar, time: Clock,
   select: List, radiogroup: Circle, checkboxgroup: CheckSquare,
   toggle: ToggleLeft, file: FileUp, signature: PenLine,
-  rating: Star, image: Image, h2: AlignCenter, paragraph: AlignLeft,
-  divider: Minus,
+  rating: Star, slider: SlidersHorizontal, image: Image,
+  h2: AlignCenter, paragraph: AlignLeft, divider: Minus,
 };
 
 export default function SFBCanvas() {
@@ -163,6 +170,42 @@ function FieldCard({ fld, idx, blockId, pageId, selected }) {
   const isLayout = ['h2', 'paragraph', 'divider'].includes(fld.type);
   const collab   = fld.collaboration ?? {};
 
+  // Live counts pulled from the runtime collaboration store so the icon
+  // shows e.g. "💬 3" when 3 annotations exist on this field.
+  const bucket = useSelector(selectFieldBucket(fld.id));
+  const user   = useSelector(selectCurrentUser);
+  const me     = {
+    by:     user?.id ?? 'unknown',
+    byName: user?.fullName ?? user?.email ?? 'You',
+  };
+
+  // Counts mapped to each enabled icon. clear/verification render no count.
+  const COUNT_BY_KEY = {
+    annotations:  bucket.annotations.filter((a) => !a.resolved).length,
+    notes:        bucket.notes.length,
+    queries:      bucket.queries.filter((q) => q.status !== 'Closed').length,
+    attachments:  bucket.attachments.length,
+    verification: bucket.verification?.verified ? 1 : 0,
+    clear:        0,
+  };
+
+  // Which workflow popover is open for this field, anchored to the icon clicked.
+  const [active, setActive] = useState(null); // 'annotations' | 'notes' | 'queries' | 'attachments' | 'verification' | null
+  const [anchorRect, setAnchorRect] = useState(null);
+
+  const openCollab = (key, e) => {
+    e.stopPropagation();
+    if (!collab[key]) return;          // only enabled icons open popovers
+    if (key === 'clear') {
+      dispatch(clearField({ fieldId: fld.id, ...me }));
+      return;
+    }
+    setAnchorRect(e.currentTarget.getBoundingClientRect());
+    setActive(key);
+  };
+
+  const fieldValue = undefined; // no live value at design time
+
   return (
     <div
       className={`${s.fieldCard} ${selected ? s.fieldCardSelected : ''}`}
@@ -186,16 +229,26 @@ function FieldCard({ fld, idx, blockId, pageId, selected }) {
           {/* Collaboration feature icons */}
           {!isLayout && (
             <div className={s.collabIcons} onClick={(e) => e.stopPropagation()}>
-              {COLLAB_ICONS.map(({ key, Icon: CIcon, color, title }) => (
-                <span
-                  key={key}
-                  className={`${s.collabIcon} ${collab[key] ? s.collabIconOn : ''}`}
-                  title={title}
-                  style={collab[key] ? { color } : {}}
-                >
-                  <CIcon size={13} />
-                </span>
-              ))}
+              {COLLAB_ICONS.map(({ key, Icon: CIcon, color, title }) => {
+                const enabled = !!collab[key];
+                const count   = COUNT_BY_KEY[key] ?? 0;
+                return (
+                  <button
+                    type="button"
+                    key={key}
+                    className={`${s.collabIcon} ${enabled ? s.collabIconOn : ''}`}
+                    title={enabled ? `${title} — click to open` : `${title} (disabled)`}
+                    style={enabled ? { color } : {}}
+                    disabled={!enabled}
+                    onClick={(e) => openCollab(key, e)}
+                  >
+                    <CIcon size={13} />
+                    {enabled && count > 0 && (
+                      <span className={s.collabCount}>{count}</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -222,6 +275,49 @@ function FieldCard({ fld, idx, blockId, pageId, selected }) {
           </div>
         )}
       </div>
+
+      {/* ── Workflow popovers (anchored to the icon, portaled to body) ── */}
+      {active === 'annotations' && (
+        <AnnotationModal
+          fieldId={fld.id}
+          fieldLabel={fld.label || fld.id}
+          anchorRect={anchorRect}
+          onClose={() => setActive(null)}
+        />
+      )}
+      {active === 'notes' && (
+        <NotesPopover
+          fieldId={fld.id}
+          fieldLabel={fld.label || fld.id}
+          anchorRect={anchorRect}
+          onClose={() => setActive(null)}
+        />
+      )}
+      {active === 'queries' && (
+        <QueryDrawer
+          fieldId={fld.id}
+          fieldLabel={fld.label || fld.id}
+          anchorRect={anchorRect}
+          onClose={() => setActive(null)}
+        />
+      )}
+      {active === 'attachments' && (
+        <AttachmentDrawer
+          fieldId={fld.id}
+          fieldLabel={fld.label || fld.id}
+          anchorRect={anchorRect}
+          onClose={() => setActive(null)}
+        />
+      )}
+      {active === 'verification' && (
+        <VerificationPanel
+          fieldId={fld.id}
+          fieldLabel={fld.label || fld.id}
+          fieldValue={fieldValue}
+          anchorRect={anchorRect}
+          onClose={() => setActive(null)}
+        />
+      )}
     </div>
   );
 }
@@ -236,7 +332,23 @@ function FieldPreviewRow({ fld }) {
     case 'date': case 'datetime': case 'time':
       return <div className={s.previewInput}>{fld.type === 'time' ? 'HH:MM' : 'DD/MM/YYYY'}</div>;
     case 'select':
-      return <div className={`${s.previewInput} ${s.previewSelect}`}>{fld.placeholder || 'Select an option…'} ▾</div>;
+      return (
+        <div className={`${s.previewInput} ${s.previewSelect}`}>
+          {fld.placeholder || (fld.multiple ? 'Select one or more options…' : 'Select an option…')} ▾
+        </div>
+      );
+    case 'slider': {
+      const min  = Number(fld.minValue ?? 0);
+      const max  = Number(fld.maxValue ?? 100);
+      const step = Number(fld.step    ?? 1);
+      return (
+        <div className={s.previewInput} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>{min}</span>
+          <input type="range" min={min} max={max} step={step} disabled style={{ flex: 1 }} />
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>{max}</span>
+        </div>
+      );
+    }
     case 'h2':
       return <div className={s.previewH2}>{fld.label || 'Section Title'}</div>;
     case 'paragraph':

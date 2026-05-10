@@ -84,13 +84,6 @@ export const studyService = {
   updateStep4: (id, data) =>
     axiosClient.put(`/api/v1/studies/${id}/step-4`, data),
 
-  /**
-   * PUT /api/v1/studies/:id/step-5
-   * Payload: { assignments: [{ teamMemberId, studyRole }] }
-   */
-  updateStep5: (id, data) =>
-    axiosClient.put(`/api/v1/studies/${id}/step-5`, data),
-
   /* ── Lifecycle ─────────────────────────────────────────────────────────── */
 
   /**

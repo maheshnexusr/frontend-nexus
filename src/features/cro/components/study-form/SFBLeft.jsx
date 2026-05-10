@@ -10,7 +10,7 @@ import {
   Layers, FileText, Plus, Trash2, ChevronDown, ChevronRight,
   GripVertical, Type, Hash, Mail, Phone, Calendar, CheckSquare,
   List, Circle, FileUp, PenLine, AlignLeft, ToggleLeft, Clock,
-  Star, Image, Minus, AlignCenter, LayoutList, Pencil,
+  Star, Image, Minus, AlignCenter, LayoutList, Pencil, SlidersHorizontal,
 } from 'lucide-react';
 import {
   selectBlocks, selectSelectedBlockId, selectSelectedPageId,
@@ -54,6 +54,7 @@ const FIELD_GROUPS = [
       { type: 'file',         label: 'File Upload',  Icon: FileUp      },
       { type: 'signature',    label: 'Signature',    Icon: PenLine     },
       { type: 'rating',       label: 'Rating',       Icon: Star        },
+      { type: 'slider',       label: 'Slider',       Icon: SlidersHorizontal },
       { type: 'image',        label: 'Image',        Icon: Image       },
     ],
   },

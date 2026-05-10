@@ -6,6 +6,7 @@ import notificationReducer  from '@/app/notificationSlice';
 import formReducer          from '@/features/form-builder/store/formSlice';
 import studyWizardReducer   from '@/features/cro/store/studyWizardSlice';
 import studyFormReducer     from '@/features/cro/store/studyFormSlice';
+import formRuntimeReducer   from '@/features/cro/store/formRuntimeSlice';
 
 /**
  * RTK Query API middleware placeholders.
@@ -40,6 +41,7 @@ const store = configureStore({
     form:          formReducer,
     studyWizard:   studyWizardReducer,
     studyForm:     studyFormReducer,
+    formRuntime:   formRuntimeReducer,
   },
 
   middleware: (getDefaultMiddleware) =>

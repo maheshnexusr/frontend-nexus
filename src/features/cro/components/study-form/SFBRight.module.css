@@ -697,7 +697,7 @@
   background: #fff;
   border-radius: 14px;
   width: 100%;
-  max-width: 580px;
+  max-width: 860px;
   box-shadow: 0 8px 40px rgba(0,0,0,.18);
   display: flex;
   flex-direction: column;
@@ -847,7 +847,7 @@
 
 .condColHeaders {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 32px;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(120px, 1fr) minmax(110px, 0.9fr) minmax(120px, 1fr) 32px;
   gap: 6px;
   padding: 0 2px;
   font-size: 11px;
@@ -859,7 +859,7 @@
 
 .condRow {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 32px;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(120px, 1fr) minmax(110px, 0.9fr) minmax(120px, 1fr) 32px;
   gap: 6px;
   align-items: center;
   padding: 10px;

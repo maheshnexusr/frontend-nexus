@@ -2,7 +2,7 @@
  * StudyEditPage — /cro/studies/:studyId/edit
  *
  * Loads the existing study into the wizard Redux state, then renders
- * the same 6-step wizard as StudyNewPage with all tabs unlocked.
+ * the same 5-step wizard as StudyNewPage with all tabs unlocked.
  */
 
 import { useState, useEffect }  from 'react';
@@ -12,13 +12,12 @@ import { ArrowLeft, Lock }      from 'lucide-react';
 import { studiesClient }        from '@/features/cro/api/studiesClient';
 import {
   resetWizard,
-  setStep1, setStep2, setStep3, setStep4, setStep5, setStep6,
+  setStep1, setStep2, setStep3, setStep4, setStep6,
 } from '@/features/cro/store/studyWizardSlice';
 import StudyWizardStep1 from './StudyWizardStep1';
 import StudyWizardStep2 from './StudyWizardStep2';
 import StudyWizardStep3 from './StudyWizardStep3';
 import StudyWizardStep4 from './StudyWizardStep4';
-import StudyWizardStep5 from './StudyWizardStep5';
 import StudyWizardStep6 from './StudyWizardStep6';
 import styles from './StudyNewPage.module.css';
 
@@ -27,8 +26,7 @@ const TABS = [
   { id: 2, label: 'Timeline'            },
   { id: 3, label: 'Study Configuration' },
   { id: 4, label: 'Study Design'        },
-  { id: 5, label: 'Study Team'          },
-  { id: 6, label: 'Publish Study'       },
+  { id: 5, label: 'Publish Study'       },
 ];
 
 export default function StudyEditPage() {
@@ -99,10 +97,6 @@ export default function StudyEditPage() {
         formTitle: study.studyTitle ? `${study.studyTitle} — Data Collection Form` : '',
       }));
 
-      dispatch(setStep5({
-        assignments: study.assignments ?? [],
-      }));
-
       dispatch(setStep6({
         environment: study.currentEnvironment ?? '',
         status:      study.status ?? 'Published',
@@ -150,8 +144,7 @@ export default function StudyEditPage() {
       case 2: return <StudyWizardStep2 onNext={() => goNext(2)} onCancel={handleCancel} />;
       case 3: return <StudyWizardStep3 onNext={() => goNext(3)} onCancel={handleCancel} />;
       case 4: return <StudyWizardStep4 onPrevious={() => setActiveTab(3)} onNext={() => goNext(4)} />;
-      case 5: return <StudyWizardStep5 onPrevious={() => setActiveTab(4)} onNext={() => goNext(5)} onCancel={handleCancel} />;
-      case 6: return <StudyWizardStep6 onPrevious={() => setActiveTab(5)} onCancel={handleCancel} />;
+      case 5: return <StudyWizardStep6 onPrevious={() => setActiveTab(4)} onCancel={handleCancel} />;
       default: return null;
     }
   };

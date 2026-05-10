@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import {
   setStep6, selectStep1, selectStep2, selectStep3,
-  selectStep4, selectStep5, selectStep6, resetWizard,
+  selectStep4, selectStep6, resetWizard,
 } from '@/features/cro/store/studyWizardSlice';
 import { studiesClient }    from '@/features/cro/api/studiesClient';
 import { addToast }         from '@/app/notificationSlice';
@@ -31,7 +31,6 @@ export default function StudyWizardStep6({ onPrevious, onCancel }) {
   const step2 = useSelector(selectStep2);
   const step3 = useSelector(selectStep3);
   const step4 = useSelector(selectStep4);
-  const step5 = useSelector(selectStep5);
   const step6 = useSelector(selectStep6);
 
   const [env,         setEnv]         = useState(step6.environment  ?? '');

@@ -233,17 +233,6 @@ export const studiesClient = {
     return normalize(res?.item ?? res);
   },
 
-  // ── Step 5: Team assignments ──────────────────────────────────────────────
-  async step5(id, data) {
-    const res = await axiosClient.put(`/api/v1/studies/${id}/step-5`, {
-      assignments: (data.assignments ?? []).map((a) => ({
-        team_member_id: a.memberId,
-        study_role:     a.studyRole,
-      })),
-    });
-    return normalize(res?.item ?? res);
-  },
-
   // ── Publish ───────────────────────────────────────────────────────────────
   async publish(studyId, publishConfig) {
     const res = await axiosClient.post(`/api/v1/studies/${studyId}/publish`, {

@@ -8,6 +8,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { X, Trash2, Copy, Plus, ChevronDown, ChevronUp, Minus, Settings, LayoutGrid, Eye, EyeOff, Lock, FilePen, Check, MessageSquare, StickyNote, HelpCircle, Paperclip, BadgeCheck, Eraser } from 'lucide-react';
 import {
   selectActiveBlock, selectActivePage, selectActiveField, selectAllFields,
+  selectBlocks,
   updateField, removeField, duplicateField, deselectField,
   updatePage, updateBlock,
 } from '@/features/cro/store/studyFormSlice';
@@ -102,7 +103,7 @@ function FieldPropsPanel({ block, page, field }) {
   const isLayout   = ['h2', 'paragraph', 'divider'].includes(field.type);
   const hasOptions = ['select','multiselect','radiogroup','checkboxgroup'].includes(field.type);
   const isText     = ['text','textarea','email','phone','url','password'].includes(field.type);
-  const isNum      = field.type === 'number';
+  const isNum      = field.type === 'number' || field.type === 'slider';
 
   return (
     <div className={s.panel}>
@@ -256,6 +257,45 @@ function GeneralTab({ field, up, hasOptions, isLayout }) {
         <Toggle value={field.hiddenByDefault ?? false} onChange={(v) => up('hiddenByDefault', v)} />
       </div>
 
+      {field.type === 'select' && (
+        <Row label="Allow multiple selections">
+          <Toggle value={!!field.multiple} onChange={(v) => up('multiple', v)} />
+        </Row>
+      )}
+
+      {field.type === 'slider' && (
+        <>
+          <SField label="Min Value">
+            <input
+              type="number"
+              className={s.sinput}
+              value={field.minValue ?? 0}
+              onChange={(e) => up('minValue', e.target.value === '' ? '' : Number(e.target.value))}
+              placeholder="0"
+            />
+          </SField>
+          <SField label="Max Value">
+            <input
+              type="number"
+              className={s.sinput}
+              value={field.maxValue ?? 100}
+              onChange={(e) => up('maxValue', e.target.value === '' ? '' : Number(e.target.value))}
+              placeholder="100"
+            />
+          </SField>
+          <SField label="Step">
+            <input
+              type="number"
+              className={s.sinput}
+              value={field.step ?? 1}
+              onChange={(e) => up('step', e.target.value === '' ? '' : Number(e.target.value))}
+              placeholder="1"
+              min="0"
+            />
+          </SField>
+        </>
+      )}
+
       {hasOptions && (
         <>
           <div className={s.subSectionLabel}>Options</div>
@@ -307,8 +347,29 @@ function ValidationTab({ field, up, upV, isText, isNum }) {
       {/* Required Field — stored at field root, not inside validation */}
       <div className={s.toggleRow}>
         <span className={s.toggleRowLabel}>Required Field</span>
-        <Toggle value={field.required ?? false} onChange={(val) => up('required', val)} />
+        <Toggle
+          value={field.required ?? false}
+          onChange={(val) => {
+            up('required', val);
+            // Seed the default message the first time Required is turned on.
+            if (val && !field.requiredMessage) {
+              up('requiredMessage', 'Field is required');
+            }
+          }}
+        />
       </div>
+
+      {field.required && (
+        <div className={s.sfield}>
+          <span className={s.sfieldLabel}>Required Message</span>
+          <input
+            className={s.sinput}
+            value={field.requiredMessage ?? 'Field is required'}
+            onChange={(e) => up('requiredMessage', e.target.value)}
+            placeholder="Field is required"
+          />
+        </div>
+      )}
 
       {/* Text: Min + Max side by side, then Pattern */}
       {isText && (
@@ -445,7 +506,7 @@ const MODAL_OPERATORS = [
 
 function ConditionalModal({ field, block, page, allFields, onClose }) {
   const dispatch = useDispatch();
-  const prior    = allFields.filter((f) => f.id !== field.id);
+  const blocks   = useSelector(selectBlocks);
 
   const saved = field.condition ?? { action: 'show', rules: [] };
   const [action,      setAction]      = useState(saved.action ?? 'show');
@@ -453,9 +514,26 @@ function ConditionalModal({ field, block, page, allFields, onClose }) {
   const [actionOpen,  setActionOpen]  = useState(false);
   const [operDropIdx, setOperDropIdx] = useState(null); // which rule's operator dropdown is open
 
-  const addRule    = () => setRules((r) => [...r, { fieldId: '', operator: 'is', value: '' }]);
-  const delRule    = (i) => setRules((r) => r.filter((_, j) => j !== i));
-  const updateRule = (i, k, v) => setRules((r) => r.map((rule, j) => j === i ? { ...rule, [k]: v } : rule));
+  // Look up the source block + page + field options for a rule, with cascading.
+  const blockById = (id) => blocks.find((b) => b.id === id);
+  const pagesFor  = (blockId) => blockById(blockId)?.pages ?? [];
+  const fieldsFor = (blockId, pageId) => {
+    const b = blockById(blockId);
+    if (!b) return [];
+    const p = b.pages.find((pp) => pp.id === pageId);
+    return (p?.fields ?? []).filter((f) => f.id !== field.id);
+  };
+
+  // New rules default to the current field's block/page so the field dropdown
+  // is immediately populated.
+  const addRule = () =>
+    setRules((r) => [
+      ...r,
+      { blockId: block.id, pageId: page.id, fieldId: '', operator: 'is', value: '' },
+    ]);
+  const delRule = (i) => setRules((r) => r.filter((_, j) => j !== i));
+  const updateRule = (i, patch) =>
+    setRules((r) => r.map((rule, j) => (j === i ? { ...rule, ...patch } : rule)));
 
   const save = () => {
     dispatch(updateField({
@@ -525,65 +603,135 @@ function ConditionalModal({ field, block, page, allFields, onClose }) {
               <div className={s.condRows}>
                 {/* Column headers */}
                 <div className={s.condColHeaders}>
+                  <span>Block</span>
+                  <span>Page</span>
                   <span>Field</span>
                   <span>Operator</span>
                   <span>Value</span>
                   <span />
                 </div>
 
-                {rules.map((rule, i) => (
-                  <div key={i} className={s.condRow}>
-                    {/* Field select */}
-                    <select
-                      className={s.condRowSelect}
-                      value={rule.fieldId}
-                      onChange={(e) => updateRule(i, 'fieldId', e.target.value)}
-                    >
-                      <option value="">Select field</option>
-                      {prior.map((f) => (
-                        <option key={f.id} value={f.id}>{f.label || f.type}</option>
-                      ))}
-                    </select>
+                {rules.map((rule, i) => {
+                  const pages  = pagesFor(rule.blockId);
+                  const fields = fieldsFor(rule.blockId, rule.pageId);
+                  // Resolve the source field so we can pick the right Value control.
+                  const srcField    = fields.find((f) => f.id === rule.fieldId);
+                  const srcOptions  = srcField?.options ?? [];
+                  const srcType     = srcField?.type ?? '';
+                  const useOptionDD = srcOptions.length > 0
+                    && ['select', 'multiselect', 'radiogroup', 'checkboxgroup'].includes(srcType);
+                  const useBoolDD   = ['toggle', 'checkbox'].includes(srcType);
+                  return (
+                    <div key={i} className={s.condRow}>
+                      {/* Block — top-level cascade */}
+                      <select
+                        className={s.condRowSelect}
+                        value={rule.blockId ?? ''}
+                        onChange={(e) =>
+                          updateRule(i, { blockId: e.target.value, pageId: '', fieldId: '' })
+                        }
+                      >
+                        <option value="">Select block</option>
+                        {blocks.map((b) => (
+                          <option key={b.id} value={b.id}>{b.title || 'Untitled block'}</option>
+                        ))}
+                      </select>
 
-                    {/* Operator — custom dropdown */}
-                    <div
-                      className={s.condOperWrap}
-                      onClick={() => setOperDropIdx(operDropIdx === i ? null : i)}
-                    >
-                      <span className={s.condOperVal}>
-                        {MODAL_OPERATORS.find((o) => o.value === rule.operator)?.label ?? 'is'}
-                      </span>
-                      <ChevronDown size={12} />
-                      {operDropIdx === i && (
-                        <div className={s.operDropdown}>
-                          {MODAL_OPERATORS.map((op) => (
-                            <button
-                              key={op.value}
-                              className={`${s.operDropItem} ${rule.operator === op.value ? s.operDropItemActive : ''}`}
-                              onClick={(e) => { e.stopPropagation(); updateRule(i, 'operator', op.value); setOperDropIdx(null); }}
-                            >
-                              {rule.operator === op.value && <Check size={12} />}
-                              {op.label}
-                            </button>
+                      {/* Page — filtered by block */}
+                      <select
+                        className={s.condRowSelect}
+                        value={rule.pageId ?? ''}
+                        onChange={(e) =>
+                          updateRule(i, { pageId: e.target.value, fieldId: '' })
+                        }
+                        disabled={!rule.blockId}
+                      >
+                        <option value="">{rule.blockId ? 'Select page' : '—'}</option>
+                        {pages.map((p) => (
+                          <option key={p.id} value={p.id}>{p.title || 'Untitled page'}</option>
+                        ))}
+                      </select>
+
+                      {/* Field — filtered by page */}
+                      <select
+                        className={s.condRowSelect}
+                        value={rule.fieldId ?? ''}
+                        onChange={(e) => updateRule(i, { fieldId: e.target.value })}
+                        disabled={!rule.pageId}
+                      >
+                        <option value="">{rule.pageId ? 'Select field' : '—'}</option>
+                        {fields.map((f) => (
+                          <option key={f.id} value={f.id}>{f.label || f.type}</option>
+                        ))}
+                      </select>
+
+                      {/* Operator — custom dropdown */}
+                      <div
+                        className={s.condOperWrap}
+                        onClick={() => setOperDropIdx(operDropIdx === i ? null : i)}
+                      >
+                        <span className={s.condOperVal}>
+                          {MODAL_OPERATORS.find((o) => o.value === rule.operator)?.label ?? 'is'}
+                        </span>
+                        <ChevronDown size={12} />
+                        {operDropIdx === i && (
+                          <div className={s.operDropdown}>
+                            {MODAL_OPERATORS.map((op) => (
+                              <button
+                                key={op.value}
+                                className={`${s.operDropItem} ${rule.operator === op.value ? s.operDropItemActive : ''}`}
+                                onClick={(e) => { e.stopPropagation(); updateRule(i, { operator: op.value }); setOperDropIdx(null); }}
+                              >
+                                {rule.operator === op.value && <Check size={12} />}
+                                {op.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Value — dropdown when the source field has predefined
+                          options, otherwise a plain text input. */}
+                      {useOptionDD ? (
+                        <select
+                          className={s.condRowSelect}
+                          value={rule.value ?? ''}
+                          onChange={(e) => updateRule(i, { value: e.target.value })}
+                          disabled={!rule.fieldId}
+                        >
+                          <option value="">Select value</option>
+                          {srcOptions.map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
                           ))}
-                        </div>
+                        </select>
+                      ) : useBoolDD ? (
+                        <select
+                          className={s.condRowSelect}
+                          value={rule.value ?? ''}
+                          onChange={(e) => updateRule(i, { value: e.target.value })}
+                          disabled={!rule.fieldId}
+                        >
+                          <option value="">Select value</option>
+                          <option value="true">true</option>
+                          <option value="false">false</option>
+                        </select>
+                      ) : (
+                        <input
+                          className={s.condRowInput}
+                          value={rule.value ?? ''}
+                          onChange={(e) => updateRule(i, { value: e.target.value })}
+                          placeholder="Enter value"
+                          disabled={!rule.fieldId}
+                        />
                       )}
+
+                      {/* Delete */}
+                      <button className={s.condRowDel} onClick={() => delRule(i)}>
+                        <Trash2 size={13} />
+                      </button>
                     </div>
-
-                    {/* Value */}
-                    <input
-                      className={s.condRowInput}
-                      value={rule.value}
-                      onChange={(e) => updateRule(i, 'value', e.target.value)}
-                      placeholder="Enter value"
-                    />
-
-                    {/* Delete */}
-                    <button className={s.condRowDel} onClick={() => delRule(i)}>
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

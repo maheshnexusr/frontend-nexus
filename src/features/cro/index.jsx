@@ -12,7 +12,6 @@ export { default as StudyWizardStep1 }   from './pages/studies/StudyWizardStep1'
 export { default as StudyWizardStep2 }   from './pages/studies/StudyWizardStep2';
 export { default as StudyWizardStep3 }   from './pages/studies/StudyWizardStep3';
 export { default as StudyWizardStep4 }   from './pages/studies/StudyWizardStep4';
-export { default as StudyWizardStep5 }   from './pages/studies/StudyWizardStep5';
 export { default as StudyWizardStep6 }   from './pages/studies/StudyWizardStep6';
 export { default as TeamMembersPage }    from './pages/team/TeamMembersPage';
 export { default as TeamMemberNewPage }  from './pages/team/TeamMemberNewPage';
