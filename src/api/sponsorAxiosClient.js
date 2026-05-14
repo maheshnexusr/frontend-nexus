@@ -14,6 +14,7 @@
 
 import axios from 'axios';
 import { normalizeError } from './apiHelpers';
+import { handleLocked, handleReadOnlyForbidden } from './apiInterceptors';
 
 /* ── Base URL — shared with the CRO client ───────────────────────────────── */
 const BASE_URL = import.meta.env.VITE_USE_LOCAL === 'true'
@@ -170,23 +171,17 @@ sponsorAxiosClient.interceptors.response.use(
     const original = error.config;
     const isAuthEndpoint = SPONSOR_AUTH_ENDPOINTS.some((p) => original.url?.includes(p));
 
-    // 403 in read-only viewer mode usually means a write was attempted on a
-    // sponsor route. Surface a toast and abort — no retry, no logout.
+    // 423 — Study/Site/Subject locked. Shared toast + broadcast a window
+    // event so the sponsor workspace forms can refresh + disable Save.
+    if (error.response?.status === 423) {
+      handleLocked(error);
+      return Promise.reject(normalizeError(error));
+    }
+
+    // 403 in read-only viewer mode = a write was attempted with the
+    // sponsorViewToken. Surface a toast and abort — no retry, no logout.
     if (error.response?.status === 403 && isInReadOnlyView()) {
-      const serverMsg = error.response?.data?.message ?? error.response?.data?.error ?? '';
-      const looksReadOnly = /read[-\s]?only/i.test(String(serverMsg));
-      // Lazy-import to keep this client free of redux/store coupling at module load.
-      import('@/app/store').then(({ default: store }) =>
-        import('@/app/notificationSlice').then(({ addToast }) => {
-          store.dispatch(addToast({
-            type:    'error',
-            message: looksReadOnly
-              ? 'Read-only view — sign in as the sponsor to make changes.'
-              : (serverMsg || 'This action is not permitted in read-only view.'),
-            duration: 5000,
-          }));
-        }),
-      ).catch(() => { /* dispatch failure should not mask the original error */ });
+      handleReadOnlyForbidden(error);
       return Promise.reject(normalizeError(error));
     }
 

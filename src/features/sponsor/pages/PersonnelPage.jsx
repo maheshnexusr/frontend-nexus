@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useParams }   from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
   UserPlus, Search, X, RefreshCw, Download, Upload,
@@ -9,7 +9,6 @@ import {
 
 import { addToast }                  from '@/app/notificationSlice';
 import { sponsorPersonnelClient }    from '../api/sponsorPersonnelClient';
-import PersonnelFormModal            from '../components/personnel/PersonnelFormModal';
 import PersonnelDetailsModal         from '../components/personnel/PersonnelDetailsModal';
 import ConfirmDialog                 from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }           from '@/features/workspace/hooks/useReadOnlyView';
@@ -60,6 +59,7 @@ function SortIcon({ colKey, sort }) {
 
 export default function PersonnelPage() {
   const { studyId } = useParams();
+  const navigate    = useNavigate();
   const dispatch    = useDispatch();
   const importRef   = useRef(null);
   const ro          = useReadOnlyView();
@@ -86,7 +86,6 @@ export default function PersonnelPage() {
   const [selected, setSelected] = useState(new Set());
 
   // Modals
-  const [formTarget,     setFormTarget]     = useState(undefined); // undefined=closed, null=invite, obj=edit
   const [detailTarget,   setDetailTarget]   = useState(null);
   const [deleteTarget,   setDeleteTarget]   = useState(null);
   const [resendTarget,   setResendTarget]   = useState(null);      // { id, fullName, email }
@@ -175,20 +174,6 @@ export default function PersonnelPage() {
   }
 
   // ── CRUD Handlers ─────────────────────────────────────────────────────────
-
-  async function handleSave(data) {
-    const isEdit = !!formTarget;
-    if (isEdit) {
-      const updated = await sponsorPersonnelClient.update(studyId, formTarget.id, data);
-      setPersonnel((prev) => prev.map((p) => p.id === updated.id ? updated : p));
-      dispatch(addToast({ type: 'success', message: `'${updated.fullName}' updated successfully.` }));
-    } else {
-      const created = await sponsorPersonnelClient.invite(studyId, data);
-      setPersonnel((prev) => [created, ...prev]);
-      dispatch(addToast({ type: 'success', message: `'${created.fullName}' invited. Invitation email sent to ${created.email}.` }));
-    }
-    setFormTarget(undefined);
-  }
 
   async function handleDelete() {
     if (!deleteTarget) return;
@@ -301,7 +286,7 @@ export default function PersonnelPage() {
           </button>
           <button
             className={css.btnPrimary}
-            onClick={() => setFormTarget(null)}
+            onClick={() => navigate(`/sponsor/${studyId}/personnel/new`)}
             {...ro.disabledProps('Invite User')}
           >
             <UserPlus size={15} /> Invite User
@@ -507,7 +492,7 @@ export default function PersonnelPage() {
                       <button
                         className={css.actionBtn}
                         title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
-                        onClick={() => setFormTarget(p)}
+                        onClick={() => navigate(`/sponsor/${studyId}/personnel/${p.id}/edit`)}
                         {...ro.disabledProps('Edit personnel')}
                       >
                         <Pencil size={13} />
@@ -587,17 +572,6 @@ export default function PersonnelPage() {
             </ul>
           )}
         </div>
-      )}
-
-      {/* Invite / Edit Modal */}
-      {formTarget !== undefined && (
-        <PersonnelFormModal
-          studyId={studyId}
-          personnel={formTarget}
-          sites={sites}
-          onSave={handleSave}
-          onClose={() => setFormTarget(undefined)}
-        />
       )}
 
       {/* Details Modal */}

@@ -27,7 +27,19 @@ function normalize(raw) {
 }
 
 function extractList(res) {
-  const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
+  let arr =
+       (Array.isArray(res)              ? res
+      : Array.isArray(res?.items)       ? res.items
+      : Array.isArray(res?.data)        ? res.data
+      : Array.isArray(res?.locations)   ? res.locations
+      : Array.isArray(res?.data?.items) ? res.data.items
+      : Array.isArray(res?.data?.locations) ? res.data.locations
+      : []);
+  if (!Array.isArray(arr)) arr = [];
+  if (arr.length === 0 && res && typeof res === 'object' && Object.keys(res).length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn('[sponsorLocationsClient] empty extractList from response:', res);
+  }
   return arr.map(normalize);
 }
 
@@ -49,7 +61,7 @@ export const sponsorLocationsClient = {
 
   async getById(_studyId, id) {
     const res = await sponsorAxiosClient.get(`${BASE}/${id}`);
-    return normalize(res?.item ?? res);
+    return normalize(res?.item ?? res?.location ?? res?.data ?? res ?? {});
   },
 
   async create(_studyId, form) {
@@ -61,7 +73,7 @@ export const sponsorLocationsClient = {
       postal_code: form.postalCode || undefined,
       status:      form.status ?? 'Active',
     });
-    return normalize(res?.item ?? res);
+    return normalize(res?.item ?? res?.location ?? res?.data ?? res ?? {});
   },
 
   async update(_studyId, id, form) {
@@ -73,7 +85,7 @@ export const sponsorLocationsClient = {
       postal_code: form.postalCode || undefined,
       status:      form.status,
     });
-    return normalize(res?.item ?? res);
+    return normalize(res?.item ?? res?.location ?? res?.data ?? res ?? {});
   },
 
   async delete(_studyId, id) {

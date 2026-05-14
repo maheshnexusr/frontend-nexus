@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams }   from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
   Plus, Search, X, RefreshCw, Shield,
@@ -9,13 +9,10 @@ import {
 
 import { addToast }            from '@/app/notificationSlice';
 import { sponsorRolesClient }  from '../api/sponsorRolesClient';
-import RoleFormModal           from '../components/roles/RoleFormModal';
 import ViewPermissionsModal    from '../components/roles/ViewPermissionsModal';
 import ConfirmDialog           from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }     from '@/features/workspace/hooks/useReadOnlyView';
-import {
-  DEFAULT_ROLE_PERMISSIONS, countPermissions,
-} from '../components/roles/permissionsTree';
+import { countPermissions } from '../components/roles/permissionsTree';
 import css from './RolesPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -32,9 +29,6 @@ const COLS = [
   { key: 'status',      label: 'Status',        sortable: true  },
 ];
 
-// Built-in system role names loaded if backend returns empty (dev fallback)
-const SYSTEM_ROLE_NAMES = ['CRO Administrator', 'Data Manager', 'Data Reviewer', 'Site Monitor'];
-
 function fmtDate(str) {
   if (!str) return '—';
   try { return new Date(str).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
@@ -50,6 +44,7 @@ function SortIcon({ colKey, sort }) {
 
 export default function RolesPage() {
   const { studyId } = useParams();
+  const navigate    = useNavigate();
   const dispatch    = useDispatch();
   const ro          = useReadOnlyView();
 
@@ -65,7 +60,6 @@ export default function RolesPage() {
   const [sort, setSort] = useState({ key: 'roleName', dir: 'asc' });
 
   // Modals
-  const [formRole,      setFormRole]      = useState(undefined); // undefined=closed, null=create, obj=edit
   const [viewRole,      setViewRole]      = useState(null);
   const [deleteTarget,  setDeleteTarget]  = useState(null);
   const [duplicateName, setDuplicateName] = useState('');
@@ -78,23 +72,7 @@ export default function RolesPage() {
     else        setRefreshing(true);
     try {
       const filters = statusFilter !== 'All' ? { status: statusFilter } : {};
-      let list = await sponsorRolesClient.list(studyId, filters);
-
-      // If no roles returned, seed with default system roles (dev / first-time)
-      if (list.length === 0) {
-        list = SYSTEM_ROLE_NAMES.map((name, idx) => ({
-          id:          `sys-${idx}`,
-          roleName:    name,
-          description: `Default ${name} role.`,
-          status:      'Active',
-          isSystem:    true,
-          userCount:   0,
-          createdBy:   'System',
-          createdAt:   new Date().toISOString(),
-          updatedAt:   new Date().toISOString(),
-          permissions: DEFAULT_ROLE_PERMISSIONS[name] ?? {},
-        }));
-      }
+      const list = await sponsorRolesClient.list(studyId, filters);
       setRoles(list);
     } catch (e) {
       dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to load roles.' }));
@@ -131,20 +109,6 @@ export default function RolesPage() {
   }
 
   // ── CRUD Handlers ─────────────────────────────────────────────────────────
-
-  async function handleSave(data) {
-    const isEdit = !!formRole;
-    if (isEdit) {
-      const updated = await sponsorRolesClient.update(studyId, formRole.id, data);
-      setRoles((prev) => prev.map((r) => r.id === updated.id ? updated : r));
-      dispatch(addToast({ type: 'success', message: `Role '${updated.roleName}' updated successfully.` }));
-    } else {
-      const created = await sponsorRolesClient.create(studyId, data);
-      setRoles((prev) => [created, ...prev]);
-      dispatch(addToast({ type: 'success', message: `Role '${created.roleName}' created successfully.` }));
-    }
-    setFormRole(undefined);
-  }
 
   async function handleDelete() {
     if (!deleteTarget) return;
@@ -217,7 +181,7 @@ export default function RolesPage() {
           </button>
           <button
             className={css.btnPrimary}
-            onClick={() => setFormRole(null)}
+            onClick={() => navigate(`/sponsor/${studyId}/roles/new`)}
             {...ro.disabledProps('Add Role')}
           >
             <Plus size={15} /> Add Role
@@ -360,7 +324,7 @@ export default function RolesPage() {
                         title={ro.isReadOnly ? ro.readOnlyMessage : (role.isSystem ? 'System role — cannot edit' : 'Edit')}
                         disabled={role.isSystem || ro.isReadOnly}
                         aria-disabled={role.isSystem || ro.isReadOnly}
-                        onClick={() => !role.isSystem && !ro.isReadOnly && setFormRole(role)}
+                        onClick={() => !role.isSystem && !ro.isReadOnly && navigate(`/sponsor/${studyId}/roles/${role.id}/edit`)}
                       >
                         <Pencil size={13} />
                       </button>
@@ -401,16 +365,6 @@ export default function RolesPage() {
           </tbody>
         </table>
       </div>
-
-      {/* Role Form Modal */}
-      {formRole !== undefined && (
-        <RoleFormModal
-          role={formRole}
-          existingRoles={roles.filter((r) => !formRole || r.id !== formRole.id)}
-          onSave={handleSave}
-          onClose={() => setFormRole(undefined)}
-        />
-      )}
 
       {/* View Permissions Modal */}
       {viewRole && (

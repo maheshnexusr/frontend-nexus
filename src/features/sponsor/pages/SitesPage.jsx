@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useParams }   from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
   Plus, Search, X, RefreshCw, Download, Upload,
@@ -9,7 +9,6 @@ import {
 
 import { addToast }             from '@/app/notificationSlice';
 import { sponsorSitesClient }   from '../api/sponsorSitesClient';
-import SiteFormModal            from '../components/sites/SiteFormModal';
 import LockUnlockModal          from '../components/sites/LockUnlockModal';
 import SiteDetailsModal         from '../components/sites/SiteDetailsModal';
 import ConfirmDialog            from '@/components/feedback/ConfirmDialog';
@@ -54,6 +53,7 @@ function progressColor(pct) {
 
 export default function SitesPage() {
   const { studyId } = useParams();
+  const navigate    = useNavigate();
   const dispatch    = useDispatch();
   const importRef   = useRef(null);
   const ro          = useReadOnlyView();
@@ -77,7 +77,6 @@ export default function SitesPage() {
   const [pageSize, setPageSize] = useState(20);
 
   // Modals
-  const [formSite,       setFormSite]       = useState(undefined); // undefined = closed, null = create, obj = edit
   const [lockTarget,     setLockTarget]     = useState(null);      // { mode, site }
   const [detailSite,     setDetailSite]     = useState(null);
   const [deleteTarget,   setDeleteTarget]   = useState(null);      // site object
@@ -153,20 +152,6 @@ export default function SitesPage() {
   }
 
   // ── CRUD Handlers ─────────────────────────────────────────────────────────
-
-  async function handleSave(data) {
-    const isEdit = !!formSite;
-    if (isEdit) {
-      const updated = await sponsorSitesClient.update(studyId, formSite.id ?? formSite.siteCode, data);
-      setSites((prev) => prev.map((s) => s.id === updated.id ? updated : s));
-      dispatch(addToast({ type: 'success', message: `Site '${updated.siteName}' updated successfully.` }));
-    } else {
-      const created = await sponsorSitesClient.create(studyId, data);
-      setSites((prev) => [created, ...prev]);
-      dispatch(addToast({ type: 'success', message: `Site '${created.siteName}' created successfully.` }));
-    }
-    setFormSite(undefined);
-  }
 
   async function handleDelete() {
     if (!deleteTarget) return;
@@ -273,7 +258,7 @@ export default function SitesPage() {
           </button>
           <button
             className={css.btnPrimary}
-            onClick={() => setFormSite(null)}
+            onClick={() => navigate(`/sponsor/${studyId}/sites/new`)}
             {...ro.disabledProps('Add Site')}
           >
             <Plus size={15} /> Add Site
@@ -462,7 +447,7 @@ export default function SitesPage() {
                       <button
                         className={css.actionBtn}
                         title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
-                        onClick={() => setFormSite(site)}
+                        onClick={() => navigate(`/sponsor/${studyId}/sites/${site.id ?? site.siteCode}/edit`)}
                         disabled={site.isLocked || ro.isReadOnly}
                         aria-disabled={site.isLocked || ro.isReadOnly}
                       >
@@ -551,16 +536,6 @@ export default function SitesPage() {
             </ul>
           )}
         </div>
-      )}
-
-      {/* Site Form Modal (Create / Edit) */}
-      {formSite !== undefined && (
-        <SiteFormModal
-          site={formSite}
-          countries={countries}
-          onSave={handleSave}
-          onClose={() => setFormSite(undefined)}
-        />
       )}
 
       {/* Lock / Unlock Modal */}

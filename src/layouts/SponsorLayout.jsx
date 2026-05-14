@@ -51,7 +51,8 @@ import {
 import Sidebar              from '@/components/layout/Sidebar';
 import WorkspaceHeader      from './WorkspaceHeader';
 import ReadOnlySponsorBanner from '@/features/workspace/components/ReadOnlySponsorBanner';
-import { resolveStudyConfig } from '@/features/cro/utils/studyConfigGating';
+import { resolveStudyConfig, canViewLeaf } from '@/features/cro/utils/studyConfigGating';
+import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
 import styles               from './SponsorLayout.module.css';
 
 const clx = (...a) => a.filter(Boolean).join(' ');
@@ -80,9 +81,18 @@ export default function SponsorLayout() {
   // resolveStudyConfig handles both new (consentManager…) and legacy
   // (consentEnabled…) keys, defaulting missing flags to enabled.
   const cfg    = resolveStudyConfig(study?.config);
+  // Logged-in user's role permission tree (null = unrestricted, e.g. CRO
+  // admin with no per-study assignment). Resolution order:
+  //   1. siteAuthUser.permissions    (PI / Coordinator / Nurse / etc.)
+  //   2. sponsorAuthUser.permissions (direct sponsor login)
+  //   3. CRO user.assignedStudies[].sponsorPermissions matched on this studyId
+  // Tree keys match FEATURE_TREE leaf keys.
+  const perms  = useSiteRolePermissions(studyId);
+  // Convenience: gates a leaf by BOTH study config AND role permissions.
+  const allowed = (leafKey) => canViewLeaf(perms, leafKey);
 
-  /* ── Item 2 varies by study scope; gated by the dataManager toggle ────── */
-  const captureItem = cfg.dataManager
+  /* ── Item 2 varies by study scope; gated by dataManager + data_capture ── */
+  const captureItem = cfg.dataManager && allowed('data_capture')
     ? (scope === 'EPRO'
         ? { key: 'diary',   label: 'My Diary',    icon: Notebook,      path: `${base}/capture` }
         : scope === 'SURVEY'
@@ -90,14 +100,33 @@ export default function SponsorLayout() {
         : { key: 'capture', label: 'Data Capture', icon: Database,     path: `${base}/capture` })
     : null;
 
-  /* ── Primary nav (unfiltered) ─────────────────────────────────────────── */
+  /* ── Primary nav: each leaf must be allowed by BOTH study.config AND
+        the active user's role permissions. ─────────────────────────────── */
+  const consentChildren = [
+    allowed('consent_builder') && { key: 'consent-builder', label: 'Consent Builder',           path: `${base}/consent/config` },
+    allowed('consent_review')  && { key: 'consent-review',  label: 'Consent Review & Approval', path: `${base}/consent/review` },
+  ].filter(Boolean);
+
   const qualityChildren = [
-    cfg.queryManager        && { key: 'queries',      label: 'Query Manager',             path: `${base}/queries`      },
-    cfg.verificationManager && { key: 'verification', label: 'Data Verification Manager', path: `${base}/verification` },
+    cfg.queryManager        && allowed('query_manager')     && { key: 'queries',      label: 'Query Manager',             path: `${base}/queries`      },
+    cfg.verificationManager && allowed('data_verification') && { key: 'verification', label: 'Data Verification Manager', path: `${base}/verification` },
+  ].filter(Boolean);
+
+  const siteMgmtChildren = [
+    allowed('sites')          && { key: 'sites-list', label: 'Sites',          path: `${base}/sites`     },
+    allowed('site_personnel') && { key: 'personnel',  label: 'Site Personnel', path: `${base}/personnel` },
+    allowed('site_roles')     && { key: 'roles',      label: 'Site Role',      path: `${base}/roles`     },
+  ].filter(Boolean);
+
+  const mastersChildren = [
+    allowed('email_templates') && { key: 'masters-email',     label: 'Email Templates', path: `${base}/masters/email-templates` },
+    allowed('countries')       && { key: 'masters-countries', label: 'Country',         path: `${base}/masters/countries`       },
+    allowed('locations')       && { key: 'masters-locations', label: 'Locations',       path: `${base}/masters/locations`       },
+    allowed('regions')         && { key: 'masters-regions',   label: 'Regions',         path: `${base}/masters/regions`         },
   ].filter(Boolean);
 
   const rawNav = [
-    {
+    allowed('dashboard') && {
       key:   'dashboard',
       label: 'Dashboard',
       icon:  LayoutDashboard,
@@ -107,15 +136,12 @@ export default function SponsorLayout() {
     /* 2 — scope-driven */
     captureItem,
 
-    /* 3 — Consent Management (gated by config.consentManager) */
-    cfg.consentManager && {
+    /* 3 — Consent Management (gated by config.consentManager + perms) */
+    cfg.consentManager && consentChildren.length > 0 && {
       key:   'consent',
       label: 'Consent Management',
       icon:  FileCheck,
-      children: [
-        { key: 'consent-builder', label: 'Consent Builder',           path: `${base}/consent/config` },
-        { key: 'consent-review',  label: 'Consent Review & Approval', path: `${base}/consent/review` },
-      ],
+      children: consentChildren,
     },
 
     /* 4 — Quality Management (dropped if both children are disabled) */
@@ -126,28 +152,20 @@ export default function SponsorLayout() {
       children: qualityChildren,
     },
 
-    /* 5 — Site Management (only meaningful for EDC scope) */
-    scope === 'EDC' && {
+    /* 5 — Site Management (EDC scope, gated by per-leaf perms) */
+    scope === 'EDC' && siteMgmtChildren.length > 0 && {
       key:   'sites',
       label: 'Site Management',
       icon:  MapPin,
-      children: [
-        { key: 'sites-list', label: 'Sites',          path: `${base}/sites`     },
-        { key: 'personnel',  label: 'Site Personnel', path: `${base}/personnel` },
-        { key: 'roles',      label: 'Site Role',      path: `${base}/roles`     },
-      ],
+      children: siteMgmtChildren,
     },
 
-    /* 6 — Masters (always visible) */
-    {
+    /* 6 — Masters (gated by per-leaf perms) */
+    mastersChildren.length > 0 && {
       key:   'masters',
       label: 'Masters',
       icon:  BookOpen,
-      children: [
-        { key: 'masters-email',     label: 'Email Templates', path: `${base}/masters/email-templates` },
-        { key: 'masters-countries', label: 'Country',         path: `${base}/masters/countries`       },
-        { key: 'masters-locations', label: 'Locations',       path: `${base}/masters/locations`       },
-      ],
+      children: mastersChildren,
     },
   ];
 
@@ -155,13 +173,13 @@ export default function SponsorLayout() {
 
   /* ── Bottom nav ───────────────────────────────────────────────────────── */
   const bottomNav = [
-    {
+    allowed('activity_log') && {
       key:   'activity-log',
       label: 'Activity Log',
       icon:  Activity,
       path:  `${base}/activity-log`,
     },
-    {
+    allowed('reports') && {
       key:   'reports',
       label: 'Reports',
       icon:  BarChart2,
@@ -177,7 +195,7 @@ export default function SponsorLayout() {
         { key: 'logout',      label: 'Logout',          icon: LogOut,   path: '/logout'                 },
       ],
     },
-  ];
+  ].filter(Boolean);
 
   /* Close mobile drawer at desktop width */
   useEffect(() => {

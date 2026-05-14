@@ -87,3 +87,38 @@ export function filterFeatureTreeByConfig(config) {
   }
   return result;
 }
+
+/**
+ * Quick check used by the sponsor sidebar to decide if a single nav leaf
+ * should render for the active user.
+ *
+ *   permissions       null/undefined  → unrestricted (treat as allowed)
+ *   permissions[key]  missing/false   → hidden
+ *   permissions[key]  { view: true }  → visible
+ *
+ * `leafKey` matches the keys in FEATURE_TREE (e.g. 'consent_builder',
+ * 'query_manager', 'data_verification', 'sites', 'site_personnel', ...).
+ */
+export function canViewLeaf(permissions, leafKey) {
+  if (!permissions || typeof permissions !== 'object') return true;
+  const leaf = permissions[leafKey];
+  return !!(leaf && leaf.view);
+}
+
+/**
+ * Filter FEATURE_TREE to leaves the user can `view`. Groups left with zero
+ * visible children are dropped. Null/undefined permissions → unrestricted.
+ */
+export function filterFeatureTreeByPermissions(permissions) {
+  if (!permissions || typeof permissions !== 'object') return FEATURE_TREE;
+  const result = [];
+  for (const node of FEATURE_TREE) {
+    if (!node.isGroup) {
+      if (canViewLeaf(permissions, node.key)) result.push(node);
+      continue;
+    }
+    const remaining = node.children.filter((c) => canViewLeaf(permissions, c.key));
+    if (remaining.length > 0) result.push({ ...node, children: remaining });
+  }
+  return result;
+}

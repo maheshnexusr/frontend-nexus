@@ -33,7 +33,7 @@ import {
 } from '@/features/workspace/store/workspaceSlice';
 import {
   exitSponsorView,
-  selectIsSponsorReadOnly,
+  selectIsViewingSponsor,
 } from '@/features/workspace/store/sponsorViewSlice';
 import styles from './WorkspaceHeader.module.css';
 
@@ -94,12 +94,12 @@ export default function WorkspaceHeader({
     if (e.key === 'Escape') setSearchOpen(false);
   };
 
-  const isSponsorReadOnly = useAppSelector(selectIsSponsorReadOnly);
+  const isViewingSponsor = useAppSelector(selectIsViewingSponsor);
 
   const handleLogout = () => {
-    // In read-only sponsor view, "logout" only exits the viewer state.
-    // The CRO session stays alive — return them to the CRO dashboard.
-    if (isSponsorReadOnly) {
+    // While viewing a sponsor workspace (CRO entered via /enter), "logout"
+    // only exits the viewer — the CRO session stays alive.
+    if (isViewingSponsor) {
       dispatch(exitSponsorView());
       navigate('/cro/dashboard');
       return;

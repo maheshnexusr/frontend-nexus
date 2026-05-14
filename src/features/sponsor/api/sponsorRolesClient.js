@@ -38,13 +38,26 @@ export const sponsorRolesClient = {
     if (filters.status && filters.status !== 'All') params.status = filters.status;
 
     const res = await sponsorAxiosClient.get(BASE, { params });
-    const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
+    let arr =
+         (Array.isArray(res)              ? res
+        : Array.isArray(res?.items)       ? res.items
+        : Array.isArray(res?.data)        ? res.data
+        : Array.isArray(res?.roles)       ? res.roles
+        : Array.isArray(res?.site_roles)  ? res.site_roles
+        : Array.isArray(res?.data?.items) ? res.data.items
+        : Array.isArray(res?.data?.roles) ? res.data.roles
+        : []);
+    if (!Array.isArray(arr)) arr = [];
+    if (arr.length === 0 && res && typeof res === 'object' && Object.keys(res).length > 0) {
+      // eslint-disable-next-line no-console
+      console.warn('[sponsorRolesClient] empty extractList from response:', res);
+    }
     return arr.map(normalizeRole);
   },
 
   async getById(_studyId, roleId) {
     const res = await sponsorAxiosClient.get(`${BASE}/${roleId}`);
-    return normalizeRole(res?.item ?? res ?? {});
+    return normalizeRole(res?.item ?? res?.role ?? res?.site_role ?? res?.data ?? res ?? {});
   },
 
   async create(_studyId, data) {
@@ -54,7 +67,7 @@ export const sponsorRolesClient = {
       status:       data.status ?? 'Active',
       permissions:  data.permissions,
     });
-    return normalizeRole(res?.item ?? res ?? {});
+    return normalizeRole(res?.item ?? res?.role ?? res?.site_role ?? res?.data ?? res ?? {});
   },
 
   async update(_studyId, roleId, data) {
@@ -65,7 +78,7 @@ export const sponsorRolesClient = {
       status:      data.status,
       permissions: data.permissions,
     });
-    return normalizeRole(res?.item ?? res ?? {});
+    return normalizeRole(res?.item ?? res?.role ?? res?.site_role ?? res?.data ?? res ?? {});
   },
 
   async delete(_studyId, roleId) {

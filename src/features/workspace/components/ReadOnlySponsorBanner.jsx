@@ -1,38 +1,55 @@
 /**
  * ReadOnlySponsorBanner — sticky banner shown at the top of every sponsor
- * workspace page while the CRO user is in read-only viewer mode.
+ * workspace page while a CRO user is inside a sponsor workspace via /enter.
  *
- * Mount once near the top of the sponsor layout. It auto-hides when not in
- * read-only mode, so it's safe to leave in place.
+ * CRO viewers have full write access now, so the banner is purely
+ * informational: it tells the user which sponsor they're viewing as and
+ * gives them a one-click way back to the CRO dashboard. File name kept for
+ * backwards-compat with existing imports.
  */
 
-import { Eye, ArrowLeftCircle } from 'lucide-react';
-import { useReadOnlyView } from '@/features/workspace/hooks/useReadOnlyView';
+import { useDispatch } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import { Building2, ArrowLeftCircle } from 'lucide-react';
+import { useAppSelector } from '@/app/hooks';
+import {
+  exitSponsorView,
+  selectIsViewingSponsor,
+  selectSponsorViewSponsor,
+} from '@/features/workspace/store/sponsorViewSlice';
 import styles from './ReadOnlySponsorBanner.module.css';
 
 export default function ReadOnlySponsorBanner() {
-  const { isReadOnly, sponsor, exit } = useReadOnlyView();
+  const dispatch  = useDispatch();
+  const navigate  = useNavigate();
+  const isViewing = useAppSelector(selectIsViewingSponsor);
+  const sponsor   = useAppSelector(selectSponsorViewSponsor);
 
-  if (!isReadOnly) return null;
+  if (!isViewing) return null;
 
   const orgName = sponsor?.organizationName || sponsor?.fullName || 'this sponsor';
+
+  const handleExit = () => {
+    dispatch(exitSponsorView());
+    navigate('/cro/dashboard');
+  };
 
   return (
     <div className={styles.banner} role="status">
       <div className={styles.left}>
-        <Eye size={16} className={styles.icon} aria-hidden="true" />
+        <Building2 size={16} className={styles.icon} aria-hidden="true" />
         <span className={styles.text}>
-          Viewing <strong>{orgName}</strong> as read-only.
+          You&apos;re inside <strong>{orgName}</strong>&apos;s workspace as a CRO admin.
         </span>
       </div>
       <button
         type="button"
         className={styles.exitBtn}
-        onClick={exit}
+        onClick={handleExit}
         aria-label="Return to CRO dashboard"
       >
         <ArrowLeftCircle size={14} />
-        Return to CRO dashboard
+        Return to CRO Workspace
       </button>
     </div>
   );

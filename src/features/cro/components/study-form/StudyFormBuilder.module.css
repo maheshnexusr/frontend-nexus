@@ -11,6 +11,18 @@
   overflow: hidden;
 }
 
+/* Full-screen mode — pin to the viewport, hide wizard chrome behind it. */
+.rootMaximized {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  height: 100vh;
+  min-height: 100vh;
+  border: none;
+  border-radius: 0;
+  background: var(--bg-page, #f8fafc);
+}
+
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */
 .toolbar {
   display: flex;

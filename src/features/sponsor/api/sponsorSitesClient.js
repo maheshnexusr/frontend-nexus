@@ -51,12 +51,20 @@ function normalizeSite(raw) {
     actualEnrollments:   enrolled,
     isLocked:            raw.is_locked            ?? raw.isLocked            ?? false,
     lockReason:          raw.lock_reason          ?? raw.lockReason          ?? '',
+    // Contact (new schema uses point_of_contact_name; old uses contact_person)
+    pointOfContactName:  raw.point_of_contact_name ?? raw.pointOfContactName ?? raw.contact_person ?? raw.contactPerson ?? '',
     contactPerson:       raw.contact_person       ?? raw.contactPerson       ?? '',
     email:               raw.email                ?? '',
+    countryCode:         raw.country_code         ?? raw.countryCode         ?? '+91',
     contactNumber:       raw.contact_number       ?? raw.contactNumber       ?? '',
+    // Address — new schema is single `address`; legacy is line1/line2.
+    address:             raw.address              ?? '',
     addressLine1:        raw.address_line1        ?? raw.addressLine1        ?? '',
     addressLine2:        raw.address_line2        ?? raw.addressLine2        ?? '',
+    siteLocation:        raw.site_location        ?? raw.siteLocation        ?? '',
+    postalCode:          raw.postal_code          ?? raw.postalCode          ?? '',
     city:                raw.city                 ?? '',
+    district:            raw.district             ?? '',
     state:               raw.state                ?? '',
     country:             raw.country              ?? '',
   };
@@ -95,6 +103,43 @@ function normalizeSiteDetails(raw) {
   };
 }
 
+/**
+ * buildSitePayload — flattens the form into the snake_case wire shape.
+ * Every field from the create/edit screen is included so the wire payload
+ * is always complete and predictable; legacy spec fields (site_number,
+ * principal_investigator, location_id, enrollment_target) are sent only
+ * when populated, since the new form doesn't capture them.
+ */
+function buildSitePayload(data, _isCreate = false) {
+  const payload = {
+    // Site form (current screenshot)
+    site_name:              data.siteName             ?? '',
+    site_location:          data.siteLocation         ?? '',
+    address:                data.address              ?? '',
+    point_of_contact_name:  data.pointOfContactName   ?? '',
+    email:                  data.email                ?? '',
+    country_code:           data.countryCode          ?? '',
+    contact_number:         data.contactNumber        ?? '',
+    postal_code:            data.postalCode           ?? '',
+    city:                   data.city                 ?? '',
+    district:               data.district             ?? '',
+    state:                  data.state                ?? '',
+    country_id:             data.countryId            ?? '',
+    status:                 data.status ?? (data.active === false ? 'Inactive' : 'Active'),
+    is_locked:              data.isLocked ?? false,
+  };
+
+  // Legacy / optional spec fields — only attached when the caller actually
+  // provided them (e.g. coming from import or older data).
+  if (data.siteNumber || data.siteCode)              payload.site_number            = data.siteNumber ?? data.siteCode;
+  if (data.locationId)                               payload.location_id            = data.locationId;
+  if (data.principalInvestigator)                    payload.principal_investigator = data.principalInvestigator;
+  if (data.enrollmentTarget != null)                 payload.enrollment_target      = Number(data.enrollmentTarget) || 0;
+  else if (data.expectedEnrollments != null)         payload.enrollment_target      = Number(data.expectedEnrollments) || 0;
+
+  return payload;
+}
+
 // ── Client ─────────────────────────────────────────────────────────────────────
 //
 // All methods accept `studyId` as the first argument for backwards compat with
@@ -124,50 +169,20 @@ export const sponsorSitesClient = {
     return normalizeSiteDetails(res?.item ?? res?.site ?? res ?? {});
   },
 
-  /** POST /sites — create (spec §4.1 fields + tolerated UI extras). */
+  /** POST /sites — create (current Site form §4.1).
+   *
+   * Every form field is sent, even when empty — JSON.stringify would otherwise
+   * drop `undefined` keys and the wire payload would look incomplete. The
+   * backend should treat empty strings the same as "unset" for optional fields.
+   */
   async create(_studyId, data) {
-    const res = await sponsorAxiosClient.post(BASE, {
-      // Spec §4.1 fields
-      site_number:            data.siteNumber ?? data.siteCode,
-      site_name:              data.siteName,
-      country_id:             data.countryId              || undefined,
-      location_id:            data.locationId             || undefined,
-      principal_investigator: data.principalInvestigator  || undefined,
-      status:                 data.status ?? 'Pending',
-      enrollment_target:      Number(data.enrollmentTarget ?? data.expectedEnrollments) || 0,
-      // UI-only extras (backend may ignore)
-      is_locked:            data.isLocked ?? false,
-      contact_person:       data.contactPerson,
-      email:                data.email,
-      contact_number:       data.contactNumber,
-      address_line1:        data.addressLine1,
-      address_line2:        data.addressLine2,
-      city:                 data.city,
-      state:                data.state,
-      country:              data.country,
-    });
+    const res = await sponsorAxiosClient.post(BASE, buildSitePayload(data, /* isCreate */ true));
     return normalizeSite(res?.item ?? res?.site ?? res ?? {});
   },
 
-  /** PATCH /sites/:siteId — update (any subset of create fields). */
+  /** PATCH /sites/:siteId — update. Same payload shape as create. */
   async update(_studyId, siteId, data) {
-    const res = await sponsorAxiosClient.patch(`${BASE}/${siteId}`, {
-      site_number:            data.siteNumber ?? data.siteCode,
-      site_name:              data.siteName,
-      country_id:             data.countryId             || undefined,
-      location_id:            data.locationId            || undefined,
-      principal_investigator: data.principalInvestigator || undefined,
-      status:                 data.status,
-      enrollment_target:      Number(data.enrollmentTarget ?? data.expectedEnrollments) || 0,
-      contact_person:         data.contactPerson,
-      email:                  data.email,
-      contact_number:         data.contactNumber,
-      address_line1:          data.addressLine1,
-      address_line2:          data.addressLine2,
-      city:                   data.city,
-      state:                  data.state,
-      country:                data.country,
-    });
+    const res = await sponsorAxiosClient.patch(`${BASE}/${siteId}`, buildSitePayload(data, false));
     return normalizeSite(res?.item ?? res?.site ?? res ?? {});
   },
 

@@ -104,7 +104,7 @@ export const fetchStudyAsync = createAsyncThunk(
     }
 
     try {
-      const res = await apiClient.get(`/studies/${studyId}`);
+      const res = await apiClient.get(`/api/v1/studies/${studyId}`);
       // axiosClient interceptors already unwrap the response body.
       return res?.data ?? res;
     } catch (err) {

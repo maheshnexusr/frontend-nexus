@@ -13,6 +13,7 @@
 
 import axios from 'axios';
 import { normalizeError } from './apiHelpers';
+import { handleLocked }  from './apiInterceptors';
 
 /* ── Instance ─────────────────────────────────────────────────────────────── */
 const BASE_URL = import.meta.env.VITE_USE_LOCAL === 'true'
@@ -153,6 +154,13 @@ axiosClient.interceptors.response.use(
   async (error) => {
     logError(error);
     const original = error.config;
+
+    // 423 — Study/Site/Subject locked. Toast + broadcast a window event so
+    // any open form can refresh its lock state and disable Save buttons.
+    if (error.response?.status === 423) {
+      handleLocked(error);
+      return Promise.reject(normalizeError(error));
+    }
 
     /* 401 handling — one refresh attempt per request.
        Skip for auth endpoints: a 401 there means wrong credentials, not expired session. */

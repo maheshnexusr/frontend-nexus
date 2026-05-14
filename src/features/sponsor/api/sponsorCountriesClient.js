@@ -14,9 +14,18 @@ import sponsorAxiosClient from '@/api/sponsorAxiosClient';
 const BASE = '/api/v1/sponsor/workspace/masters/countries';
 
 function normalize(raw) {
+  // The backend has used several ID names across iterations; pick whichever
+  // is present so the dropdown's `value` is never undefined (which silently
+  // drops country_id from the Locations create payload).
+  const id =
+    raw.country_id ?? raw.countryId ?? raw.id ?? raw._id ?? raw.uuid ?? raw.uuId ?? '';
+  if (!id) {
+    // eslint-disable-next-line no-console
+    console.warn('[sponsorCountriesClient] country row missing id; received keys:', Object.keys(raw ?? {}));
+  }
   return {
-    id:          raw.country_id   ?? raw.id,
-    countryName: raw.country_name ?? raw.countryName ?? '',
+    id,
+    countryName: raw.country_name ?? raw.countryName ?? raw.name ?? '',
     countryCode: raw.iso_code     ?? raw.country_code ?? raw.countryCode ?? '',
     isoCode:     raw.iso_code     ?? raw.isoCode      ?? '',
     dialingCode: raw.dialing_code ?? raw.dialingCode  ?? '',
@@ -28,7 +37,26 @@ function normalize(raw) {
 }
 
 function extractList(res) {
-  const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
+  // Handle every wrapping shape the backend has used:
+  //   [...]                                                                ← array body
+  //   { items: [...] }                                                     ← spec §0
+  //   { success, items: [...] } / { success, data: [...] }                 ← envelope
+  //   { countries: [...] }                                                 ← domain key
+  //   { data: { items: [...] | countries: [...] } }                        ← double-wrapped
+  let arr =
+       (Array.isArray(res)              ? res
+      : Array.isArray(res?.items)       ? res.items
+      : Array.isArray(res?.data)        ? res.data
+      : Array.isArray(res?.countries)   ? res.countries
+      : Array.isArray(res?.data?.items) ? res.data.items
+      : Array.isArray(res?.data?.countries) ? res.data.countries
+      : []);
+  if (!Array.isArray(arr)) arr = [];
+  if (arr.length === 0 && res && typeof res === 'object' && Object.keys(res).length > 0) {
+    // Help the developer if a new wrapping shape is encountered.
+    // eslint-disable-next-line no-console
+    console.warn('[sponsorCountriesClient] empty extractList from response:', res);
+  }
   return arr.map(normalize);
 }
 
@@ -51,7 +79,7 @@ export const sponsorCountriesClient = {
       description:  form.description || undefined,
       status:       form.status ?? 'Active',
     });
-    return normalize(res?.item ?? res);
+    return normalize(res?.item ?? res?.country ?? res?.data ?? res ?? {});
   },
 
   async update(_studyId, id, form) {
@@ -62,7 +90,7 @@ export const sponsorCountriesClient = {
       description:  form.description || undefined,
       status:       form.status,
     });
-    return normalize(res?.item ?? res);
+    return normalize(res?.item ?? res?.country ?? res?.data ?? res ?? {});
   },
 
   async delete(_studyId, id) {

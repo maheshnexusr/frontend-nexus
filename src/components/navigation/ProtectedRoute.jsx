@@ -75,12 +75,16 @@ export default function ProtectedRoute({ children, requiredPermission, scope }) 
   const permissions     = useAppSelector(selectPermissions);
 
   if (scope === 'sponsor') {
-    // Sponsor scope has no dedicated Redux slice yet — gate on token presence.
-    // Two valid sources: a normal sponsor login (sponsorAccessToken) or a CRO
-    // user viewing a sponsor workspace as read-only (sponsorViewToken).
+    // The sponsor workspace shell is reachable by three token scopes:
+    //   • sponsorAccessToken  — direct sponsor login
+    //   • sponsorViewToken    — CRO user viewing a sponsor workspace
+    //   • siteAccessToken     — activated site personnel (PI / Coordinator /
+    //                           Nurse / etc.) whose menu is then filtered by
+    //                           their site-role's permission tree.
     const hasSponsorToken     = !!localStorage.getItem('sponsorAccessToken');
     const hasSponsorViewToken = !!localStorage.getItem('sponsorViewToken');
-    if (!hasSponsorToken && !hasSponsorViewToken) {
+    const hasSiteTokenScope   = !!localStorage.getItem('siteAccessToken');
+    if (!hasSponsorToken && !hasSponsorViewToken && !hasSiteTokenScope) {
       return <Navigate to="/signin" replace />;
     }
     return children;

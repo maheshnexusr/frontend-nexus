@@ -1,10 +1,17 @@
 /**
- * sponsorViewSlice — Redux state for "CRO user viewing a sponsor workspace
- * as read-only". This is a SEPARATE scope from the CRO session and from a
- * direct sponsor login; it must never overwrite either.
+ * sponsorViewSlice — Redux state for "CRO user is currently inside a sponsor
+ * workspace they entered via /workspace/sponsors/:id/enter".
  *
- * Backed by sponsorViewTokenStore (localStorage), so a page refresh keeps
- * the user inside the read-only view.
+ * This is a SEPARATE scope from the CRO session and from a direct sponsor
+ * login; it must never overwrite either. Backed by sponsorViewTokenStore
+ * (localStorage), so a page refresh keeps the user inside the view.
+ *
+ * NOTE: This used to be a "read-only" viewer. The CRO is now given the same
+ * write access as a sponsor login when they enter via /enter, so the
+ * `isReadOnly` flag is permanently `false` and write-control gating no
+ * longer applies. The slice still tracks "is the CRO currently inside a
+ * sponsor workspace" via `isViewing` so the top-bar logout can choose
+ * between "exit view" and "full sign-out".
  */
 
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
@@ -13,23 +20,18 @@ import { sponsorViewTokenStore  } from '@/features/workspace/sponsorViewTokenSto
 
 /* ── Initial state (rehydrated from localStorage) ────────────────────────── */
 function readInitial() {
-  const meta = sponsorViewTokenStore.getMeta();
-  if (!sponsorViewTokenStore.isActive() || !meta) {
-    return {
-      isReadOnly: false,
-      sponsor:    null,
-      user:       null,
-      studies:    [],
-      status:     'idle',
-      error:      null,
-    };
-  }
+  const meta   = sponsorViewTokenStore.getMeta();
+  const active = sponsorViewTokenStore.isActive() && !!meta;
   return {
-    isReadOnly: true,
-    sponsor:    meta.sponsor ?? null,
-    user:       meta.user    ?? null,
-    studies:    meta.studies ?? [],
-    status:     'succeeded',
+    // CRO viewers have full write access now — kept as `false` permanently.
+    isReadOnly: false,
+    // True while the CRO is inside a sponsor workspace via /enter; used by
+    // the header to choose between "exit view" and "full sign-out".
+    isViewing:  active,
+    sponsor:    active ? (meta.sponsor ?? null) : null,
+    user:       active ? (meta.user    ?? null) : null,
+    studies:    active ? (meta.studies ?? [])   : [],
+    status:     active ? 'succeeded' : 'idle',
     error:      null,
   };
 }
@@ -56,10 +58,11 @@ const sponsorViewSlice = createSlice({
   name: 'sponsorView',
   initialState: readInitial(),
   reducers: {
-    /** Drop the read-only viewer state. CRO session is untouched. */
+    /** Exit the sponsor view. CRO session is untouched. */
     exitSponsorView(state) {
       sponsorViewTokenStore.clear();
       state.isReadOnly = false;
+      state.isViewing  = false;
       state.sponsor    = null;
       state.user       = null;
       state.studies    = [];
@@ -74,7 +77,8 @@ const sponsorViewSlice = createSlice({
         state.error  = null;
       })
       .addCase(enterSponsorWorkspaceAsync.fulfilled, (state, { payload }) => {
-        state.isReadOnly = true;
+        state.isReadOnly = false;            // CRO viewers have full access
+        state.isViewing  = true;
         state.sponsor    = payload.sponsor;
         state.user       = payload.user;
         state.studies    = payload.studies;
@@ -92,6 +96,9 @@ export const { exitSponsorView } = sponsorViewSlice.actions;
 
 /* ── Selectors ───────────────────────────────────────────────────────────── */
 export const selectSponsorView          = (s) => s.sponsorView;
+/** True when the CRO is currently inside a sponsor workspace (entered via /enter). */
+export const selectIsViewingSponsor     = (s) => !!s.sponsorView.isViewing;
+/** Legacy alias — kept so existing call sites still compile, always `false` now. */
 export const selectIsSponsorReadOnly    = (s) => s.sponsorView.isReadOnly;
 export const selectSponsorViewSponsor   = (s) => s.sponsorView.sponsor;
 export const selectSponsorViewUser      = (s) => s.sponsorView.user;

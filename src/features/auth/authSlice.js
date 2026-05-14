@@ -257,25 +257,75 @@ function normalizeUser(raw) {
     photograph:    raw.photograph_path ?? raw.photograph     ?? null,
     contactNumber: raw.contact_number  ?? raw.contactNumber  ?? '',
     isActive:      raw.is_active       ?? raw.isActive       ?? true,
+    // CRO team members assigned to one or more sponsor studies carry a list
+    // of per-study permission trees. When they enter a sponsor workspace
+    // for any of these studies, the SponsorLayout looks up the matching
+    // entry and gates the sidebar against `sponsorPermissions`.
+    //
+    // Shape: [
+    //   { studyId, studyTitle?, sponsorId?, sponsorName?,
+    //     sponsorPermissions: { [leafKey]: { view, … } } },
+    //   …
+    // ]
+    assignedStudies: normalizeAssignedStudies(
+      raw.assigned_studies ?? raw.assignedStudies ?? raw.studies ?? [],
+    ),
   };
 }
 
+/** Map snake_case → camelCase for each entry in the CRO user's study list. */
+function normalizeAssignedStudies(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr.map((s) => ({
+    studyId:           s.study_id          ?? s.studyId          ?? '',
+    studyTitle:        s.study_title       ?? s.studyTitle       ?? '',
+    sponsorId:         s.sponsor_id        ?? s.sponsorId        ?? '',
+    sponsorName:       s.sponsor_name      ?? s.sponsorName      ?? '',
+    sponsorPermissions: s.sponsor_permissions ?? s.sponsorPermissions ?? null,
+  })).filter((s) => s.studyId);
+}
+
 /**
- * Convert API permissions (flat array of objects) → string array.
- * Handles all casing variants the backend has returned:
- *   featurename / feature_name / featureName
- *   canview / can_view / canView  … etc.
- * Each enabled permission becomes: 'groupKey.featureKey.permKey'
- * e.g. 'teamAdmin.teamMembers.view'
+ * Convert API permissions to the flat dot-notation array the CRO sidebar
+ * expects (`groupKey.featureKey.permKey`, e.g. `teamAdmin.teamMembers.view`).
+ *
+ * Accepts three input shapes the backend has used:
+ *   1. Flat object array (legacy): [ { featurename, canview, … }, … ]
+ *   2. 3-level tree (current spec):
+ *      { teamAdmin: { teamMembers: { view: true, create: false, … }, … }, … }
+ *   3. Cached string array from a previous session — pass through.
+ *
+ * Anything else returns []. Unknown groups / features are silently ignored.
  */
 function normalizePermissions(apiPerms) {
-  if (!Array.isArray(apiPerms) || apiPerms.length === 0) return [];
-  // Already a string array (cached from previous session) — pass through
-  if (typeof apiPerms[0] === 'string') return apiPerms;
+  // Empty input
+  if (apiPerms == null) return [];
 
+  // (3) Cached string array — pass through
+  if (Array.isArray(apiPerms) && apiPerms.length === 0) return [];
+  if (Array.isArray(apiPerms) && typeof apiPerms[0] === 'string') return apiPerms;
+
+  // (2) 3-level tree: { groupKey: { featureKey: { perm: bool } } }
+  if (!Array.isArray(apiPerms) && typeof apiPerms === 'object') {
+    const result = [];
+    for (const group of PERMISSION_GROUPS) {
+      const gNode = apiPerms[group.key];
+      if (!gNode || typeof gNode !== 'object') continue;
+      for (const feature of group.features) {
+        const fNode = gNode[feature.key];
+        if (!fNode || typeof fNode !== 'object') continue;
+        feature.perms.forEach(({ key }) => {
+          if (fNode[key]) result.push(`${group.key}.${feature.key}.${key}`);
+        });
+      }
+    }
+    return result;
+  }
+
+  // (1) Flat object array: [ { featurename, canview, … }, … ]
+  if (!Array.isArray(apiPerms)) return [];
   const result = [];
   for (const p of apiPerms) {
-    // Accept featurename / feature_name / featureName
     const featureName = (p.featurename ?? p.feature_name ?? p.featureName ?? '').toLowerCase();
     for (const group of PERMISSION_GROUPS) {
       for (const feature of group.features) {
@@ -312,15 +362,35 @@ function applyTokens(state, raw) {
   if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
 }
 
-/** Normalize + write user + permissions to state and localStorage */
+/** Normalize + write user + permissions to state and localStorage.
+ *
+ *  - `rawPerms` missing/empty       → no access  (state.permissions = [])
+ *  - rawPerms === '*' OR true       → wildcard   (system admin — explicit)
+ *  - rawPerms array of strings      → pass through
+ *  - rawPerms array of objects      → flatten via normalizePermissions
+ *  - rawPerms tree (object of objs) → flatten via normalizePermissions
+ *
+ *  Wildcard is NEVER granted as a fallback — backend must say so explicitly
+ *  (`permissions: '*'` or `permissions: true`). This prevents a site or
+ *  sponsor user, who happens to authenticate through the CRO sign-in form,
+ *  from accidentally seeing the entire CRO menu when their CRO permissions
+ *  are simply absent.
+ */
 function applyUser(state, raw) {
   const user = normalizeUser(raw.user);
 
   const rawPerms = raw.permissions ?? raw.permission;
-  // No permissions from backend = system admin → grant full access via wildcard
-  const permissions = (!rawPerms || rawPerms.length === 0)
-    ? ['*']
-    : normalizePermissions(rawPerms);
+
+  let permissions;
+  if (rawPerms === '*' || rawPerms === true) {
+    permissions = ['*'];
+  } else if (Array.isArray(rawPerms) && rawPerms.length > 0) {
+    permissions = normalizePermissions(rawPerms);
+  } else if (rawPerms && typeof rawPerms === 'object' && Object.keys(rawPerms).length > 0) {
+    permissions = normalizePermissions(rawPerms);
+  } else {
+    permissions = [];   // no CRO access — explicit
+  }
 
   state.user            = user;
   state.permissions     = permissions;
@@ -346,6 +416,49 @@ const authSlice = createSlice({
         state.user = { ...state.user, ...payload };
       }
     },
+    /**
+     * Apply the unified /profile/me/permissions response to the CRO scope.
+     * Flattens the tree to the dot-notation array CROLayout expects, and
+     * updates the user's assignedStudies for per-study sponsor lookup.
+     *
+     * Empty / missing permissions = no CRO access (no wildcard fallback).
+     */
+    setRolePermissions(state, { payload }) {
+      const { permissions, assignedStudies } = payload ?? {};
+
+      let flat;
+      if (permissions === '*' || permissions === true) {
+        flat = ['*'];
+      } else if (Array.isArray(permissions) && permissions.length > 0) {
+        flat = normalizePermissions(permissions);
+      } else if (permissions && typeof permissions === 'object' && Object.keys(permissions).length > 0) {
+        flat = normalizePermissions(permissions);
+      } else {
+        flat = [];
+      }
+      state.permissions = flat;
+
+      if (state.user) {
+        state.user.assignedStudies = Array.isArray(assignedStudies)
+          ? assignedStudies
+          : (state.user.assignedStudies ?? []);
+      }
+      localStorage.setItem('authPermissions', JSON.stringify(state.permissions));
+      if (state.user) {
+        localStorage.setItem('authUser', JSON.stringify(state.user));
+      }
+    },
+
+    /**
+     * Wipe the CRO permission array. Called by applyPermissions when the
+     * dynamic /profile/me/permissions endpoint indicates the user is in
+     * a different scope (site or sponsor) so the CRO sidebar shows nothing
+     * accidentally.
+     */
+    clearCroPermissions(state) {
+      state.permissions = [];
+      localStorage.setItem('authPermissions', JSON.stringify([]));
+    },
     logout(state) {
       state.user            = null;
       state.accessToken     = null;
@@ -359,12 +472,20 @@ const authSlice = createSlice({
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('authUser');
       localStorage.removeItem('authPermissions');
-      // Sponsor scope — the shared Sidebar logout lives in both layouts,
-      // so clear sponsor tokens/context here too (idempotent if unset).
+      // Sponsor scope
       localStorage.removeItem('sponsorAccessToken');
       localStorage.removeItem('sponsorRefreshToken');
       localStorage.removeItem('sponsorAuthUser');
       localStorage.removeItem('sponsorStudyContext');
+      localStorage.removeItem('sponsorViewToken');
+      localStorage.removeItem('sponsorViewMeta');
+      localStorage.removeItem('sponsorViewFlash');
+      // Site scope — must be cleared too or a stale siteAuthUser from a
+      // prior PI session will incorrectly restrict the next sponsor login's
+      // menu via useSiteRolePermissions.
+      localStorage.removeItem('siteAccessToken');
+      localStorage.removeItem('siteRefreshToken');
+      localStorage.removeItem('siteAuthUser');
     },
     setGeoInfo(state, action) {
       state.geoInfo = action.payload;
@@ -454,7 +575,14 @@ const authSlice = createSlice({
   },
 });
 
-export const { logout, setGeoInfo, clearError, updateUser } = authSlice.actions;
+export const {
+  logout,
+  setGeoInfo,
+  clearError,
+  updateUser,
+  setRolePermissions,
+  clearCroPermissions,
+} = authSlice.actions;
 
 // ── Selectors ────────────────────────────────────────────────────────────────
 export const selectAuth            = (state) => state.auth;
@@ -462,6 +590,8 @@ export const selectCurrentUser     = (state) => state.auth.user;
 export const selectIsAuthenticated = (state) => state.auth.isAuthenticated;
 export const selectAuthStatus      = (state) => state.auth.status;
 export const selectAuthError       = (state) => state.auth.error;
+/** Per-study sponsor permissions for a CRO team member assigned to studies. */
+export const selectAssignedStudies = (state) => state.auth.user?.assignedStudies ?? [];
 export const selectPermissions     = (state) => state.auth.permissions;
 export const selectGeoInfo         = (state) => state.auth.geoInfo;
 

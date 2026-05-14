@@ -134,7 +134,12 @@ const ConsentReviewPage      = lazy(() => import('@/features/sponsor/pages/Conse
 const QueriesPage            = lazy(() => import('@/features/sponsor/pages/QueriesPage'));
 const VerificationPage       = lazy(() => import('@/features/sponsor/pages/VerificationPage'));
 const SitesPage              = lazy(() => import('@/features/sponsor/pages/SitesPage'));
+const SiteFormPage           = lazy(() => import('@/features/sponsor/pages/SiteFormPage'));
+const SiteRoleFormPage       = lazy(() => import('@/features/sponsor/pages/SiteRoleFormPage'));
 const PersonnelPage          = lazy(() => import('@/features/sponsor/pages/PersonnelPage'));
+const PersonnelFormPage      = lazy(() => import('@/features/sponsor/pages/PersonnelFormPage'));
+const SitePersonnelActivationPage = lazy(() => import('@/features/site/pages/SitePersonnelActivationPage'));
+const SiteDashboardPage           = lazy(() => import('@/features/site/pages/SiteDashboardPage'));
 const RolesPage              = lazy(() => import('@/features/sponsor/pages/RolesPage'));
 const ReportsPage            = lazy(() => import('@/features/sponsor/pages/ReportsPage'));
 const SponsorActivityLogPage      = lazy(() => import('@/features/sponsor/pages/SponsorActivityLogPage'));
@@ -256,6 +261,13 @@ export const router = createBrowserRouter([
         ],
       },
 
+      // ── Site portal (new auth scope: site, separate from CRO/sponsor) ────
+      // Activation link in the invitation email → /site/invite/:token
+      // After activate succeeds → /site/dashboard (placeholder until the
+      // full site-portal shell is built).
+      { path: 'site/invite/:token',  element: sp(SitePersonnelActivationPage) },
+      { path: 'site/dashboard',      element: sp(SiteDashboardPage) },
+
       // ── Workspace selector routes ────────────────────────────────────────
       {
         path: 'workspace',
@@ -361,9 +373,15 @@ export const router = createBrowserRouter([
           { path: 'consent/review', element: sp(ConsentReviewPage) },
           { path: 'queries',        element: sp(QueriesPage) },
           { path: 'verification',   element: sp(VerificationPage) },
-          { path: 'sites',          element: sp(SitesPage) },
-          { path: 'personnel',      element: sp(PersonnelPage) },
-          { path: 'roles',          element: sp(RolesPage) },
+          { path: 'sites',                 element: sp(SitesPage)     },
+          { path: 'sites/new',             element: sp(SiteFormPage)  },
+          { path: 'sites/:siteId/edit',    element: sp(SiteFormPage)  },
+          { path: 'personnel',                     element: sp(PersonnelPage)     },
+          { path: 'personnel/new',                 element: sp(PersonnelFormPage) },
+          { path: 'personnel/:personnelId/edit',   element: sp(PersonnelFormPage) },
+          { path: 'roles',                 element: sp(RolesPage)         },
+          { path: 'roles/new',             element: sp(SiteRoleFormPage)  },
+          { path: 'roles/:roleId/edit',    element: sp(SiteRoleFormPage)  },
           { path: 'reports',        element: sp(ReportsPage) },
           { path: 'activity-log',              element: sp(SponsorActivityLogPage)   },
           { path: 'masters/email-templates',   element: sp(MasterEmailTemplatesPage) },

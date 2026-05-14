@@ -180,7 +180,7 @@ export default function RoleFormModal({ role, existingRoles, onSave, onClose }) 
 
   return (
     <Modal
-      isOpen
+      open
       onClose={onClose}
       title={isEdit ? `Edit Role — ${role.roleName}` : 'Create New Role'}
       size="lg"

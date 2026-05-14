@@ -1,4 +1,44 @@
-.body { display: flex; flex-direction: column; gap: 16px; }
+/* ─────────────────────────────────────────────────────────────────────────
+   SiteFormModal — Create / Edit Site form.
+   Flat layout matching the screenshot, hosted inside the shared Modal.
+   ───────────────────────────────────────────────────────────────────────── */
+
+/* ── Title row (custom title with a Back button) ─────────────────────────── */
+.titleRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary, #475569);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.backBtn:hover {
+  background: var(--bg-hover, #f1f5f9);
+  color: var(--text-primary, #0f172a);
+}
+.titleText {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+}
+
+/* ── Body grid ───────────────────────────────────────────────────────────── */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
 
 .apiError {
   padding: 10px 14px;
@@ -9,129 +49,133 @@
   color: #dc2626;
 }
 
-/* ── Sections ────────────────────────────────────────────────────────────── */
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  background: var(--bg-subtle, #f8fafc);
-  border: 1px solid var(--border-default, #e2e8f0);
-  border-radius: 8px;
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
 }
-.sectionTitle {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--text-secondary, #64748b);
-  margin: 0 0 4px;
-  text-transform: uppercase;
-  letter-spacing: .04em;
-}
-
-/* ── Grids ───────────────────────────────────────────────────────────────── */
-.grid1 { display: grid; grid-template-columns: 1fr; gap: 10px; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
-
-@media (max-width: 600px) {
-  .grid2, .grid3 { grid-template-columns: 1fr; }
-}
+@media (max-width: 600px) { .grid2 { grid-template-columns: 1fr; } }
 
 /* ── Field ───────────────────────────────────────────────────────────────── */
-.field { display: flex; flex-direction: column; gap: 4px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
 .label {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--text-primary, #0f172a);
 }
-.req { color: #dc2626; }
+.req { color: #dc2626; margin-left: 2px; }
 
 .input {
-  padding: 7px 10px;
-  border: 1px solid var(--border-default, #d1d5db);
-  border-radius: 7px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-medium, #d1d5db);
+  border-radius: 6px;
   font-size: 13px;
   font-family: inherit;
   color: var(--text-primary, #0f172a);
-  background: var(--bg-card, #fff);
+  background: var(--bg-surface, #fff);
   outline: none;
   width: 100%;
   box-sizing: border-box;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
 }
-.input:focus    { border-color: var(--color-primary, #2563eb); }
-.input:disabled { background: var(--bg-subtle, #f1f5f9); color: var(--text-secondary, #94a3b8); cursor: not-allowed; }
-.inputError     { border-color: #dc2626; }
-.fieldError     { font-size: 11px; color: #dc2626; }
+.input:focus {
+  border-color: var(--color-primary, #2563eb);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+.input:disabled {
+  background: var(--bg-muted, #f1f5f9);
+  color: var(--text-muted, #94a3b8);
+  cursor: not-allowed;
+}
+.inputError      { border-color: #dc2626; }
+.inputError:focus { box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.08); }
+.fieldError      { font-size: 11.5px; color: #dc2626; }
 
-/* ── Lock toggle row ─────────────────────────────────────────────────────── */
-.lockRow {
+.textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+/* ── Footer (Active Status toggle on left, action buttons on right) ──────── */
+.footer {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+}
+
+.activeWrap {
+  display: inline-flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 0 0;
+  cursor: pointer;
+  user-select: none;
 }
-.lockLabel {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12.5px;
+.activeLabel {
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, #374151);
-}
-.lockState {
-  font-size: 12px;
-  color: var(--text-secondary, #64748b);
+  color: var(--text-primary, #0f172a);
 }
 
 /* Toggle switch */
-.toggle { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+.toggle { position: relative; display: inline-flex; align-items: center; }
 .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
 .toggleTrack {
-  width: 36px;
-  height: 20px;
-  background: var(--border-default, #d1d5db);
-  border-radius: 10px;
+  width: 38px;
+  height: 22px;
+  background: var(--border-medium, #cbd5e1);
+  border-radius: 999px;
   position: relative;
-  transition: background .2s;
+  transition: background var(--t-fast);
+  flex-shrink: 0;
 }
 .toggleTrack::after {
   content: '';
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: #fff;
-  transition: transform .2s;
-  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  transition: transform var(--t-fast);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
-.toggle input:checked + .toggleTrack { background: #dc2626; }
-.toggle input:checked + .toggleTrack::after { transform: translateX(16px); }
+.toggleTrackOn { background: var(--color-primary, #2563eb); }
+.toggleTrackOn::after { transform: translateX(16px); }
 
-/* ── Footer ──────────────────────────────────────────────────────────────── */
-.footer { display: flex; justify-content: flex-end; gap: 8px; }
-.btnCancel {
-  padding: 7px 16px;
-  font-size: 13px;
-  font-weight: 600;
-  background: var(--bg-subtle, #f8fafc);
-  color: var(--text-secondary, #374151);
-  border: 1px solid var(--border-default, #d1d5db);
-  border-radius: 7px;
-  cursor: pointer;
+/* ── Action buttons ──────────────────────────────────────────────────────── */
+.footerActions {
+  display: flex;
+  gap: 8px;
 }
-.btnCancel:hover    { background: #f1f5f9; }
-.btnCancel:disabled { opacity: 0.55; cursor: not-allowed; }
-.btnSave {
-  padding: 7px 20px;
+.btnCancel {
+  padding: 8px 18px;
   font-size: 13px;
   font-weight: 600;
-  background: var(--color-primary, #2563eb);
+  background: var(--bg-surface, #fff);
+  color: var(--text-secondary, #475569);
+  border: 1px solid var(--border-medium, #d1d5db);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background var(--t-fast), border-color var(--t-fast);
+}
+.btnCancel:hover    { background: var(--bg-hover, #f8fafc); }
+.btnCancel:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.btnSave {
+  padding: 8px 22px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--text-primary, #0f172a);
   color: #fff;
   border: none;
-  border-radius: 7px;
+  border-radius: 6px;
   cursor: pointer;
+  transition: background var(--t-fast);
 }
-.btnSave:hover    { background: #1d4ed8; }
+.btnSave:hover    { background: #1e293b; }
 .btnSave:disabled { opacity: 0.55; cursor: not-allowed; }

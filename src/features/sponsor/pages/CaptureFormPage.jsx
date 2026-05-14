@@ -35,7 +35,7 @@ export default function CaptureFormPage() {
       setError(null);
       try {
         /* fetch saved form schema from backend */
-        const form = await apiClient.get(`/studies/forms/${formId}`);
+        const form = await apiClient.get(`/api/v1/studies/forms/${formId}`);
         /* the DynamicForm expects { formTitle, blocks:[...] } */
         const schema = {
           formTitle: form.title,
@@ -46,7 +46,7 @@ export default function CaptureFormPage() {
         /* if subjectId present, load saved answers */
         if (subjectId) {
           const dataRes = await apiClient.get(
-            `/studies/${studyId}/forms/${formId}/subjects/${subjectId}/data`,
+            `/api/v1/studies/${studyId}/forms/${formId}/subjects/${subjectId}/data`,
           );
           if (!cancelled) setDefaults(dataRes?.formData ?? {});
         }
@@ -75,7 +75,7 @@ export default function CaptureFormPage() {
     };
 
     await apiClient.post(
-      `/studies/${studyId}/forms/${formId}/subjects${subjectId ? `/${subjectId}` : ''}/data`,
+      `/api/v1/studies/${studyId}/forms/${formId}/subjects${subjectId ? `/${subjectId}` : ''}/data`,
       payload,
     );
   }, [studyId, formId, subjectId, ro.isReadOnly, ro.readOnlyMessage, dispatch]);

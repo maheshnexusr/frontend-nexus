@@ -64,7 +64,9 @@ export default function SponsorLocationModal({ mode, location, studyId, onSave, 
 
   const handleSubmit = async () => {
     const errs = {};
-    if (!form.countryId)         errs.countryId  = 'Country is required.';
+    // String() guards against an accidental object/null leak from the dropdown.
+    if (!form.countryId || !String(form.countryId).trim())
+                                 errs.countryId  = 'Country is required.';
     if (!form.state.trim())      errs.state      = 'State is required.';
     if (!form.district.trim())   errs.district   = 'District is required.';
     if (!form.city.trim())       errs.city       = 'City is required.';

@@ -5,7 +5,7 @@
  */
 import { useState, useEffect }      from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Settings2, Zap, Users, ArrowLeft, ArrowRight, Save, LayoutTemplate, Eye } from 'lucide-react';
+import { Settings2, Zap, Users, ArrowLeft, ArrowRight, Save, LayoutTemplate, Eye, Maximize2, Minimize2 } from 'lucide-react';
 import {
   initForm, setActivePanel,
   selectActivePanel, selectBlocks, selectIsDirty, markSaved,
@@ -25,6 +25,7 @@ export default function StudyFormBuilder({ formId, formTitle, onPrevious, onNext
   const dispatch     = useDispatch();
   const activePanel  = useSelector(selectActivePanel);
   const [previewing, setPreviewing] = useState(false);
+  const [maximized,  setMaximized]  = useState(false);
   const blocks       = useSelector(selectBlocks);
   const isDirty      = useSelector(selectIsDirty);
   const triggers     = useSelector(selectTriggers);
@@ -95,7 +96,7 @@ export default function StudyFormBuilder({ formId, formTitle, onPrevious, onNext
   ];
 
   return (
-    <div className={s.root}>
+    <div className={`${s.root} ${maximized ? s.rootMaximized : ''}`}>
       {/* ── Top toolbar ──────────────────────────────────────────────────── */}
       <div className={s.toolbar}>
         <div className={s.toolbarLeft}>
@@ -113,6 +114,15 @@ export default function StudyFormBuilder({ formId, formTitle, onPrevious, onNext
 
         <div className={s.toolbarRight}>
           {isDirty && !previewing && <span className={s.dirtyDot} title="Unsaved changes" />}
+          <button
+            className={s.btnPreview}
+            onClick={() => setMaximized((v) => !v)}
+            title={maximized ? 'Exit full screen' : 'Enter full screen'}
+            aria-label={maximized ? 'Exit full screen' : 'Enter full screen'}
+          >
+            {maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+            {maximized ? 'Exit Full Screen' : 'Full Screen'}
+          </button>
           <button
             className={`${s.btnPreview} ${previewing ? s.btnPreviewActive : ''}`}
             onClick={() => setPreviewing((v) => !v)}
