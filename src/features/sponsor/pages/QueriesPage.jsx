@@ -20,7 +20,7 @@ import styles from './QueriesPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS   = ['All', 'Open', 'In Progress', 'Resolved', 'Closed', 'Overdue'];
+const STATUS_OPTIONS   = ['All', 'Raised', 'Answered', 'Resolved', 'Overdue'];
 const PRIORITY_OPTIONS = ['All', 'High', 'Medium', 'Low'];
 
 const PRIORITY_META = {
@@ -28,13 +28,32 @@ const PRIORITY_META = {
   Medium: { color: '#f59e0b', bg: '#fffbeb', dot: '#f59e0b' },
   Low:    { color: '#3b82f6', bg: '#eff6ff', dot: '#3b82f6' },
 };
+// Query status palette (per requirement):
+//   Raised   #F59E0B (Amber)  — warning / pending action
+//   Answered #2563EB (Blue)   — informational / under review
+//   Resolved #16A34A (Green)  — success / completed
 const STATUS_META = {
-  Open:         { color: '#2563eb', bg: '#eff6ff' },
-  'In Progress':{ color: '#f59e0b', bg: '#fffbeb' },
-  Resolved:     { color: '#7c3aed', bg: '#f5f3ff' },
-  Closed:       { color: '#10b981', bg: '#ecfdf5' },
-  Overdue:      { color: '#dc2626', bg: '#fef2f2' },
+  Raised:       { color: '#92400e', bg: '#fef3c7', accent: '#F59E0B' },
+  Answered:     { color: '#1d4ed8', bg: '#dbeafe', accent: '#2563EB' },
+  Resolved:     { color: '#166534', bg: '#dcfce7', accent: '#16A34A' },
+  Open:         { color: '#92400e', bg: '#fef3c7', accent: '#F59E0B' },
+  'In Progress':{ color: '#1d4ed8', bg: '#dbeafe', accent: '#2563EB' },
+  Closed:       { color: '#166534', bg: '#dcfce7', accent: '#16A34A' },
+  Overdue:      { color: '#dc2626', bg: '#fef2f2', accent: '#dc2626' },
 };
+
+// Map legacy server statuses onto the 3-state palette for display.
+const STATUS_DISPLAY = { Open: 'Raised', 'In Progress': 'Answered', Closed: 'Resolved' };
+const toDisplayStatus = (st) => STATUS_DISPLAY[st] ?? st ?? 'Raised';
+
+function fmtAging(days) {
+  if (days == null || Number.isNaN(days)) return '—';
+  if (days === 0) return 'Today';
+  if (days < 7)  return `${days}d`;
+  const wk = Math.floor(days / 7);
+  const rem = days % 7;
+  return rem ? `${wk}w ${rem}d` : `${wk}w`;
+}
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -146,15 +165,19 @@ export default function QueriesPage() {
   };
 
   // ── Stats ─────────────────────────────────────────────────────────────────
-  const stats = useMemo(() => ({
-    total:   queries.length,
-    open:    queries.filter((q) => q.status === 'Open').length,
-    overdue: queries.filter((q) => q.status === 'Overdue').length,
-    closed:  queries.filter((q) => q.status === 'Closed').length,
-  }), [queries]);
+  const stats = useMemo(() => {
+    const byDisplay = (label) => queries.filter((q) => toDisplayStatus(q.status) === label).length;
+    return {
+      total:    queries.length,
+      raised:   byDisplay('Raised'),
+      answered: byDisplay('Answered'),
+      resolved: byDisplay('Resolved'),
+      overdue:  queries.filter((q) => q.status === 'Overdue' || (q.slaRemaining < 0 && toDisplayStatus(q.status) !== 'Resolved')).length,
+    };
+  }, [queries]);
 
   // ── Selection ─────────────────────────────────────────────────────────────
-  const activeOnPage = pageData.filter((q) => q.status !== 'Closed');
+  const activeOnPage = pageData.filter((q) => toDisplayStatus(q.status) !== 'Resolved');
   const allActiveSelected = activeOnPage.length > 0 && activeOnPage.every((q) => selected.has(q.id));
 
   const toggleAll = () => {
@@ -249,17 +272,18 @@ export default function QueriesPage() {
   const selectedCount = selected.size;
 
   const COLUMNS = [
-    { key: 'id',           label: 'Query ID'   },
-    { key: 'siteName',     label: 'Site'       },
-    { key: 'subjectId',    label: 'Subject ID' },
-    { key: 'formName',     label: 'Form / CRF' },
-    { key: 'fieldName',    label: 'Field'      },
-    { key: 'queryText',    label: 'Query Text' },
-    { key: 'priority',     label: 'Priority'   },
-    { key: 'status',       label: 'Status'     },
-    { key: 'raisedBy',     label: 'Raised By'  },
-    { key: 'raisedDate',   label: 'Date'       },
-    { key: 'daysOpen',     label: 'Days Open'  },
+    { key: 'id',                label: 'Query ID'         },
+    { key: 'siteId',            label: 'Site'             },
+    { key: 'subjectId',         label: 'Subject'          },
+    { key: 'pageName',          label: 'Block / Page'     },
+    { key: 'fieldName',         label: 'Field'            },
+    { key: 'queryText',         label: 'Query Description'},
+    { key: 'status',            label: 'Status'           },
+    { key: 'priority',          label: 'Priority'         },
+    { key: 'daysOpen',          label: 'Aging'            },
+    { key: 'raisedBy',          label: 'Actioned By'      },
+    { key: 'raisedDate',        label: 'Actioned Date'    },
+    { key: 'resolutionComment', label: 'Resolution'       },
   ];
 
   return (
@@ -281,17 +305,23 @@ export default function QueriesPage() {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Counts banner — Minimal Dashboard style */}
       <div className={styles.statsBar}>
         {[
-          { label: 'Total',   value: stats.total,   color: '#2563eb' },
-          { label: 'Open',    value: stats.open,    color: '#f59e0b' },
-          { label: 'Overdue', value: stats.overdue, color: '#dc2626' },
-          { label: 'Closed',  value: stats.closed,  color: '#10b981' },
-        ].map(({ label, value, color }) => (
+          { label: 'Total Queries', value: stats.total,    color: '#0f172a', bg: '#f1f5f9' },
+          { label: 'Raised',        value: stats.raised,   color: '#F59E0B', bg: '#fef3c7' },
+          { label: 'Answered',      value: stats.answered, color: '#2563EB', bg: '#dbeafe' },
+          { label: 'Resolved',      value: stats.resolved, color: '#16A34A', bg: '#dcfce7' },
+          { label: 'Overdue',       value: stats.overdue,  color: '#dc2626', bg: '#fee2e2' },
+        ].map(({ label, value, color, bg }) => (
           <div key={label} className={styles.statCard}>
-            <span className={styles.statValue} style={{ color }}>{value}</span>
-            <span className={styles.statLabel}>{label}</span>
+            <div className={styles.statCardInner}>
+              <span className={styles.statValue} style={{ color }}>{value}</span>
+              <span className={styles.statLabel}>{label}</span>
+            </div>
+            <span className={styles.statIcon} style={{ background: bg, color }}>
+              {label.charAt(0)}
+            </span>
           </div>
         ))}
       </div>
@@ -425,7 +455,7 @@ export default function QueriesPage() {
 
             {!loading && pageData.length === 0 && (
               <tr>
-                <td colSpan={13} className={styles.emptyCell}>
+                <td colSpan={14} className={styles.emptyCell}>
                   <div className={styles.empty}>
                     <MessageSquareWarning size={40} strokeWidth={1.25} className={styles.emptyIcon} />
                     <p className={styles.emptyTitle}>
@@ -438,9 +468,30 @@ export default function QueriesPage() {
 
             {!loading && pageData.map((q) => {
               const pm = PRIORITY_META[q.priority] ?? PRIORITY_META.Medium;
-              const sm = STATUS_META[q.status]     ?? STATUS_META.Open;
-              const isActive = q.status !== 'Closed';
-              const isOverdue = q.slaRemaining < 0 && isActive;
+              const display = toDisplayStatus(q.status);
+              const sm = STATUS_META[display] ?? STATUS_META.Raised;
+              const isResolved = display === 'Resolved';
+              const isActive   = !isResolved;
+              const isOverdue  = q.slaRemaining < 0 && isActive;
+
+              // Actioned By / Date track the latest action in the lifecycle.
+              const actionedBy   = isResolved ? (q.resolvedBy || q.respondedBy || q.raisedBy)
+                                  : display === 'Answered' ? (q.respondedBy || q.raisedBy)
+                                  : q.raisedBy;
+              const actionedDate = isResolved ? (q.resolvedDate || q.responseDate || q.raisedDate)
+                                  : display === 'Answered' ? (q.responseDate || q.raisedDate)
+                                  : q.raisedDate;
+
+              const siteLabel = q.siteId
+                ? `${q.siteId}${q.siteName ? ` — ${q.siteName}` : ''}`
+                : (q.siteName || '—');
+              const subjectLabel = q.subjectId
+                ? `${q.subjectId}${q.subjectInitials ? ` (${q.subjectInitials})` : ''}`
+                : '—';
+              const blockPageLabel = q.blockName && q.pageName
+                ? `${q.blockName} / ${q.pageName}`
+                : (q.pageName || q.blockName || q.formName || '—');
+
               return (
                 <tr
                   key={q.id}
@@ -452,13 +503,21 @@ export default function QueriesPage() {
                     )}
                   </td>
                   <td className={styles.td}><code className={styles.qid}>{q.id}</code></td>
-                  <td className={styles.td}>{q.siteName || '—'}</td>
-                  <td className={styles.td}><span className={styles.pill}>{q.subjectId || '—'}</span></td>
-                  <td className={styles.td}>{q.formName || '—'}</td>
+                  <td className={styles.td} title={q.siteName || ''}>{siteLabel}</td>
+                  <td className={styles.td}><span className={styles.pill}>{subjectLabel}</span></td>
+                  <td className={styles.td}>{blockPageLabel}</td>
                   <td className={styles.td}><span className={styles.fieldName}>{q.fieldName || '—'}</span></td>
                   <td className={styles.td}>
                     <span className={styles.queryText} title={q.queryText}>
                       {q.queryText?.length > 50 ? `${q.queryText.slice(0, 50)}…` : (q.queryText || '—')}
+                    </span>
+                  </td>
+                  <td className={styles.td}>
+                    <span
+                      className={styles.statusBadge}
+                      style={{ color: '#fff', background: sm.accent, borderColor: sm.accent }}
+                    >
+                      {display}
                     </span>
                   </td>
                   <td className={styles.td}>
@@ -468,14 +527,16 @@ export default function QueriesPage() {
                     </span>
                   </td>
                   <td className={styles.td}>
-                    <span className={styles.statusBadge} style={{ color: sm.color, background: sm.bg }}>{q.status}</span>
-                  </td>
-                  <td className={styles.td}>{q.raisedBy || '—'}</td>
-                  <td className={styles.td}>{fmtDate(q.raisedDate)}</td>
-                  <td className={styles.td}>
                     <span className={isOverdue ? styles.overdueText : styles.daysText}>
-                      {q.daysOpen}d
+                      {fmtAging(q.daysOpen)}
                     </span>
+                  </td>
+                  <td className={styles.td}>{actionedBy || '—'}</td>
+                  <td className={styles.td}>{fmtDate(actionedDate)}</td>
+                  <td className={styles.td} title={q.resolutionComment || ''}>
+                    {q.resolutionComment
+                      ? (q.resolutionComment.length > 40 ? `${q.resolutionComment.slice(0, 40)}…` : q.resolutionComment)
+                      : '—'}
                   </td>
                   <td className={styles.tdActions}>
                     <button className={styles.actionBtn} title="View Details" onClick={() => setDetails(q)}>

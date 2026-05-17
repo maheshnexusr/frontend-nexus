@@ -177,7 +177,13 @@ const formRuntimeSlice = createSlice({
         pushAudit(state, {
           fieldId: payload.fieldId, action: 'query.raised',
           by: payload.query.createdBy, byName: payload.query.createdByName,
-          meta: { queryId: payload.query.id, title: payload.query.title },
+          meta: {
+            queryId:    payload.query.id,
+            title:      payload.query.title,
+            priority:   payload.query.priority,
+            assignedTo: payload.query.assignedTo,
+            status:     payload.query.status,
+          },
         });
       },
       prepare: ({ fieldId, title, description, priority, assignedTo, by, byName }) => ({
@@ -189,7 +195,7 @@ const formRuntimeSlice = createSlice({
             description,
             priority:    priority    ?? 'Medium',  // Low | Medium | High | Critical
             assignedTo:  assignedTo  ?? null,
-            status:      'Open',
+            status:      'Raised',
             createdBy:   by,
             createdByName: byName,
             createdAt:   new Date().toISOString(),
