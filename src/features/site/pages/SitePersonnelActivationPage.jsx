@@ -22,11 +22,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  CheckCircle2, AlertCircle, Building2, FileText, User, Mail, Loader2,
+  CheckCircle2, AlertCircle, FileText, User, Mail, Loader2,
   Eye, EyeOff,
 } from 'lucide-react';
 import { siteInviteClient } from '@/features/site/api/siteInviteClient';
-import { setSiteSession }   from '@/features/site/authStore';
 import styles from './SitePersonnelActivationPage.module.css';
 
 const PWD_MIN = 8;
@@ -107,19 +106,14 @@ export default function SitePersonnelActivationPage() {
 
     setPhase('activating');
     try {
-      const result = await siteInviteClient.activate({ token, password });
-
-      // Persist the site-scope session (tokens + role permissions tree) so
-      // the sponsor sidebar can read permissions out of localStorage.
-      setSiteSession({
-        accessToken:  result.accessToken,
-        refreshToken: result.refreshToken,
-        ...result.user,
-      });
+      // activate() persists the study-agnostic site session internally
+      // (session token + refresh token + user + assigned-studies list).
+      await siteInviteClient.activate({ token, password });
 
       setPhase('success');
 
-      // Brief pause, then route into the site portal.
+      // Brief pause, then route to the study picker — the account is active
+      // but no study is chosen yet (a site person can be on several studies).
       setTimeout(() => navigate('/site/dashboard', { replace: true }), 1400);
     } catch (err) {
       setErrorMsg(
@@ -184,19 +178,22 @@ export default function SitePersonnelActivationPage() {
   return (
     <div className={styles.shell}>
       <div className={styles.card}>
-        <h1 className={styles.title}>Welcome to {meta?.studyTitle || 'your study'}</h1>
+        <h1 className={styles.title}>Activate your account</h1>
         <p className={styles.sub}>
-          Set a password to activate your account and access the {meta?.siteName || 'site'} workspace.
+          Set a password to activate your SclinNexus site account. After
+          activation you'll choose which study to work in.
         </p>
 
         {/* Read-only summary */}
         <div className={styles.summary}>
-          <SummaryRow icon={<FileText size={14} />}   label="Study" value={meta?.studyTitle} />
-          <SummaryRow icon={<Building2 size={14} />}  label="Site"  value={meta?.siteName} />
-          <SummaryRow icon={<User size={14} />}       label="Name"  value={meta?.fullName} />
-          <SummaryRow icon={<Mail size={14} />}       label="Email" value={meta?.emailAddress} />
-          {meta?.role && (
-            <SummaryRow icon={<User size={14} />} label="Role" value={meta.role} />
+          <SummaryRow icon={<User size={14} />}     label="Name"  value={meta?.fullName} />
+          <SummaryRow icon={<Mail size={14} />}     label="Email" value={meta?.emailAddress} />
+          {Array.isArray(meta?.studies) && meta.studies.length > 0 && (
+            <SummaryRow
+              icon={<FileText size={14} />}
+              label="Studies"
+              value={`Assigned to ${meta.studies.length} ${meta.studies.length === 1 ? 'study' : 'studies'}`}
+            />
           )}
         </div>
 

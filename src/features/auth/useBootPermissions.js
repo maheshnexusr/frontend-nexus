@@ -35,6 +35,15 @@ function isSponsorSession() {
   return !!localStorage.getItem('sponsorAccessToken');
 }
 
+/** Site users skip this endpoint too — their permissions live in
+ *  siteStudyContext.permissions (written by POST /site/studies/choose) and
+ *  the session token (siteAccessToken) doesn't carry studyId/personnelId,
+ *  so /profile/me/permissions would return 404/401 anyway. */
+function isSiteSession() {
+  if (typeof window === 'undefined') return false;
+  return !!localStorage.getItem('siteAccessToken');
+}
+
 export function useBootPermissions() {
   // Re-fire when the user identity changes (login / logout / scope switch).
   const user   = useAppSelector(selectCurrentUser);
@@ -43,6 +52,7 @@ export function useBootPermissions() {
   useEffect(() => {
     if (!hasAnyToken()) return;
     if (isSponsorSession()) return;
+    if (isSiteSession()) return;
     let cancelled = false;
     (async () => {
       try {

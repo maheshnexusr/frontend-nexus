@@ -56,7 +56,8 @@ const EMPTY_COMP = {
 const EMPTY = {
   fullName:          '',
   email:             '',
-  role:              '',
+  role:              '',   // role_name — drives consent-template lookup
+  roleId:            '',   // site_roles.role_id — what the API expects
   siteId:            '',
   status:            'Active',
   consentRequired:   true,
@@ -178,7 +179,11 @@ export default function PersonnelFormPage() {
     if (field === 'amount') setErrors((prev) => { const e = { ...prev }; delete e.compAmount; return e; });
   };
   const handleRoleChange = (role) => {
-    setForm((prev) => ({ ...prev, role: role ?? '', consentTemplateId: '' }));
+    // The Select's value is the role_name; resolve the matching role_id so the
+    // API gets the id it expects (the backend also accepts the name as a
+    // fallback, but sending the id is the contract).
+    const roleId = roleOpts.find((o) => o.value === role)?._id ?? '';
+    setForm((prev) => ({ ...prev, role: role ?? '', roleId, consentTemplateId: '' }));
     setErrors((prev) => { const e = { ...prev }; delete e.role; return e; });
     setTemplates([]);
   };

@@ -18,7 +18,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
   Database, RefreshCw, Search, X, Filter,
-  ClipboardList, ChevronRight, UserCheck, AlertCircle,
+  ClipboardList, FileText, UserCheck, AlertCircle,
   Clock, CheckCircle2, PauseCircle, XCircle,
 } from 'lucide-react';
 import axiosClient  from '@/api/sponsorAxiosClient';
@@ -97,6 +97,7 @@ export default function CapturePage() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [siteFilter,   setSiteFilter]   = useState('');
   const [refreshing,   setRefreshing]   = useState(false);
+  const [studyFormId,  setStudyFormId]  = useState(null);
 
   const [page,     setPage]     = useState(1);
   const PAGE_SIZE = 25;
@@ -107,7 +108,7 @@ export default function CapturePage() {
     else setRefreshing(true);
     try {
       const res = await axiosClient.get(`/api/v1/sponsor/workspace/subjects`);
-      const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
+      const arr = Array.isArray(res) ? res : (res?.items ?? res?.subjects ?? res?.data ?? []);
       setSubjects(arr.map(normalize));
     } catch {
       if (!silent) dispatch(addToast({ type: 'error', message: 'Failed to load subjects.' }));
@@ -118,6 +119,29 @@ export default function CapturePage() {
   }, [studyId, dispatch]);
 
   useEffect(() => { loadSubjects(); }, [loadSubjects]);
+
+  /* ── Resolve the study's form (per-study eCRF). Picks the first form
+        returned by the sponsor forms endpoint and caches its id. ── */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await axiosClient.get(`/api/v1/sponsor/workspace/forms`);
+        const items = Array.isArray(res) ? res : (res?.items ?? []);
+        if (!cancelled && items.length > 0) {
+          setStudyFormId(items[0].formId ?? items[0].form_id ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          dispatch(addToast({
+            type: 'error',
+            message: 'Failed to load study form. Publish a form first.',
+          }));
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [dispatch]);
 
   /* ── Derived site list for dropdown ── */
   const siteOptions = useMemo(() => {
@@ -154,11 +178,19 @@ export default function CapturePage() {
 
   /* ── Navigation ── */
   const openForm = (subject) => {
-    const base = `/sponsor/${studyId}/capture/form`;
-    const params = new URLSearchParams();
-    if (subject.formId)      params.set('formId', subject.formId);
-    if (subject.id)          params.set('subjectId', subject.id);
-    navigate(`${base}?${params.toString()}`);
+    const formId = subject.formId || studyFormId;
+    if (!formId) {
+      dispatch(addToast({
+        type: 'error',
+        message: 'No form is published for this study yet.',
+      }));
+      return;
+    }
+    const params = new URLSearchParams({
+      formId,
+      ...(subject.id ? { subjectId: subject.id } : {}),
+    });
+    navigate(`/sponsor/${studyId}/capture/form?${params.toString()}`);
   };
 
   /* ── Status counts for summary ── */
@@ -304,11 +336,13 @@ export default function CapturePage() {
                     </td>
                     <td className={css.tdActions}>
                       <button
-                        className={css.btnEnterData}
+                        type="button"
+                        className={css.iconBtn}
                         onClick={() => openForm(subject)}
                         title="Enter / Edit CRF Data"
+                        aria-label="Enter / Edit CRF Data"
                       >
-                        Enter Data <ChevronRight size={13} />
+                        <FileText size={16} />
                       </button>
                     </td>
                   </tr>

@@ -1,45 +1,79 @@
 /**
- * SiteDashboardPage — placeholder landing for the `site` auth scope.
+ * SiteDashboardPage — the site-personnel study picker.
  *
- * After PI activation, the user is redirected here with a `siteAccessToken`
- * stored in localStorage. The real site portal (data capture, consents,
- * queries scoped to this PI's site) will replace this stub.
+ * Routes:
+ *   /site/dashboard  → kept for backwards-compat: if a study is already
+ *                      chosen, falls through to <SiteLayout /> via redirect;
+ *                      otherwise renders this picker.
+ *   /site/studies    → the picker, always.
+ *
+ * After choose() succeeds the study-scoped workspace token + context are in
+ * localStorage; navigation to /site/dashboard then enters SiteLayout (sidebar
+ * is permission-gated). Switching studies (handled by SiteLayout's header
+ * button) drops the context and returns here.
  */
 
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Building2, FileText, User, Mail, LogOut, Construction } from 'lucide-react';
+import { useNavigate, Navigate } from 'react-router-dom';
+import {
+  Building2, LogOut, Loader2, AlertCircle,
+} from 'lucide-react';
+import { siteAuthClient }  from '@/features/site/api/siteAuthClient';
+import { siteStudyClient } from '@/features/site/api/siteStudyClient';
+import {
+  getSiteAuthUser,
+  getSiteStudies,
+  hasSiteStudyContext,
+  isSiteSession,
+} from '@/features/site/authStore';
 import styles from './SiteDashboardPage.module.css';
 
-function readSiteUser() {
-  try {
-    const raw = localStorage.getItem('siteAuthUser');
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
 export default function SiteDashboardPage() {
-  const navigate         = useNavigate();
-  const [user, setUser]  = useState(() => readSiteUser());
-  const hasToken         = typeof window !== 'undefined' && !!localStorage.getItem('siteAccessToken');
+  const navigate = useNavigate();
 
+  const [user]              = useState(() => getSiteAuthUser());
+  const [studies, setStudies] = useState(() => getSiteStudies());
+  const [phase, setPhase]   = useState('idle'); // idle | choosing | error
+  const [error, setError]   = useState('');
+
+  // No session → /signin.
   useEffect(() => {
-    // No token → bounce to sign-in. This is the only gate until the real
-    // site-portal layout (with its own ProtectedRoute) is built.
-    if (!hasToken) navigate('/signin', { replace: true });
-  }, [hasToken, navigate]);
+    if (!isSiteSession()) navigate('/signin', { replace: true });
+  }, [navigate]);
 
-  const handleSignOut = () => {
-    localStorage.removeItem('siteAccessToken');
-    localStorage.removeItem('siteRefreshToken');
-    localStorage.removeItem('siteAuthUser');
-    setUser(null);
-    navigate('/signin', { replace: true });
+  // Refresh the picker list from the server on mount (cheap, session token).
+  useEffect(() => {
+    let cancelled = false;
+    siteStudyClient.list()
+      .then((list) => { if (!cancelled) setStudies(list); })
+      .catch(() => { /* keep the cached list */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  // A study is already chosen → go straight into the workspace shell.
+  if (hasSiteStudyContext()) {
+    return <Navigate to="/site/dashboard" replace />;
+  }
+
+  const handleChoose = async (study) => {
+    setPhase('choosing');
+    setError('');
+    try {
+      await siteStudyClient.choose({
+        studyId:     study.studyId,
+        environment: study.environment,
+      });
+      navigate('/site/dashboard', { replace: true });
+    } catch (err) {
+      setError(err?.response?.data?.message ?? err?.message ?? 'Could not open that study.');
+      setPhase('error');
+    }
   };
 
-  if (!user && !hasToken) return null;
+  const handleSignOut = async () => {
+    await siteAuthClient.logout();
+    navigate('/signin', { replace: true });
+  };
 
   return (
     <div className={styles.shell}>
@@ -55,43 +89,56 @@ export default function SiteDashboardPage() {
 
       <main className={styles.main}>
         <div className={styles.card}>
-          <div className={styles.iconWrap}>
-            <Construction size={28} />
-          </div>
           <h1 className={styles.title}>Welcome, {user?.fullName || 'Investigator'}</h1>
           <p className={styles.sub}>
-            Your account is active. The site portal — subject management, data
-            capture, queries, and consent — is being built and will be
-            available here shortly.
+            Choose a study to enter its workspace. You can switch studies any
+            time without signing in again.
           </p>
 
-          <div className={styles.summary}>
-            <Row icon={<FileText size={14} />}  label="Study"  value={user?.studyId} />
-            <Row icon={<Building2 size={14} />} label="Site"   value={user?.siteName} />
-            <Row icon={<User size={14} />}      label="Role"   value={user?.roleName} />
-            <Row icon={<Mail size={14} />}      label="Email"  value={user?.emailAddress} />
-            {user?.environment && (
-              <Row icon={<FileText size={14} />} label="Env" value={user.environment} />
-            )}
-          </div>
+          {error && (
+            <div className={styles.errorBox}>
+              <AlertCircle size={14} /> <span>{error}</span>
+            </div>
+          )}
 
-          <p className={styles.fineprint}>
-            Need help? Contact your sponsor administrator. You can return here
-            anytime by signing in at <Link to="/signin">/signin</Link>.
-          </p>
+          {studies.length === 0 ? (
+            <p className={styles.sub}>
+              You have not been assigned to any studies yet. Contact your
+              sponsor administrator.
+            </p>
+          ) : (
+            <ul className={styles.studyList}>
+              {studies.map((s) => (
+                <li key={s.assignmentId ?? `${s.studyId}-${s.environment}`}>
+                  <button
+                    type="button"
+                    className={styles.studyCard}
+                    disabled={phase === 'choosing' || !s.isPublished}
+                    onClick={() => handleChoose(s)}
+                  >
+                    <span className={styles.studyTitle}>
+                      {s.studyTitle || s.protocolNumber || s.studyId}
+                    </span>
+                    <span className={styles.studyMeta}>
+                      {s.protocolNumber} · {s.environment} · {s.roleName || 'Site personnel'}
+                      {s.siteName ? ` · ${s.siteName}` : ''}
+                    </span>
+                    {!s.isPublished && (
+                      <span className={styles.studyMeta}>Not published yet</span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {phase === 'choosing' && (
+            <p className={styles.sub} style={{ marginTop: 12 }}>
+              <Loader2 size={14} className={styles.spinner} /> Opening study…
+            </p>
+          )}
         </div>
       </main>
-    </div>
-  );
-}
-
-function Row({ icon, label, value }) {
-  if (!value) return null;
-  return (
-    <div className={styles.summaryRow}>
-      <span className={styles.summaryIcon}>{icon}</span>
-      <span className={styles.summaryLabel}>{label}</span>
-      <span className={styles.summaryValue}>{value}</span>
     </div>
   );
 }

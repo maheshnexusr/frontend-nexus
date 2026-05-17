@@ -66,12 +66,13 @@ function readJSON(key) {
  */
 export function resolveRolePermissions(studyId) {
   // 1. Direct site auth scope wins — but ONLY when a site token is actually
-  //    active. Without this guard, stale `siteAuthUser` from an earlier PI
-  //    session (logout doesn't always clear it cleanly) would leak into a
-  //    sponsor session and incorrectly restrict their menu.
+  //    active. Site permissions are study-scoped: they live in
+  //    `siteStudyContext` (written by POST /site/studies/choose), not in the
+  //    study-agnostic `siteAuthUser`. The guard stops a stale context from an
+  //    earlier PI session leaking into a later sponsor session's menu.
   if (typeof window !== 'undefined' && localStorage.getItem('siteAccessToken')) {
-    const siteUser = readJSON('siteAuthUser');
-    if (siteUser?.permissions) return siteUser.permissions;
+    const ctx = readJSON('siteStudyContext');
+    if (ctx?.permissions && Object.keys(ctx.permissions).length) return ctx.permissions;
   }
 
   // 2. CRO team member viewing a sponsor workspace — find the assigned

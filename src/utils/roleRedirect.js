@@ -4,21 +4,21 @@
  * Logic (token-scope first to prevent redirect loops):
  *
  *   1. siteAccessToken exists                        → site scope
- *      • with user.studyId → /sponsor/:studyId/dashboard
- *        (lands inside the sponsor workspace shell; sidebar gated by the
- *         user's role permissions in SponsorLayout)
- *      • otherwise → /site/dashboard
+ *      Always → /site/dashboard. SiteLayout reads siteStudyContext and:
+ *        - no chosen study → redirects to /site/studies (picker)
+ *        - chosen study    → renders the dashboard inside the site shell
+ *      Site users do NOT enter the sponsor workspace shell — they have
+ *      their own SiteLayout with a permission-gated sidebar.
  *
  *   2. sponsorAccessToken or sponsorViewToken exists → sponsor scope
  *      • with user.studyId → /sponsor/:studyId/dashboard
  *      • otherwise → /sponsor/select-study
  *
  *   3. CRO accessToken only                          → /cro/dashboard
- *      Even when the role name looks like site personnel (e.g. Principal
- *      Investigator), we cannot enter sponsor routes without a sponsor-
- *      or site-scope token, so route to the matching CRO surface. Site
- *      personnel should sign in at the dedicated site sign-in
- *      (POST /api/v1/site/auth/login) once that's wired.
+ *      Site personnel never reach here: the shared /signin page dispatches
+ *      by auth_identities, and a `scope: 'site'` response is persisted into
+ *      site-scope storage (siteAccessToken) by loginAsync — so they match
+ *      rule 1, not this one.
  *
  *   4. No token / unknown user                       → /signin
  *
@@ -37,11 +37,9 @@ const hasSponsorToken = () => !!readToken('sponsorAccessToken') || !!readToken('
 const hasCroToken     = () => !!readToken('accessToken');
 
 export function getRoleRedirect(user) {
-  // 1. Site auth scope (activation flow or /api/v1/site/auth/login)
-  if (hasSiteToken()) {
-    if (user?.studyId) return `/sponsor/${user.studyId}/dashboard`;
-    return '/site/dashboard';
-  }
+  // 1. Site auth scope — always land in SiteLayout's dashboard. The layout
+  //    itself bounces to /site/studies if no study has been chosen yet.
+  if (hasSiteToken()) return '/site/dashboard';
 
   // 2. Sponsor auth scope (direct sponsor login or CRO viewer entered)
   if (hasSponsorToken()) {

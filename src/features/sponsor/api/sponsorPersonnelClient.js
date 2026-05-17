@@ -97,14 +97,14 @@ export const sponsorPersonnelClient = {
     if (filters.consentStatus && filters.consentStatus !== 'All') params.consent_status = filters.consentStatus;
 
     const res = await sponsorAxiosClient.get(BASE, { params });
-    const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
+    const arr = Array.isArray(res) ? res : (res?.items ?? res?.personnel ?? res?.data ?? []);
     return arr.map(normalizePersonnel);
   },
 
   /** GET /site-personnel/:personnelId — details. */
   async getById(_studyId, personnelId) {
     const res = await sponsorAxiosClient.get(`${BASE}/${personnelId}`);
-    return normalizeDetails(res?.item ?? res ?? {});
+    return normalizeDetails(res?.item ?? res?.personnel ?? res ?? {});
   },
 
   /** POST /site-personnel/invite — spec §13.3 invite body. */

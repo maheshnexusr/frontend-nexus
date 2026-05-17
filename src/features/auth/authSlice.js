@@ -2,6 +2,7 @@ import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import { authService }        from '@/services/authService';
 import { sponsorAuthService, sponsorTokenStore } from '@/services/sponsorAuthService';
 import { profileService }     from '@/services/profileService';
+import { setSiteSession }     from '@/features/site/authStore';
 import { PERMISSION_GROUPS }  from '@/features/cro/constants/permissionsSchema';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,6 +96,14 @@ export const loginAsync = createAsyncThunk(
     try {
       const loginRes = await authService.login({ emailAddress, password });
 
+      // Site personnel — study-agnostic identity, separate scope. The backend
+      // dispatched this via auth_identities. Persist into site-scope storage
+      // only; do NOT touch the CRO accessToken or fetch CRO permissions.
+      if (loginRes?.scope === 'site') {
+        setSiteSession(loginRes);
+        return { scope: 'site', user: loginRes.user };
+      }
+
       // Save token immediately so the next request has Authorization header
       const token = loginRes.accessToken ?? loginRes.access_token;
       if (token) localStorage.setItem('accessToken', token);
@@ -136,6 +145,13 @@ export const loginWithOtpAsync = createAsyncThunk(
   async ({ emailAddress, otp }, { rejectWithValue }) => {
     try {
       const loginRes = await authService.verifyOtp({ emailAddress, otp });
+
+      // Site personnel — see loginAsync. (OTP for site is not enabled on the
+      // backend yet, but guard the scope here so it routes correctly if it is.)
+      if (loginRes?.scope === 'site') {
+        setSiteSession(loginRes);
+        return { scope: 'site', user: loginRes.user };
+      }
 
       const token = loginRes.accessToken ?? loginRes.access_token;
       if (token) localStorage.setItem('accessToken', token);
@@ -480,12 +496,15 @@ const authSlice = createSlice({
       localStorage.removeItem('sponsorViewToken');
       localStorage.removeItem('sponsorViewMeta');
       localStorage.removeItem('sponsorViewFlash');
-      // Site scope — must be cleared too or a stale siteAuthUser from a
+      // Site scope — must be cleared too or a stale siteStudyContext from a
       // prior PI session will incorrectly restrict the next sponsor login's
       // menu via useSiteRolePermissions.
       localStorage.removeItem('siteAccessToken');
       localStorage.removeItem('siteRefreshToken');
+      localStorage.removeItem('siteWorkspaceToken');
       localStorage.removeItem('siteAuthUser');
+      localStorage.removeItem('siteStudies');
+      localStorage.removeItem('siteStudyContext');
     },
     setGeoInfo(state, action) {
       state.geoInfo = action.payload;

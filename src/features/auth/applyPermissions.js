@@ -14,7 +14,7 @@
 
 import store from '@/app/store';
 import { setRolePermissions, clearCroPermissions } from '@/features/auth/authSlice';
-import { setSiteSession }     from '@/features/site/authStore';
+import { mergeSiteStudyContext } from '@/features/site/authStore';
 
 function writeSponsorAuthUser(payload) {
   try {
@@ -45,15 +45,13 @@ export function applyPermissions(payload) {
   const scope = (payload.scope ?? '').toLowerCase();
 
   if (scope === 'site') {
-    // Site scope — uses the dedicated site authStore helper. Tokens (if any
-    // came in a separate login response) stay untouched here.
-    setSiteSession({
+    // Site scope — permissions are study-scoped and owned by
+    // POST /site/studies/choose, which writes siteStudyContext. Here we just
+    // merge a refreshed permission tree into that context; tokens and the
+    // session/user record stay untouched.
+    mergeSiteStudyContext({
       roleId:       payload.roleId,
       roleName:     payload.roleName,
-      isSystemRole: payload.isSystemRole,
-      scope:        'site',
-      model:        payload.model,
-      description:  payload.description,
       permissions:  payload.permissions,
       studyId:      payload.studyId,
       siteId:       payload.siteId,

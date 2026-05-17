@@ -57,7 +57,8 @@ function fmtCurrency(amount, currency = 'USD') {
   catch { return `${currency} ${amount}`; }
 }
 
-export default function PersonnelDetailsModal({ studyId, personnel, onClose }) {
+export default function PersonnelDetailsModal({ studyId, personnel, onClose, client }) {
+  const dataClient = client ?? sponsorPersonnelClient;
   const [tab,     setTab]     = useState('info');
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -66,7 +67,7 @@ export default function PersonnelDetailsModal({ studyId, personnel, onClose }) {
     let cancelled = false;
     (async () => {
       try {
-        const d = await sponsorPersonnelClient.getById(studyId, personnel.id);
+        const d = await dataClient.getById(studyId, personnel.id);
         if (!cancelled) setDetails(d);
       } catch {
         if (!cancelled) setDetails({ ...personnel, auditTrail: [] });
