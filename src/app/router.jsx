@@ -109,6 +109,7 @@ const SponsorEditPage    = lazy(() => import('@/features/cro/pages/sponsors/Spon
 const StudyListPage      = lazy(() => import('@/features/cro/pages/studies/StudyListPage'));
 const StudyNewPage       = lazy(() => import('@/features/cro/pages/studies/StudyNewPage'));
 const StudyEditPage      = lazy(() => import('@/features/cro/pages/studies/StudyEditPage'));
+const StudyDesignPage    = lazy(() => import('@/features/cro/pages/studies/StudyDesignPage'));
 const TeamMembersPage    = lazy(() => import('@/features/cro/pages/team/TeamMembersPage'));
 const TeamMemberNewPage  = lazy(() => import('@/features/cro/pages/team/TeamMemberNewPage'));
 const TeamRolesPage      = lazy(() => import('@/features/cro/pages/team/TeamRolesPage'));
@@ -146,6 +147,7 @@ const SiteCapturePage                = lazy(() => import('@/features/site/pages/
 const SiteCaptureFormPage            = lazy(() => import('@/features/site/pages/SiteCaptureFormPage'));
 const SiteSubjectFormPage            = lazy(() => import('@/features/site/pages/SiteSubjectFormPage'));
 const SitePersonnelPage              = lazy(() => import('@/features/site/pages/SitePersonnelPage'));
+const SiteQueriesPage                = lazy(() => import('@/features/site/pages/SiteQueriesPage'));
 const SiteFeaturePlaceholderPage     = lazy(() => import('@/features/site/pages/SiteFeaturePlaceholderPage'));
 const RolesPage              = lazy(() => import('@/features/sponsor/pages/RolesPage'));
 const ReportsPage            = lazy(() => import('@/features/sponsor/pages/ReportsPage'));
@@ -298,7 +300,7 @@ export const router = createBrowserRouter([
           { path: 'capture/subjects/new',                   element: sp(SiteSubjectFormPage) },
           { path: 'capture/subjects/:subjectId/edit',       element: sp(SiteSubjectFormPage) },
           { path: 'capture/form',                           element: sp(SiteCaptureFormPage) },
-          { path: 'queries',                 element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'queries',                 element: sp(SiteQueriesPage) },
           { path: 'verification',            element: sp(SiteFeaturePlaceholderPage) },
           { path: 'consent/config',          element: sp(SiteFeaturePlaceholderPage) },
           { path: 'consent/review',          element: sp(SiteFeaturePlaceholderPage) },
@@ -329,6 +331,21 @@ export const router = createBrowserRouter([
         ],
       },
 
+      // ── CRO Form Builder (standalone — full screen, no CRO sidebar) ──────
+      // Lives outside the CROLayout shell so the builder takes over the
+      // entire viewport. Reached from the "Design Study" action on the
+      // studies list (StudyListPage). Exit returns to /cro/studies.
+      {
+        path: 'cro/studies/:studyId/design',
+        element: (
+          <ProtectedRoute>
+            <Suspense fallback={<PageLoader />}>
+              <StudyDesignPage />
+            </Suspense>
+          </ProtectedRoute>
+        ),
+      },
+
       // ── CRO routes ───────────────────────────────────────────────────────
       {
         path: 'cro',
@@ -350,9 +367,9 @@ export const router = createBrowserRouter([
           { path: 'sponsors/new',          element: sp(SponsorNewPage) },
           { path: 'sponsors/:sponsorId',   element: sp(SponsorEditPage) },
 
-          // Studies list + edit
-          { path: 'studies',               element: sp(StudyListPage) },
-          { path: 'studies/:studyId/edit', element: sp(StudyEditPage) },
+          // Studies list + edit (design is a top-level standalone route — see below)
+          { path: 'studies',                 element: sp(StudyListPage)   },
+          { path: 'studies/:studyId/edit',   element: sp(StudyEditPage)   },
 
           // Study creation wizard — tab-based, no sub-routes
           { path: 'studies/new', element: sp(StudyNewPage) },

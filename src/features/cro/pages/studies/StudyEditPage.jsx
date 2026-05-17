@@ -1,32 +1,30 @@
 /**
  * StudyEditPage — /cro/studies/:studyId/edit
  *
- * Loads the existing study into the wizard Redux state, then renders
- * the same 5-step wizard as StudyNewPage with all tabs unlocked.
+ * Loads an existing study into the wizard Redux state and renders the same
+ * three-step wizard (Basic Info / Timeline / Study Configuration) as
+ * StudyNewPage. Form design and publish live on /cro/studies/:id/design.
  */
 
 import { useState, useEffect }  from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useDispatch }          from 'react-redux';
-import { ArrowLeft, Lock }      from 'lucide-react';
+import { ArrowLeft }            from 'lucide-react';
 import { studiesClient }        from '@/features/cro/api/studiesClient';
+import { addToast }             from '@/app/notificationSlice';
 import {
   resetWizard,
-  setStep1, setStep2, setStep3, setStep4, setStep6,
+  setStep1, setStep2, setStep3,
 } from '@/features/cro/store/studyWizardSlice';
 import StudyWizardStep1 from './StudyWizardStep1';
 import StudyWizardStep2 from './StudyWizardStep2';
 import StudyWizardStep3 from './StudyWizardStep3';
-import StudyWizardStep4 from './StudyWizardStep4';
-import StudyWizardStep6 from './StudyWizardStep6';
 import styles from './StudyNewPage.module.css';
 
 const TABS = [
   { id: 1, label: 'Basic Info'          },
   { id: 2, label: 'Timeline'            },
   { id: 3, label: 'Study Configuration' },
-  { id: 4, label: 'Study Design'        },
-  { id: 5, label: 'Publish Study'       },
 ];
 
 export default function StudyEditPage() {
@@ -38,18 +36,12 @@ export default function StudyEditPage() {
   const [loading,   setLoading]   = useState(true);
   const [notFound,  setNotFound]  = useState(false);
 
-  // All tabs unlocked in edit mode
-  const maxReachedTab = TABS.length;
-
   useEffect(() => {
     dispatch(resetWizard());
 
     studiesClient.getById(studyId).then((study) => {
       if (!study) { setNotFound(true); setLoading(false); return; }
 
-      // Step 1 — Basic Info. studyDbId threads the study PK to every
-      // subsequent PUT /step-N call in the wizard.
-      // scope is single-select; normalizer may still emit a single-element array.
       const seededScope = Array.isArray(study.scope) ? (study.scope[0] ?? '') : (study.scope ?? '');
 
       dispatch(setStep1({
@@ -66,8 +58,6 @@ export default function StudyEditPage() {
         sponsorFullName:  study.sponsorFullName   ?? '',
       }));
 
-      // Step 2 — Timeline & Coverage. Region/Country name will hydrate once
-      // the dropdown options load in the step component (it matches on id).
       dispatch(setStep2({
         startDate:             study.startDate           ?? '',
         expectedEndDate:       study.expectedEndDate     ?? '',
@@ -92,17 +82,6 @@ export default function StudyEditPage() {
         navigationBar:       study.navigationBar       ?? false,
       }));
 
-      dispatch(setStep4({
-        formId:    study.formId    ?? null,
-        formTitle: study.studyTitle ? `${study.studyTitle} — Data Collection Form` : '',
-      }));
-
-      dispatch(setStep6({
-        environment: study.currentEnvironment ?? '',
-        status:      study.status ?? 'Published',
-        description: '',
-      }));
-
       setLoading(false);
     });
 
@@ -116,7 +95,13 @@ export default function StudyEditPage() {
 
   const goNext = (currentTab) => {
     const next = currentTab + 1;
-    if (next <= TABS.length) setActiveTab(next);
+    if (next > TABS.length) {
+      dispatch(addToast({ type: 'success', message: 'Study updated.', duration: 3000 }));
+      dispatch(resetWizard());
+      navigate('/cro/studies');
+      return;
+    }
+    setActiveTab(next);
   };
 
   if (loading) {
@@ -143,8 +128,6 @@ export default function StudyEditPage() {
       case 1: return <StudyWizardStep1 onNext={() => goNext(1)} onCancel={handleCancel} />;
       case 2: return <StudyWizardStep2 onNext={() => goNext(2)} onCancel={handleCancel} />;
       case 3: return <StudyWizardStep3 onNext={() => goNext(3)} onCancel={handleCancel} />;
-      case 4: return <StudyWizardStep4 onPrevious={() => setActiveTab(3)} onNext={() => goNext(4)} />;
-      case 5: return <StudyWizardStep6 onPrevious={() => setActiveTab(4)} onCancel={handleCancel} />;
       default: return null;
     }
   };
@@ -162,7 +145,6 @@ export default function StudyEditPage() {
 
       <h1 className={styles.title}>Edit Study</h1>
 
-      {/* ── Tab bar ────────────────────────────────────────────────────── */}
       <div className={styles.tabBar}>
         {TABS.map((tab) => {
           const active = activeTab === tab.id;
@@ -181,11 +163,7 @@ export default function StudyEditPage() {
         })}
       </div>
 
-      {/* ── Tab content ────────────────────────────────────────────────── */}
-      <div
-        className={`${styles.tabContent} ${activeTab === 4 ? styles.tabContentBuilder : ''}`}
-        style={activeTab === 4 ? { maxWidth: '100%' } : {}}
-      >
+      <div className={styles.tabContent}>
         {renderTab()}
       </div>
     </div>

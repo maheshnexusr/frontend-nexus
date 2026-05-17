@@ -1,23 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
-  Eye, MessageSquare, CheckCircle, AlertTriangle,
-  RotateCcw, Download, Filter, Search, X as XIcon,
+  Eye, MessageSquare, Download, Filter, Search, X as XIcon,
   RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown,
   MessageSquareWarning,
 } from 'lucide-react';
-import { sponsorQueryClient }   from '@/features/sponsor/api/sponsorQueryClient';
-import { addToast }             from '@/app/notificationSlice';
-import SearchableDropdown       from '@/components/form/SearchableDropdown';
-import QueryDetailsModal        from '@/features/sponsor/components/query/QueryDetailsModal';
-import RespondModal             from '@/features/sponsor/components/query/RespondModal';
-import CloseReopenModal         from '@/features/sponsor/components/query/CloseReopenModal';
-import EscalateModal            from '@/features/sponsor/components/query/EscalateModal';
-import ConfirmDialog            from '@/components/feedback/ConfirmDialog';
-import { Card, CardContent }    from '@/components/ui/card';
-import { useReadOnlyView }      from '@/features/workspace/hooks/useReadOnlyView';
-import styles from './QueriesPage.module.css';
+import { siteQueryClient } from '@/features/site/api/siteQueryClient';
+import { addToast }         from '@/app/notificationSlice';
+import { Card, CardContent } from '@/components/ui/card';
+import styles from '@/features/sponsor/pages/QueriesPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -29,10 +20,9 @@ const PRIORITY_META = {
   Medium: { color: '#f59e0b', bg: '#fffbeb', dot: '#f59e0b' },
   Low:    { color: '#3b82f6', bg: '#eff6ff', dot: '#3b82f6' },
 };
-// Query status palette (per requirement):
-//   Raised   #F59E0B (Amber)  — warning / pending action
-//   Answered #2563EB (Blue)   — informational / under review
-//   Resolved #16A34A (Green)  — success / completed
+
+// Status palette per Query Manager requirements:
+//   Raised   #F59E0B  Answered #2563EB  Resolved #16A34A
 const STATUS_META = {
   Raised:       { color: '#92400e', bg: '#fef3c7', accent: '#F59E0B' },
   Answered:     { color: '#1d4ed8', bg: '#dbeafe', accent: '#2563EB' },
@@ -43,9 +33,13 @@ const STATUS_META = {
   Overdue:      { color: '#dc2626', bg: '#fef2f2', accent: '#dc2626' },
 };
 
-// Map legacy server statuses onto the 3-state palette for display.
 const STATUS_DISPLAY = { Open: 'Raised', 'In Progress': 'Answered', Closed: 'Resolved' };
 const toDisplayStatus = (st) => STATUS_DISPLAY[st] ?? st ?? 'Raised';
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+}
 
 function fmtAging(days) {
   if (days == null || Number.isNaN(days)) return '—';
@@ -56,11 +50,6 @@ function fmtAging(days) {
   return rem ? `${wk}w ${rem}d` : `${wk}w`;
 }
 
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
-}
-
 function SortIcon({ col, sortKey, sortDir }) {
   if (col !== sortKey) return <ChevronsUpDown size={12} style={{ opacity: 0.4 }} />;
   if (sortDir === 'asc')  return <ChevronUp    size={12} />;
@@ -69,20 +58,16 @@ function SortIcon({ col, sortKey, sortDir }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default function QueriesPage() {
-  const { studyId } = useParams();
-  const dispatch    = useDispatch();
-  const ro          = useReadOnlyView();
+export default function SiteQueriesPage() {
+  const dispatch = useDispatch();
 
   // ── Data ─────────────────────────────────────────────────────────────────
-  const [queries,   setQueries]   = useState([]);
-  const [siteOpts,  setSiteOpts]  = useState([]);
-  const [loading,   setLoading]   = useState(true);
+  const [queries, setQueries] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // ── Filters ──────────────────────────────────────────────────────────────
-  const [statusFilter,   setStatusFilter]   = useState('Open');
+  const [statusFilter,   setStatusFilter]   = useState('Raised');
   const [priorityFilter, setPriorityFilter] = useState('All');
-  const [siteFilter,     setSiteFilter]     = useState('');
   const [query,          setQuery]          = useState('');
   const [dateFrom,       setDateFrom]       = useState('');
   const [dateTo,         setDateTo]         = useState('');
@@ -93,44 +78,23 @@ export default function QueriesPage() {
   const [sortKey,  setSortKey]  = useState('raisedDate');
   const [sortDir,  setSortDir]  = useState('desc');
 
-  // ── Selection ─────────────────────────────────────────────────────────────
-  const [selected, setSelected] = useState(new Set());
-
-  // ── Modals ────────────────────────────────────────────────────────────────
-  const [detailsTarget,  setDetails]   = useState(null);
-  const [respondTarget,  setRespond]   = useState(null);
-  const [closeTarget,    setClose]     = useState(null);
-  const [reopenTarget,   setReopen]    = useState(null);
-  const [escalateTarget, setEscalate]  = useState(null);
-  const [bulkCloseOpen,  setBulkClose] = useState(false);
-  const [exporting,      setExporting] = useState(false);
-
   // ── Load ──────────────────────────────────────────────────────────────────
   const load = useCallback(() => {
-    if (!studyId) return;
     setLoading(true);
-    Promise.all([
-      sponsorQueryClient.list(studyId, {
-        status:   statusFilter,
-        priority: priorityFilter,
-        siteCode: siteFilter,
-        dateFrom,
-        dateTo,
-      }),
-      siteOpts.length ? Promise.resolve(null) : sponsorQueryClient.getSites(studyId),
-    ])
-    .then(([qs, sites]) => {
-      setQueries(qs);
-      if (sites) setSiteOpts(sites);
-      setSelected(new Set());
+    siteQueryClient.list({
+      status:   statusFilter,
+      priority: priorityFilter,
+      dateFrom,
+      dateTo,
     })
-    .catch(() => dispatch(addToast({ type: 'error', message: 'Failed to load queries.' })))
-    .finally(() => setLoading(false));
+      .then((qs) => setQueries(qs))
+      .catch(() => dispatch(addToast({ type: 'error', message: 'Failed to load queries.' })))
+      .finally(() => setLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studyId, statusFilter, priorityFilter, siteFilter, dateFrom, dateTo]);
+  }, [statusFilter, priorityFilter, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); setSelected(new Set()); }, [statusFilter, priorityFilter, siteFilter, query, dateFrom, dateTo]);
+  useEffect(() => { setPage(1); }, [statusFilter, priorityFilter, query, dateFrom, dateTo]);
 
   // ── Local filter & sort ───────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -177,101 +141,20 @@ export default function QueriesPage() {
     };
   }, [queries]);
 
-  // ── Selection ─────────────────────────────────────────────────────────────
-  const activeOnPage = pageData.filter((q) => toDisplayStatus(q.status) !== 'Resolved');
-  const allActiveSelected = activeOnPage.length > 0 && activeOnPage.every((q) => selected.has(q.id));
-
-  const toggleAll = () => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (allActiveSelected) activeOnPage.forEach((q) => next.delete(q.id));
-      else                   activeOnPage.forEach((q) => next.add(q.id));
-      return next;
-    });
-  };
-  const toggleRow = (id) => setSelected((prev) => {
-    const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next;
-  });
-
-  // ── Actions ───────────────────────────────────────────────────────────────
-  const handleDetailAction = (action, target) => {
-    setDetails(null);
-    if (action === 'respond')  setRespond(target);
-    if (action === 'close')    setClose(target);
-    if (action === 'reopen')   setReopen(target);
-    if (action === 'escalate') setEscalate(target);
-  };
-
-  const handleRespond = async (data) => {
+  // ── Respond (inline placeholder — opens browser prompt for now) ──────────
+  const handleRespond = async (q) => {
+    const answer = window.prompt(`Respond to query ${q.id}:\n${q.queryText}`);
+    if (answer == null || !answer.trim()) return;
     try {
-      await sponsorQueryClient.respond(studyId, respondTarget.id, data);
-      dispatch(addToast({ type: 'success', message: 'Query responded successfully. Email notification sent.' }));
-      setRespond(null); load();
+      await siteQueryClient.respond(q.id, { responseText: answer.trim(), statusUpdate: 'Answered' });
+      dispatch(addToast({ type: 'success', message: 'Response sent.' }));
+      load();
     } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to respond to query. Please try again.' }));
-      throw new Error();
-    }
-  };
-
-  const handleClose = async (data) => {
-    try {
-      await sponsorQueryClient.close(studyId, closeTarget.id, data);
-      dispatch(addToast({ type: 'success', message: 'Query closed successfully.' }));
-      setClose(null); load();
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to close query. Please try again.' }));
-      throw new Error();
-    }
-  };
-
-  const handleReopen = async (data) => {
-    try {
-      await sponsorQueryClient.reopen(studyId, reopenTarget.id, data);
-      dispatch(addToast({ type: 'success', message: 'Query reopened successfully.' }));
-      setReopen(null); load();
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to reopen query. Please try again.' }));
-      throw new Error();
-    }
-  };
-
-  const handleEscalate = async (data) => {
-    try {
-      await sponsorQueryClient.escalate(studyId, escalateTarget.id, data);
-      dispatch(addToast({ type: 'success', message: 'Query escalated successfully.' }));
-      setEscalate(null); load();
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to escalate query. Please try again.' }));
-      throw new Error();
-    }
-  };
-
-  const handleBulkClose = async (data) => {
-    try {
-      const count = await sponsorQueryClient.bulkClose(studyId, [...selected], data);
-      dispatch(addToast({ type: 'success', message: `Bulk action completed successfully for ${count} queries.` }));
-      setBulkClose(false); load();
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to close queries. Please try again.' }));
-      throw new Error();
-    }
-  };
-
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      await sponsorQueryClient.exportCSV(studyId, { status: statusFilter, priority: priorityFilter, siteCode: siteFilter });
-      dispatch(addToast({ type: 'success', message: 'Query exported successfully.' }));
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to export. Please try again.' }));
-    } finally {
-      setExporting(false);
+      dispatch(addToast({ type: 'error', message: 'Failed to send response.' }));
     }
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
-  const selectedCount = selected.size;
-
   const COLUMNS = [
     { key: 'id',                label: 'Query ID'         },
     { key: 'siteId',            label: 'Site'             },
@@ -293,13 +176,10 @@ export default function QueriesPage() {
       {/* Header */}
       <div className={styles.header}>
         <div>
-          <h1 className={styles.title}>Query Management</h1>
-          <p className={styles.sub}>Track and resolve data queries for this study.</p>
+          <h1 className={styles.title}>Query Manager</h1>
+          <p className={styles.sub}>Review and respond to data queries raised on your site.</p>
         </div>
         <div className={styles.headerActions}>
-          <button className={styles.btnSecondary} onClick={handleExport} disabled={exporting}>
-            <Download size={13} /> {exporting ? 'Exporting…' : 'Export'}
-          </button>
           <button className={styles.btnRefresh} onClick={load} title="Refresh">
             <RefreshCw size={14} />
           </button>
@@ -335,7 +215,6 @@ export default function QueriesPage() {
       {/* Toolbar */}
       <div className={styles.toolbar}>
         <div className={styles.toolbarLeft}>
-          {/* Status pills */}
           <div className={styles.filterWrap}>
             <Filter size={13} className={styles.filterIcon} />
             {STATUS_OPTIONS.map((s) => (
@@ -349,7 +228,6 @@ export default function QueriesPage() {
             ))}
           </div>
 
-          {/* Priority pills */}
           <div className={styles.filterWrap}>
             {PRIORITY_OPTIONS.map((p) => {
               const active = priorityFilter === p;
@@ -368,18 +246,6 @@ export default function QueriesPage() {
             })}
           </div>
 
-          {/* Site dropdown */}
-          <div className={styles.siteFilter}>
-            <SearchableDropdown
-              options={[{ value: '', label: 'All Sites' }, ...siteOpts]}
-              value={siteFilter}
-              onChange={(v) => setSiteFilter(v ?? '')}
-              placeholder="All Sites"
-              searchPlaceholder="Search site…"
-            />
-          </div>
-
-          {/* Date range */}
           <div className={styles.dateRange}>
             <input type="date" className={styles.dateInput} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} title="From" />
             <span className={styles.dateSep}>–</span>
@@ -400,25 +266,6 @@ export default function QueriesPage() {
         </div>
       </div>
 
-      {/* Bulk bar */}
-      {selectedCount > 0 && (
-        <div className={styles.bulkBar}>
-          <span className={styles.bulkCount}>{selectedCount} query{selectedCount !== 1 ? 's' : ''} selected</span>
-          <button
-            className={styles.bulkClose}
-            onClick={() => setBulkClose(true)}
-            {...ro.disabledProps('Bulk close queries')}
-          >
-            <CheckCircle size={13} /> Bulk Close
-          </button>
-          <button className={styles.bulkExport} onClick={handleExport}>
-            <Download size={13} /> Export Selected
-          </button>
-          <button className={styles.bulkClear} onClick={() => setSelected(new Set())}>Clear</button>
-        </div>
-      )}
-
-      {/* Count */}
       <span className={styles.count}>
         {filtered.length} quer{filtered.length !== 1 ? 'ies' : 'y'}
         {queries.length !== filtered.length && ` (of ${queries.length})`}
@@ -429,14 +276,6 @@ export default function QueriesPage() {
         <table className={styles.table}>
           <thead>
             <tr>
-              <th className={styles.thCheck}>
-                <input
-                  type="checkbox"
-                  checked={allActiveSelected}
-                  onChange={toggleAll}
-                  disabled={activeOnPage.length === 0}
-                />
-              </th>
               {COLUMNS.map(({ key, label }) => (
                 <th key={key} className={styles.th} onClick={() => handleSort(key)}>
                   <span className={styles.thInner}>
@@ -451,7 +290,7 @@ export default function QueriesPage() {
           <tbody>
             {loading && Array.from({ length: 6 }, (_, i) => (
               <tr key={i} className={styles.row}>
-                {Array.from({ length: 13 }, (__, j) => (
+                {Array.from({ length: COLUMNS.length + 1 }, (__, j) => (
                   <td key={j} className={styles.td}>
                     <div className={styles.skeleton} style={{ width: j === 5 ? '80%' : '55%' }} />
                   </td>
@@ -461,11 +300,11 @@ export default function QueriesPage() {
 
             {!loading && pageData.length === 0 && (
               <tr>
-                <td colSpan={14} className={styles.emptyCell}>
+                <td colSpan={COLUMNS.length + 1} className={styles.emptyCell}>
                   <div className={styles.empty}>
                     <MessageSquareWarning size={40} strokeWidth={1.25} className={styles.emptyIcon} />
                     <p className={styles.emptyTitle}>
-                      {queries.length === 0 ? 'No queries found for this study.' : 'No queries match your filters.'}
+                      {queries.length === 0 ? 'No queries found for your site.' : 'No queries match your filters.'}
                     </p>
                   </div>
                 </td>
@@ -480,7 +319,6 @@ export default function QueriesPage() {
               const isActive   = !isResolved;
               const isOverdue  = q.slaRemaining < 0 && isActive;
 
-              // Actioned By / Date track the latest action in the lifecycle.
               const actionedBy   = isResolved ? (q.resolvedBy || q.respondedBy || q.raisedBy)
                                   : display === 'Answered' ? (q.respondedBy || q.raisedBy)
                                   : q.raisedBy;
@@ -501,13 +339,8 @@ export default function QueriesPage() {
               return (
                 <tr
                   key={q.id}
-                  className={`${styles.row} ${isOverdue ? styles.rowOverdue : ''} ${selected.has(q.id) ? styles.rowSelected : ''}`}
+                  className={`${styles.row} ${isOverdue ? styles.rowOverdue : ''}`}
                 >
-                  <td className={styles.tdCheck}>
-                    {isActive && (
-                      <input type="checkbox" checked={selected.has(q.id)} onChange={() => toggleRow(q.id)} />
-                    )}
-                  </td>
                   <td className={styles.td}><code className={styles.qid}>{q.id}</code></td>
                   <td className={styles.td} title={q.siteName || ''}>{siteLabel}</td>
                   <td className={styles.td}><span className={styles.pill}>{subjectLabel}</span></td>
@@ -545,45 +378,16 @@ export default function QueriesPage() {
                       : '—'}
                   </td>
                   <td className={styles.tdActions}>
-                    <button className={styles.actionBtn} title="View Details" onClick={() => setDetails(q)}>
+                    <button className={styles.actionBtn} title="View Details" onClick={() => dispatch(addToast({ type: 'info', message: `Query ${q.id} — full details view coming soon.` }))}>
                       <Eye size={12} />
                     </button>
                     {isActive && (
-                      <>
-                        <button
-                          className={`${styles.actionBtn} ${styles.actionRespond}`}
-                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Respond'}
-                          onClick={() => setRespond(q)}
-                          {...ro.disabledProps('Respond to query')}
-                        >
-                          <MessageSquare size={12} />
-                        </button>
-                        <button
-                          className={`${styles.actionBtn} ${styles.actionClose}`}
-                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Close'}
-                          onClick={() => setClose(q)}
-                          {...ro.disabledProps('Close query')}
-                        >
-                          <CheckCircle  size={12} />
-                        </button>
-                        <button
-                          className={`${styles.actionBtn} ${styles.actionEscalate}`}
-                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Escalate'}
-                          onClick={() => setEscalate(q)}
-                          {...ro.disabledProps('Escalate query')}
-                        >
-                          <AlertTriangle size={12} />
-                        </button>
-                      </>
-                    )}
-                    {!isActive && (
                       <button
-                        className={`${styles.actionBtn} ${styles.actionReopen}`}
-                        title={ro.isReadOnly ? ro.readOnlyMessage : 'Reopen'}
-                        onClick={() => setReopen(q)}
-                        {...ro.disabledProps('Reopen query')}
+                        className={`${styles.actionBtn} ${styles.actionRespond}`}
+                        title="Respond"
+                        onClick={() => handleRespond(q)}
                       >
-                        <RotateCcw size={12} />
+                        <MessageSquare size={12} />
                       </button>
                     )}
                   </td>
@@ -617,61 +421,6 @@ export default function QueriesPage() {
             {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n} / page</option>)}
           </select>
         </div>
-      )}
-
-      {/* ── Modals ─────────────────────────────────────────────────────────── */}
-
-      {detailsTarget && (
-        <QueryDetailsModal
-          studyId={studyId}
-          query={detailsTarget}
-          onClose={() => setDetails(null)}
-          onAction={handleDetailAction}
-        />
-      )}
-
-      {respondTarget && (
-        <RespondModal
-          query={respondTarget}
-          onConfirm={handleRespond}
-          onClose={() => setRespond(null)}
-        />
-      )}
-
-      {closeTarget && (
-        <CloseReopenModal
-          mode="close"
-          query={closeTarget}
-          onConfirm={handleClose}
-          onClose={() => setClose(null)}
-        />
-      )}
-
-      {reopenTarget && (
-        <CloseReopenModal
-          mode="reopen"
-          query={reopenTarget}
-          onConfirm={handleReopen}
-          onClose={() => setReopen(null)}
-        />
-      )}
-
-      {escalateTarget && (
-        <EscalateModal
-          studyId={studyId}
-          query={escalateTarget}
-          onConfirm={handleEscalate}
-          onClose={() => setEscalate(null)}
-        />
-      )}
-
-      {bulkCloseOpen && (
-        <CloseReopenModal
-          mode="close"
-          query={null}
-          onConfirm={handleBulkClose}
-          onClose={() => setBulkClose(false)}
-        />
       )}
     </div>
   );

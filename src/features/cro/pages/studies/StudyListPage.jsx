@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate }  from 'react-router-dom';
 import { useDispatch }  from 'react-redux';
-import { Plus, Pencil, Trash2, FlaskConical } from 'lucide-react';
+import { Plus, Pencil, Trash2, FlaskConical, LayoutTemplate } from 'lucide-react';
 import { studiesClient } from '@/features/cro/api/studiesClient';
 import { addToast }      from '@/app/notificationSlice';
 import { resetWizard }   from '@/features/cro/store/studyWizardSlice';
@@ -116,7 +116,7 @@ export default function StudyListPage() {
     {
       key:   'id',
       label: 'Actions',
-      width: '90px',
+      width: '120px',
       render: (_, row) => (
         <div className={styles.actions}>
           <button
@@ -125,6 +125,13 @@ export default function StudyListPage() {
             onClick={(e) => { e.stopPropagation(); navigate(`/cro/studies/${row.id}/edit`); }}
           >
             <Pencil size={14} />
+          </button>
+          <button
+            className={styles.actionBtn}
+            title="Design Study"
+            onClick={(e) => { e.stopPropagation(); navigate(`/cro/studies/${row.id}/design`); }}
+          >
+            <LayoutTemplate size={14} />
           </button>
           <button
             className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
