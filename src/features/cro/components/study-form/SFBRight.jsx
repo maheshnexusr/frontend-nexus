@@ -12,6 +12,7 @@ import {
   updateField, removeField, duplicateField, deselectField,
   updatePage, updateBlock,
 } from '@/features/cro/store/studyFormSlice';
+import { selectStep3 } from '@/features/cro/store/studyWizardSlice';
 import s from './SFBRight.module.css';
 
 export default function SFBRight() {
@@ -94,6 +95,8 @@ function PagePropsPanel({ block, page }) {
 function FieldPropsPanel({ block, page, field }) {
   const dispatch  = useDispatch();
   const allFields = useSelector(selectAllFields);
+  const step3     = useSelector(selectStep3);
+  const queryManagerEnabled = !!step3?.queryManager;
 
   const up       = (k, v) => dispatch(updateField({ blockId: block.id, pageId: page.id, fieldId: field.id, updates: { [k]: v } }));
   const upV      = (k, v) => up('validation',   { ...field.validation,   [k]: v });
@@ -148,7 +151,7 @@ function FieldPropsPanel({ block, page, field }) {
         )}
 
         <Accordion title="Collaboration & Audit Tools">
-          <CommentsTab field={field} upCollab={upCollab} />
+          <CommentsTab field={field} upCollab={upCollab} queryManagerEnabled={queryManagerEnabled} />
         </Accordion>
       </div>
     </div>
@@ -789,12 +792,17 @@ const COLLAB_FEATURES = [
   },
 ];
 
-function CommentsTab({ field, upCollab }) {
+function CommentsTab({ field, upCollab, queryManagerEnabled }) {
   const collab = field.collaboration ?? {};
+  // The "Queries" feature row is only available when the study's Query Manager
+  // module is enabled in Step 3. Other collaboration features remain visible.
+  const features = queryManagerEnabled
+    ? COLLAB_FEATURES
+    : COLLAB_FEATURES.filter((f) => f.key !== 'queries');
   return (
     <div className={s.collabWrap}>
       <p className={s.collabHint}>Enable collaboration features for this field</p>
-      {COLLAB_FEATURES.map(({ key, label, desc, Icon }) => (
+      {features.map(({ key, label, desc, Icon }) => (
         <div key={key} className={s.collabRow}>
           <div className={s.collabLeft}>
             <span className={s.collabIcon}><Icon size={15} /></span>
@@ -806,6 +814,11 @@ function CommentsTab({ field, upCollab }) {
           <Toggle value={collab[key] ?? false} onChange={(v) => upCollab(key, v)} />
         </div>
       ))}
+      {!queryManagerEnabled && (
+        <p className={s.collabHint} style={{ marginTop: 6, fontStyle: 'italic' }}>
+          Enable Query Manager in study configuration to allow queries on fields.
+        </p>
+      )}
     </div>
   );
 }

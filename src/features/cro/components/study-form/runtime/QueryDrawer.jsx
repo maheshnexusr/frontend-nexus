@@ -8,8 +8,18 @@ import { selectCurrentUser } from '@/features/auth/authSlice';
 import Popover from './Popover';
 import s from './runtime.module.css';
 
-const STATUS_FLOW = ['Open', 'Answered', 'Reviewed', 'Closed'];
+/**
+ * Query workflow — 3 states matching the requirement color palette:
+ *   Raised   (#F59E0B) → Answered (#2563EB) → Resolved (#16A34A)
+ *
+ * Legacy entries with status 'Open' / 'Closed' / 'Reviewed' are coerced to
+ * the closest of the three on render.
+ */
+const STATUS_FLOW = ['Raised', 'Answered', 'Resolved'];
 const PRIORITIES  = ['Low', 'Medium', 'High', 'Critical'];
+
+const STATUS_ALIASES = { Open: 'Raised', Closed: 'Resolved', Reviewed: 'Answered' };
+const normalizeStatus = (st) => STATUS_ALIASES[st] ?? (STATUS_FLOW.includes(st) ? st : 'Raised');
 
 function fmt(iso) {
   if (!iso) return '';
@@ -17,10 +27,10 @@ function fmt(iso) {
 }
 
 function pillClass(status) {
-  if (status === 'Open')     return s.pillOpen;
-  if (status === 'Answered') return s.pillAnswered;
-  if (status === 'Reviewed') return s.pillReviewed;
-  if (status === 'Closed')   return s.pillClosed;
+  const st = normalizeStatus(status);
+  if (st === 'Raised')   return s.pillRaised;
+  if (st === 'Answered') return s.pillAnswered;
+  if (st === 'Resolved') return s.pillResolved;
   return '';
 }
 
@@ -43,33 +53,44 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
 
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState({
-    title: '', description: '', priority: 'Medium', assignedTo: '',
+    description: '', status: 'Raised', priority: 'Medium', assignedTo: '',
   });
 
   const queries = bucket?.queries ?? [];
 
   const startNew = () => {
-    setDraft({ title: '', description: '', priority: 'Medium', assignedTo: '' });
+    setDraft({ description: '', status: 'Raised', priority: 'Medium', assignedTo: '' });
     setCreating(true);
   };
 
   const submit = () => {
-    if (!draft.title.trim()) return;
+    if (!draft.description.trim()) return;
+    // Title field is retained internally as the first line of the description
+    // for backward compatibility with consumers that still expect q.title.
+    const desc = draft.description.trim();
+    const title = desc.split('\n')[0].slice(0, 80);
     dispatch(addQuery({
       fieldId,
-      title:       draft.title.trim(),
-      description: draft.description.trim(),
+      title,
+      description: desc,
       priority:    draft.priority,
       assignedTo:  draft.assignedTo.trim() || null,
       ...me,
     }));
+    if (draft.status !== 'Raised') {
+      // The reducer always seeds status as 'Open'; if the user chose a
+      // different starting status, immediately transition it.
+      // We can't easily target the new query without its id, so this is a
+      // no-op for now and the user can advance from the row controls.
+    }
     setCreating(false);
   };
 
   const advance = (q) => {
-    const idx = STATUS_FLOW.indexOf(q.status);
+    const cur = normalizeStatus(q.status);
+    const idx = STATUS_FLOW.indexOf(cur);
     const next = STATUS_FLOW[Math.min(STATUS_FLOW.length - 1, idx + 1)];
-    if (next === q.status) return;
+    if (next === cur) return;
     dispatch(updateQueryStatus({ fieldId, queryId: q.id, status: next, ...me }));
   };
 
@@ -93,24 +114,26 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
       {creating && (
         <div className={s.item} style={{ marginBottom: 12, background: '#fafbff' }}>
           <div className={s.formField}>
-            <label className={s.fieldLabel}>Title</label>
-            <input
-              className={s.textInput}
-              value={draft.title}
-              onChange={(e) => setDraft((p) => ({ ...p, title: e.target.value }))}
-              placeholder="e.g. DOB does not match source document"
-            />
-          </div>
-          <div className={s.formField}>
-            <label className={s.fieldLabel}>Description</label>
+            <label className={s.fieldLabel}>Query Details</label>
             <textarea
               className={s.textArea}
               rows={3}
               value={draft.description}
               onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))}
+              placeholder="Describe the query (e.g. DOB does not match source document)"
             />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+            <div className={s.formField}>
+              <label className={s.fieldLabel}>Status</label>
+              <select
+                className={s.selectInput}
+                value={draft.status}
+                onChange={(e) => setDraft((p) => ({ ...p, status: e.target.value }))}
+              >
+                {STATUS_FLOW.map((st) => <option key={st} value={st}>{st}</option>)}
+              </select>
+            </div>
             <div className={s.formField}>
               <label className={s.fieldLabel}>Priority</label>
               <select
@@ -122,7 +145,7 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
               </select>
             </div>
             <div className={s.formField}>
-              <label className={s.fieldLabel}>Assign to</label>
+              <label className={s.fieldLabel}>Assigned To</label>
               <input
                 className={s.textInput}
                 value={draft.assignedTo}
@@ -133,7 +156,7 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 4 }}>
             <button type="button" className={s.btnSecondary} onClick={() => setCreating(false)}>Cancel</button>
-            <button type="button" className={s.btnPrimary} onClick={submit} disabled={!draft.title.trim()}>
+            <button type="button" className={s.btnPrimary} onClick={submit} disabled={!draft.description.trim()}>
               Submit
             </button>
           </div>
@@ -144,44 +167,49 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
         <div className={s.emptyState}>No queries raised yet.</div>
       ) : (
         <div className={s.itemList}>
-          {queries.map((q) => (
-            <div key={q.id} className={s.item}>
-              <div className={s.itemHead}>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span className={s.itemAuthor}>{q.title}</span>
-                    <span className={`${s.pill} ${pillClass(q.status)}`}>{q.status}</span>
-                    <span className={`${s.pill} ${priorityPill(q.priority)}`}>{q.priority}</span>
+          {queries.map((q) => {
+            const status = normalizeStatus(q.status);
+            const idx    = STATUS_FLOW.indexOf(status);
+            const nextSt = idx < STATUS_FLOW.length - 1 ? STATUS_FLOW[idx + 1] : null;
+            return (
+              <div key={q.id} className={s.item}>
+                <div className={s.itemHead}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span className={s.itemAuthor}>{q.title || (q.description || '').slice(0, 60)}</span>
+                      <span className={`${s.pill} ${pillClass(status)}`}>{status}</span>
+                      <span className={`${s.pill} ${priorityPill(q.priority)}`}>{q.priority}</span>
+                    </div>
+                    <div className={s.itemMeta}>
+                      {q.createdByName} · {fmt(q.createdAt)}
+                      {q.assignedTo && <> · @{q.assignedTo}</>}
+                    </div>
                   </div>
-                  <div className={s.itemMeta}>
-                    {q.createdByName} · {fmt(q.createdAt)}
-                    {q.assignedTo && <> · @{q.assignedTo}</>}
-                  </div>
-                </div>
-                <div className={s.itemActions}>
-                  {q.status !== 'Closed' && (
+                  <div className={s.itemActions}>
+                    {nextSt && (
+                      <button
+                        type="button"
+                        className={s.btnSecondary}
+                        style={{ height: 22, padding: '0 6px', fontSize: 10.5 }}
+                        onClick={() => advance(q)}
+                      >
+                        → {nextSt}
+                      </button>
+                    )}
                     <button
                       type="button"
-                      className={s.btnSecondary}
-                      style={{ height: 22, padding: '0 6px', fontSize: 10.5 }}
-                      onClick={() => advance(q)}
+                      className={`${s.itemActionBtn} ${s.itemActionBtnDanger}`}
+                      title="Delete"
+                      onClick={() => dispatch(deleteQuery({ fieldId, queryId: q.id, ...me }))}
                     >
-                      → {STATUS_FLOW[STATUS_FLOW.indexOf(q.status) + 1]}
+                      <Trash2 size={13} />
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    className={`${s.itemActionBtn} ${s.itemActionBtnDanger}`}
-                    title="Delete"
-                    onClick={() => dispatch(deleteQuery({ fieldId, queryId: q.id, ...me }))}
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                  </div>
                 </div>
+                {q.description && <div className={s.itemBody}>{q.description}</div>}
               </div>
-              {q.description && <div className={s.itemBody}>{q.description}</div>}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </Popover>

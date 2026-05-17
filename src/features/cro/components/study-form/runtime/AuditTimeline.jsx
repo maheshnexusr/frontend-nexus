@@ -30,6 +30,13 @@ function detailFor(entry) {
   switch (entry.action) {
     case 'value.changed':       return `${JSON.stringify(m.oldValue)} → ${JSON.stringify(m.newValue)}`;
     case 'value.cleared':       return `was ${JSON.stringify(m.oldValue)}`;
+    case 'query.raised': {
+      const parts = [];
+      if (m.priority)   parts.push(`Priority: ${m.priority}`);
+      if (m.assignedTo) parts.push(`Assigned: ${m.assignedTo}`);
+      if (m.status)     parts.push(`Status: ${m.status}`);
+      return parts.length ? parts.join(' · ') : (m.title ?? null);
+    }
     case 'query.statusChanged': return `${m.from} → ${m.to}${m.response ? ` · "${m.response}"` : ''}`;
     case 'annotation.added':    return m.comment;
     case 'attachment.added':

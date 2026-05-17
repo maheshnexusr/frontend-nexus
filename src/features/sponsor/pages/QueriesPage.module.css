@@ -49,25 +49,37 @@
 }
 .btnRefresh:hover { border-color: var(--color-primary, #2563eb); color: var(--color-primary, #2563eb); }
 
-/* ── Stats bar ───────────────────────────────────────────────────────────── */
+/* ── Stats bar (Minimal Dashboard style counts banner) ───────────────────── */
 .statsBar {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
 }
 .statCard {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: 12px 20px;
+  justify-content: space-between;
+  padding: 18px 20px;
   background: var(--bg-card, #fff);
   border: 1px solid var(--border-default, #e2e8f0);
-  border-radius: 10px;
-  min-width: 80px;
-  gap: 2px;
+  border-radius: 14px;
+  gap: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
-.statValue { font-size: 24px; font-weight: 800; line-height: 1; }
-.statLabel { font-size: 11.5px; font-weight: 500; color: var(--text-secondary, #94a3b8); }
+.statCardInner { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.statValue { font-size: 26px; font-weight: 800; line-height: 1; }
+.statLabel { font-size: 12px; font-weight: 600; color: var(--text-secondary, #64748b); letter-spacing: 0.02em; }
+.statIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 16px;
+  flex: 0 0 auto;
+}
 
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */
 .toolbar {

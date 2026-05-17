@@ -73,6 +73,14 @@
 .badgeVerified   { color: #059669; background: #ecfdf5; border-color: #a7f3d0; }
 .badgePending    { color: #b45309; background: #fffbeb; border-color: #fde68a; }
 
+/* Query status flag (count + color per requirement) */
+.badgeQueryRaised   { color: #fff; background: #f59e0b; border-color: #f59e0b; }
+.badgeQueryAnswered { color: #fff; background: #2563eb; border-color: #2563eb; }
+.badgeQueryResolved { color: #fff; background: #16a34a; border-color: #16a34a; }
+.badgeQueryRaised:hover,
+.badgeQueryAnswered:hover,
+.badgeQueryResolved:hover { filter: brightness(1.05); color: #fff; }
+
 /* ── Field toolbar (three-dot menu) ──────────────────────────────────────── */
 .toolbarWrap {
   position: relative;
@@ -395,10 +403,12 @@
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
-.pillOpen     { background: #fef2f2; color: #dc2626; }
-.pillAnswered { background: #fffbeb; color: #b45309; }
-.pillReviewed { background: #eff6ff; color: #2563eb; }
-.pillClosed   { background: #f1f5f9; color: #64748b; }
+.pillOpen     { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+.pillRaised   { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+.pillAnswered { background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.pillReviewed { background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.pillResolved { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+.pillClosed   { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
 .pillResolved { background: #ecfdf5; color: #059669; }
 .pillCritical { background: #fef2f2; color: #dc2626; }
 .pillHigh     { background: #fff1f2; color: #e11d48; }
