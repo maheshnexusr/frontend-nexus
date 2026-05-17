@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { NavLink, Link, useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
-import { logout, selectCurrentUser } from "@/features/auth/authSlice";
+import { logoutAsync, selectCurrentUser } from "@/features/auth/authSlice";
 import {
   LayoutGrid,
   User,
@@ -43,7 +43,7 @@ function ProfileCard({ collapsed, profilePath, settingsPath }) {
   const user            = useAppSelector(selectCurrentUser);
 
   const handleLogout = () => {
-    dispatch(logout());
+    dispatch(logoutAsync());
     setOpen(false);
     navigate("/");
   };
@@ -113,6 +113,15 @@ function NavItem({ item, collapsed }) {
   const Icon        = item.icon;
   const hasChildren = Boolean(item.children?.length);
   const [open, setOpen] = useState(false);
+  const dispatch    = useAppDispatch();
+  const navigate    = useNavigate();
+
+  const handleChildClick = (child) => {
+    if (child.path === '/logout') {
+      dispatch(logoutAsync());
+      navigate('/');
+    }
+  };
 
   if (hasChildren && !collapsed) {
     return (
@@ -129,19 +138,34 @@ function NavItem({ item, collapsed }) {
         </button>
         {open && (
           <div className={styles.navSublist}>
-            {item.children.map((child) => (
-              <NavLink
-                key={child.key}
-                to={child.path}
-                end
-                className={({ isActive }) =>
-                  clx(styles.navSubItem, isActive && styles.subItemActive)
-                }
-              >
-                <span className={styles.navBullet} />
-                {child.label}
-              </NavLink>
-            ))}
+            {item.children.map((child) => {
+              const ChildIcon = child.icon;
+              if (child.path === '/logout') {
+                return (
+                  <button
+                    key={child.key}
+                    onClick={() => handleChildClick(child)}
+                    className={clx(styles.navSubItem, styles.navSubAction)}
+                  >
+                    {ChildIcon ? <ChildIcon size={14} /> : <span className={styles.navBullet} />}
+                    {child.label}
+                  </button>
+                );
+              }
+              return (
+                <NavLink
+                  key={child.key}
+                  to={child.path}
+                  end
+                  className={({ isActive }) =>
+                    clx(styles.navSubItem, isActive && styles.subItemActive)
+                  }
+                >
+                  {ChildIcon ? <ChildIcon size={14} /> : <span className={styles.navBullet} />}
+                  {child.label}
+                </NavLink>
+              );
+            })}
           </div>
         )}
       </div>

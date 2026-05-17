@@ -1,6 +1,11 @@
 /**
  * PasswordLoginForm — email + password sign-in with react-hook-form + zod.
- * Reads geoInfo from Redux (populated by useGeoIP in the parent page).
+ *
+ * A single POST /api/v1/auth/login/password covers both CRO and sponsor
+ * scopes. loginAsync detects the role from the response and, when the user
+ * is a sponsor, mirrors the returned tokens into sponsor-scope storage so
+ * sponsorAxiosClient can attach them to /sponsor/** requests. Routing is
+ * role-driven via getRoleRedirect.
  */
 
 import { useForm } from 'react-hook-form';
@@ -8,7 +13,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '@/app/hooks';
-import { loginAsync }    from '@/features/auth/authSlice';
+import { loginAsync } from '@/features/auth/authSlice';
 import { getRoleRedirect } from '@/utils/roleRedirect';
 import FormField     from '@/components/form/FormField';
 import PasswordInput from '@/components/form/PasswordInput';
@@ -91,10 +96,6 @@ export default function PasswordLoginForm() {
         {isSubmitting ? 'Signing in…' : 'Sign In'}
       </button>
 
-      <p className={styles.switchLink}>
-        Don&apos;t have an account?{' '}
-        <Link to="/signup" className={styles.link}>Create one</Link>
-      </p>
     </form>
   );
 }

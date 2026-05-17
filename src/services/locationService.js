@@ -15,11 +15,20 @@ function csvDownload(blob) {
 
 export const locationService = {
   /**
-   * GET /api/v1/masters/locations
-   * params: { page, pageSize, search, status, countryId }
+   * GET /api/v1/masters/locations (spec §5.4)
+   * Accepts camelCase: { page, pageSize, search, status, countryId }
+   * Sends snake_case:  ?page=&limit=&search=&status=&country_id=
    */
-  list: (params = {}) =>
-    axiosClient.get(`/api/v1/masters/locations${buildQueryString(params)}`),
+  list: (params = {}) => {
+    const query = {
+      page:       params.page,
+      limit:      params.limit      ?? params.pageSize,
+      search:     params.search,
+      status:     params.status,
+      country_id: params.country_id ?? params.countryId,
+    };
+    return axiosClient.get(`/api/v1/masters/locations${buildQueryString(query)}`);
+  },
 
   /**
    * POST /api/v1/masters/locations
@@ -43,7 +52,6 @@ export const locationService = {
    */
   import: (formData) =>
     axiosClient.post('/api/v1/masters/locations/import', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
   /** GET /api/v1/masters/locations/export — CSV download */

@@ -1,0 +1,148 @@
+.body { display: flex; flex-direction: column; gap: 16px; }
+
+.row2 {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+/* ── Input ───────────────────────────────────────────────────────────────── */
+.input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-primary, #0f172a);
+  background: var(--bg-card, #fff);
+  outline: none;
+  box-sizing: border-box;
+}
+.input:focus      { border-color: var(--color-primary, #2563eb); box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
+.inputError       { border-color: #dc2626 !important; }
+.inputError:focus { box-shadow: 0 0 0 3px rgba(220,38,38,.1); }
+
+/* ── Content area with toolbar ───────────────────────────────────────────── */
+.contentWrap { display: flex; flex-direction: column; gap: 0; }
+
+.contentToolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--bg-subtle, #f8fafc);
+  border: 1px solid var(--border-default, #d1d5db);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+}
+
+.varDropdown { position: relative; }
+
+.varBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-primary, #2563eb);
+  background: rgba(37,99,235,.06);
+  border: 1px solid rgba(37,99,235,.2);
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.varBtn:hover { background: rgba(37,99,235,.12); }
+
+.varMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 260px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
+  overflow: hidden;
+}
+
+.varItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+}
+.varItem:hover { background: var(--bg-subtle, #f8fafc); }
+
+.varKey {
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-primary, #2563eb);
+  background: rgba(37,99,235,.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.varLabel { font-size: 12px; color: var(--text-secondary, #64748b); }
+
+.textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 0 0 8px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary, #0f172a);
+  background: var(--bg-card, #fff);
+  outline: none;
+  resize: vertical;
+  box-sizing: border-box;
+  line-height: 1.6;
+}
+.textarea:focus { border-color: var(--color-primary, #2563eb); box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
+
+/* ── Checkbox ────────────────────────────────────────────────────────────── */
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary, #374151);
+  cursor: pointer;
+  padding-top: 8px;
+}
+.checkbox { width: 15px; height: 15px; accent-color: var(--color-primary, #2563eb); cursor: pointer; }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btnCancel {
+  padding: 8px 16px;
+  background: var(--bg-subtle, #f8fafc);
+  color: var(--text-secondary, #374151);
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btnCancel:hover { background: #f1f5f9; }
+
+.btnSave {
+  padding: 8px 20px;
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btnSave:hover { background: #1d4ed8; }

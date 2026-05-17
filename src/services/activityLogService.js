@@ -42,18 +42,29 @@ function normalizeLog(raw) {
 /* ── Service ──────────────────────────────────────────────────────────────── */
 export const activityLogService = {
   /**
-   * List activity logs with filters + pagination.
+   * List activity logs with filters + pagination (spec §9).
    *
-   * Params: { page, pageSize, dateFrom, dateTo, userId, module,
-   *           actionType, status, search }
-   *
-   * Returns: { items: Log[], pagination: { page, pageSize, total } }
+   * Accepts camelCase:  { page, pageSize, dateFrom, dateTo, userId, module,
+   *                       actionType, status, search }
+   * Sends snake_case:   ?page=&limit=&from=&to=&user_id=&module=&action_type=&status=&search=
+   * Returns: { items: Log[], pagination: { page, limit, total, totalPages } }
    */
   list: async (params = {}) => {
-    const res = await axiosClient.get(`/api/v1/activity-logs${buildQueryString(params)}`);
+    const query = {
+      page:        params.page,
+      limit:       params.limit       ?? params.pageSize,
+      from:        params.from        ?? params.dateFrom,
+      to:          params.to          ?? params.dateTo,
+      user_id:     params.user_id     ?? params.userId,
+      module:      params.module,
+      action_type: params.action_type ?? params.actionType,
+      status:      params.status,
+      search:      params.search,
+    };
+    const res = await axiosClient.get(`/api/v1/activity-logs${buildQueryString(query)}`);
     return {
       items:      (res.items ?? []).map(normalizeLog),
-      pagination: res.pagination ?? { page: 1, pageSize: params.pageSize ?? 50, total: 0 },
+      pagination: res.pagination ?? { page: 1, limit: query.limit ?? 50, total: 0 },
     };
   },
 
@@ -68,10 +79,19 @@ export const activityLogService = {
 
   /**
    * Export filtered logs as CSV and trigger a browser download.
-   * Accepts the same filter params as list().
+   * Accepts the same filter params as list(); mapped to spec §9 names.
    */
   export: async (params = {}) => {
-    const res = await axiosClient.get(`/api/v1/activity-logs/export${buildQueryString(params)}`, {
+    const query = {
+      from:        params.from        ?? params.dateFrom,
+      to:          params.to          ?? params.dateTo,
+      user_id:     params.user_id     ?? params.userId,
+      module:      params.module,
+      action_type: params.action_type ?? params.actionType,
+      status:      params.status,
+      search:      params.search,
+    };
+    const res = await axiosClient.get(`/api/v1/activity-logs/export${buildQueryString(query)}`, {
       responseType: 'blob',
     });
     const url      = URL.createObjectURL(res);

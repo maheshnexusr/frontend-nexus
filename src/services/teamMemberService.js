@@ -20,12 +20,20 @@ function csvDownload(blob, filename = 'team-members.csv') {
 
 export const teamMemberService = {
   /**
-   * GET /api/v1/team-members
-   * params: { page, pageSize, search }
-   * Returns: { success, items, pagination }
+   * GET /api/v1/team-members (spec §8.1)
+   * Accepts camelCase: { page, pageSize, search, roleId, status }
+   * Sends snake_case:  ?page=&limit=&search=&role_id=&status=
    */
-  list: (params = {}) =>
-    axiosClient.get(`/api/v1/team-members${buildQueryString(params)}`),
+  list: (params = {}) => {
+    const query = {
+      page:    params.page,
+      limit:   params.limit   ?? params.pageSize,
+      search:  params.search,
+      role_id: params.role_id ?? params.roleId,
+      status:  params.status,
+    };
+    return axiosClient.get(`/api/v1/team-members${buildQueryString(query)}`);
+  },
 
   /**
    * GET /api/v1/team-members/:id
@@ -42,7 +50,6 @@ export const teamMemberService = {
    */
   create: (formData) =>
     axiosClient.post('/api/v1/team-members', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
   /**
@@ -53,7 +60,6 @@ export const teamMemberService = {
    */
   update: (id, formData) =>
     axiosClient.put(`/api/v1/team-members/${id}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
   /**

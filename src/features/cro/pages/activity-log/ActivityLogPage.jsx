@@ -15,7 +15,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDispatch } from 'react-redux';
 import {
-  Filter, Download, X, ChevronDown,
+  Filter, X, ChevronDown,
   Eye, FileText, Clock, User as UserIcon,
   Monitor, AlertCircle, CheckCircle2, TriangleAlert,
 } from 'lucide-react';
@@ -23,12 +23,40 @@ import { activityLogService } from '@/services/activityLogService';
 import { useApi }             from '@/hooks/useApi';
 import { addToast }           from '@/app/notificationSlice';
 import DataTable              from '@/components/data-table/DataTable';
+import ExportMenu             from '@/components/data-table/ExportMenu';
+import { exportTable }        from '@/utils/exportTable';
 import styles from './ActivityLogPage.module.css';
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
 const MODULES     = ['Auth', 'Study', 'Profile', 'Sponsor', 'Team', 'Masters'];
 const ACTION_TYPES = ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'EXPORT'];
 const STATUSES    = ['SUCCESS', 'FAILURE', 'WARNING'];
+
+const ACTIVITY_EXPORT_COLUMNS = [
+  { header: 'Timestamp',   accessor: 'timestamp'   },
+  { header: 'User',        accessor: 'userName'    },
+  { header: 'Action',      accessor: 'actionType'  },
+  { header: 'Module',      accessor: 'module'      },
+  { header: 'Entity Type', accessor: 'entityType'  },
+  { header: 'Entity',      accessor: 'entityName'  },
+  { header: 'Description', accessor: 'description' },
+  { header: 'IP Address',  accessor: 'ipAddress'   },
+  { header: 'Status',      accessor: 'status'      },
+];
+
+function buildExportRows(items) {
+  return items.map((r) => ({
+    timestamp:   fmtDate(r.timestamp),
+    userName:    r.userName   ?? '—',
+    actionType:  r.actionType ?? '—',
+    module:      r.module     ?? '—',
+    entityType:  r.entityType ?? '—',
+    entityName:  r.entityName ?? '—',
+    description: r.description ?? '—',
+    ipAddress:   r.ipAddress  ?? '—',
+    status:      r.status     ?? '—',
+  }));
+}
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 function fmtDate(ts) {
@@ -195,6 +223,7 @@ export default function ActivityLogPage() {
   const [modFilter,   setModFilter]   = useState('');
   const [actFilter,   setActFilter]   = useState('');
   const [statFilter,  setStatFilter]  = useState('');
+  const [userFilter,  setUserFilter]  = useState('');
   const [search,      setSearch]      = useState('');
   const [filtersOpen, setFiltersOpen] = useState(true);
 
@@ -224,9 +253,10 @@ export default function ActivityLogPage() {
     module:     modFilter  || undefined,
     actionType: actFilter  || undefined,
     status:     statFilter || undefined,
+    user:       userFilter || undefined,
     dateFrom:   dateFrom   || undefined,
     dateTo:     dateTo     || undefined,
-  }), [page, pageSize, search, modFilter, actFilter, statFilter, dateFrom, dateTo]);
+  }), [page, pageSize, search, modFilter, actFilter, statFilter, userFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     fetchLogs(buildParams()).catch(() => {
@@ -235,29 +265,29 @@ export default function ActivityLogPage() {
   }, [buildParams]);                        // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Reset to page 1 when any filter changes */
-  useEffect(() => { setPage(1); }, [search, modFilter, actFilter, statFilter, dateFrom, dateTo]);
+  useEffect(() => { setPage(1); }, [search, modFilter, actFilter, statFilter, userFilter, dateFrom, dateTo]);
 
   /* ── Clear filters ── */
-  const hasActiveFilters = modFilter || actFilter || statFilter ||
+  const hasActiveFilters = modFilter || actFilter || statFilter || userFilter ||
     dateFrom !== sevenDaysAgoISO() || dateTo !== todayISO();
 
   const clearFilters = () => {
     setDateFrom(sevenDaysAgoISO());
     setDateTo(todayISO());
-    setModFilter(''); setActFilter(''); setStatFilter('');
+    setModFilter(''); setActFilter(''); setStatFilter(''); setUserFilter('');
   };
 
   /* ── Export ── */
-  const handleExport = async () => {
+  const handleExport = async (format) => {
     setExporting(true);
     try {
-      await activityLogService.export({
-        search:     search     || undefined,
-        module:     modFilter  || undefined,
-        actionType: actFilter  || undefined,
-        status:     statFilter || undefined,
-        dateFrom:   dateFrom   || undefined,
-        dateTo:     dateTo     || undefined,
+      const filename = `ActivityLog_${new Date().toISOString().slice(0, 10)}`;
+      exportTable(format, {
+        columns:   ACTIVITY_EXPORT_COLUMNS,
+        rows:      buildExportRows(items),
+        filename,
+        sheetName: 'Activity Log',
+        title:     'Activity Log',
       });
       dispatch(addToast({ type: 'success', message: 'Activity log exported successfully.' }));
     } catch {
@@ -325,10 +355,11 @@ export default function ActivityLogPage() {
           <p className={styles.sub}>Audit trail of all user actions and system events.</p>
         </div>
 
-        <button className={styles.exportBtn} disabled={exporting} onClick={handleExport}>
-          <Download size={14} />
-          {exporting ? 'Exporting…' : 'Export CSV'}
-        </button>
+        <ExportMenu
+          disabled={exporting || items.length === 0}
+          label={exporting ? 'Exporting…' : 'Export'}
+          onExport={handleExport}
+        />
       </div>
 
       {/* ── Filter card ── */}
@@ -374,6 +405,16 @@ export default function ActivityLogPage() {
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
+            </div>
+            <div className={styles.fg}>
+              <label className={styles.flabel}>User</label>
+              <input
+                type="text"
+                className={styles.finput}
+                value={userFilter}
+                onChange={(e) => setUserFilter(e.target.value)}
+                placeholder="Filter by user name or email…"
+              />
             </div>
             {hasActiveFilters && (
               <div className={styles.fg}>

@@ -29,23 +29,27 @@ function extractList(res) {
   return arr.map(normalize);
 }
 
-/* ── Request builder ─────────────────────────────────────────────────────── */
+/* ── Request builder (camelCase → multipart FormData, spec §8.1) ─────────── */
 function toFormData(form) {
   const fd  = new FormData();
-  const add = (key, val) => { if (val !== undefined && val !== null && val !== '') fd.append(key, val); };
+  const add = (k, v) => { if (v !== undefined && v !== null && v !== '') fd.append(k, v); };
 
   add('full_name',      form.fullName);
   add('email_address',  form.email ?? form.emailAddress);
-  add('role_id',        form.roleId);
   add('contact_number', form.contactNumber);
+  add('job_title',      form.jobTitle);
+  add('role_id',        form.roleId);
+  add('status',         form.status);
 
-  if (Array.isArray(form.studyIds)) {
-    form.studyIds.forEach((id) => fd.append('study_ids[]', id));
-  }
-  if (Array.isArray(form.assignedStudies)) {
-    form.assignedStudies.forEach((s) => fd.append('study_ids[]', s.studyId ?? s));
-  }
+  const studyIds = [
+    ...(Array.isArray(form.studyIds) ? form.studyIds : []),
+    ...(Array.isArray(form.assignedStudies)
+      ? form.assignedStudies.map((s) => s.studyId ?? s)
+      : []),
+  ];
+  if (studyIds.length) fd.append('study_ids', JSON.stringify(studyIds));
 
+  // photograph may be a File/Blob or a data URL from the avatar picker.
   if (form.photograph) {
     if (form.photograph instanceof File || form.photograph instanceof Blob) {
       fd.append('photograph', form.photograph);
@@ -58,7 +62,6 @@ function toFormData(form) {
       fd.append('photograph', new Blob([buf], { type: mime }), 'photo.jpg');
     }
   }
-
   return fd;
 }
 
@@ -84,16 +87,12 @@ export const teamMembersClient = {
   },
 
   async create(form) {
-    const res = await axiosClient.post('/api/v1/team-members', toFormData(form), {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    const res = await axiosClient.post('/api/v1/team-members', toFormData(form));
     return normalize(res?.item ?? res);
   },
 
   async update(id, form) {
-    const res = await axiosClient.put(`/api/v1/team-members/${id}`, toFormData(form), {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    const res = await axiosClient.put(`/api/v1/team-members/${id}`, toFormData(form));
     return normalize(res?.item ?? res);
   },
 

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { selectBlocks, selectFormMeta } from '@/features/cro/store/studyFormSlice';
 import { formResponsesClient } from '@/features/cro/api/formResponsesClient';
+import RuntimeFieldRenderer from './runtime/RuntimeFieldRenderer';
 import s from './SFBPreview.module.css';
 
 export default function SFBPreview({ onExitPreview }) {
@@ -91,85 +92,120 @@ export default function SFBPreview({ onExitPreview }) {
 
   return (
     <div className={s.root}>
-      <div className={s.formShell}>
 
-        {/* Form title */}
-        <div className={s.formTitle}>
-          {meta.formTitle || 'Study Data Collection Form'}
+      {/* ── Left rail: vertical block/page stepper ───────────────────────── */}
+      <aside className={s.sidebar}>
+        <div className={s.sidebarHead}>
+          <span className={s.sidebarTitle}>{meta.formTitle || 'Study Form'}</span>
+          <span className={s.sidebarSub}>{pct}% complete</span>
+          <div className={s.progressWrap}>
+            <div className={s.progressBar} style={{ width: `${pct}%` }} />
+          </div>
         </div>
 
-        {/* Progress */}
-        <div className={s.progressWrap}>
-          <div className={s.progressBar} style={{ width: `${pct}%` }} />
-        </div>
-        <div className={s.progressLabel}>{pct}% complete</div>
-
-        {/* Block stepper */}
-        <div className={s.blockStepper}>
+        <nav className={s.stepList} aria-label="Form sections">
           {blocks.map((blk, i) => {
-            const done   = i < bi;
-            const active = i === bi;
-            const locked = i > bi;
+            const isPast    = i < bi;
+            const isCurrent = i === bi;
+            const isFuture  = i > bi;
             return (
-              <div key={blk.id} className={s.stepItem}>
-                {i > 0 && (
-                  <div className={`${s.stepLine} ${done || active ? s.stepLineDone : ''}`} />
-                )}
+              <div key={blk.id} className={s.stepBlock}>
                 <button
-                  className={`${s.stepCircle} ${done ? s.stepCircleDone : ''} ${active ? s.stepCircleActive : ''} ${locked ? s.stepCircleLocked : ''}`}
-                  onClick={() => !locked && goBlock(i)}
-                  disabled={locked}
+                  type="button"
+                  className={`${s.stepBlockHead} ${isCurrent ? s.stepBlockHeadActive : ''} ${isPast ? s.stepBlockHeadDone : ''}`}
+                  onClick={() => !isFuture && goBlock(i)}
+                  disabled={isFuture}
                   title={blk.title}
                 >
-                  {done ? <CheckCircle2 size={14} strokeWidth={2.5} /> : i + 1}
+                  <span className={`${s.stepBadge} ${isPast ? s.stepBadgeDone : ''} ${isCurrent ? s.stepBadgeActive : ''}`}>
+                    {isPast ? <CheckCircle2 size={12} strokeWidth={2.5} /> : i + 1}
+                  </span>
+                  <span className={s.stepBlockLabel}>{blk.title || `Block ${i + 1}`}</span>
+                  <span className={s.stepBlockCount}>{blk.pages.length}</span>
                 </button>
-                <span className={`${s.stepLabel} ${active ? s.stepLabelActive : ''} ${locked ? s.stepLabelLocked : ''}`}>
-                  {blk.title}
-                </span>
+
+                {/* Pages — expanded for the current block; collapsed otherwise. */}
+                {isCurrent && (
+                  <ol className={s.pageList}>
+                    {blk.pages.map((pg, j) => {
+                      const pPast    = j < pi;
+                      const pCurrent = j === pi;
+                      return (
+                        <li key={pg.id}>
+                          <button
+                            type="button"
+                            className={`${s.pageItem} ${pCurrent ? s.pageItemActive : ''} ${pPast ? s.pageItemDone : ''}`}
+                            onClick={() => j <= pi && goPage(j)}
+                            disabled={j > pi}
+                          >
+                            <span className={s.pageDot} />
+                            <span className={s.pageItemLabel}>{pg.title || `Page ${j + 1}`}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
               </div>
             );
           })}
-        </div>
+        </nav>
+      </aside>
 
-        {/* Page tabs */}
-        {block.pages.length > 1 && (
-          <div className={s.pageTabs}>
-            {block.pages.map((pg, i) => (
-              <button
-                key={pg.id}
-                className={`${s.pageTab} ${i === pi ? s.pageTabActive : ''} ${i < pi ? s.pageTabDone : ''}`}
-                onClick={() => i <= pi && goPage(i)}
-                disabled={i > pi}
-              >
-                {i < pi && <span className={s.pageTabCheck}>✓</span>}
-                {pg.title}
-              </button>
-            ))}
+      {/* ── Main content panel ───────────────────────────────────────────── */}
+      <div className={s.mainCol}>
+        <div className={s.contentShell}>
+
+          {/* Page heading */}
+          <div className={s.pageHeading}>
+            <div>
+              <h2 className={s.pageTitle}>{page.title}</h2>
+              {page.description && <p className={s.pageDesc}>{page.description}</p>}
+            </div>
+            <span className={s.pageCounter}>
+              Page {pi + 1} / {block.pages.length} · Block {bi + 1} / {blocks.length}
+            </span>
           </div>
-        )}
 
-        {/* Page heading */}
-        <div className={s.pageHeading}>
-          <h2 className={s.pageTitle}>{page.title}</h2>
-          <span className={s.pageCounter}>Page {pi + 1} of {block.pages.length}</span>
-        </div>
-        {page.description && <p className={s.pageDesc}>{page.description}</p>}
-
-        {/* Fields */}
-        <div className={s.fields}>
+          {/* Fields — wrapped in RuntimeFieldRenderer for collaboration stack. */}
+          <div className={s.fields}>
           {page.fields.length === 0 ? (
             <div className={s.noFields}>
               <p>This page has no fields yet.</p>
             </div>
           ) : (
-            page.fields.map((field) => (
-              <FieldPreview
-                key={field.id}
-                field={field}
-                value={values[field.id]?.value}
-                onChange={(v) => setValue(field.id, field.label, v)}
-              />
-            ))
+            page.fields.map((field) => {
+              const isLayout = ['h2', 'paragraph', 'divider'].includes(field.type);
+              if (isLayout) {
+                // Layout-only fields don't need the runtime stack.
+                return (
+                  <div key={field.id} className={`${s.fieldWrap} ${s.fieldWrapLayout}`}>
+                    <FieldInput
+                      field={field}
+                      value={values[field.id]?.value}
+                      onChange={(v) => setValue(field.id, field.label, v)}
+                    />
+                  </div>
+                );
+              }
+              return (
+                <RuntimeFieldRenderer
+                  key={field.id}
+                  field={field}
+                  value={values[field.id]?.value}
+                  onChange={(v) => setValue(field.id, field.label, v)}
+                  allValues={Object.fromEntries(
+                    Object.entries(values).map(([k, e]) => [k, e?.value]),
+                  )}
+                >
+                  {({ field: f, value: v, onChange, disabled }) => (
+                    <fieldset disabled={disabled} style={{ border: 0, padding: 0, margin: 0 }}>
+                      <FieldInput field={f} value={v} onChange={onChange} />
+                    </fieldset>
+                  )}
+                </RuntimeFieldRenderer>
+              );
+            })
           )}
         </div>
 
@@ -206,31 +242,13 @@ export default function SFBPreview({ onExitPreview }) {
           )}
         </div>
 
-      </div>
+        </div>{/* /contentShell */}
+      </div>{/* /mainCol */}
     </div>
   );
 }
 
-/* ── Field wrapper ───────────────────────────────────────────────────────── */
-function FieldPreview({ field, value, onChange }) {
-  const isLayout = ['h2', 'paragraph', 'divider'].includes(field.type);
-  return (
-    <div className={`${s.fieldWrap} ${isLayout ? s.fieldWrapLayout : ''}`}>
-      {!isLayout && field.label && (
-        <label className={s.fieldLabel}>
-          {field.label}
-          {field.required && <span className={s.req}> *</span>}
-        </label>
-      )}
-      {!isLayout && field.helpText && (
-        <p className={s.fieldHelp}>{field.helpText}</p>
-      )}
-      <FieldInput field={field} value={value} onChange={onChange} />
-    </div>
-  );
-}
-
-/* ── Interactive field renderer ──────────────────────────────────────────── */
+/* ── Interactive field renderer (used inside RuntimeFieldRenderer) ───────── */
 function FieldInput({ field, value, onChange }) {
   const v = value ?? '';
 
@@ -264,13 +282,28 @@ function FieldInput({ field, value, onChange }) {
       return <input type="datetime-local" className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
     case 'time':
       return <input type="time" className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
-    case 'select':
+    case 'select': {
+      if (field.multiple) {
+        const selected = Array.isArray(v) ? v.map(String) : (v ? [String(v)] : []);
+        return (
+          <select
+            className={s.select}
+            multiple
+            size={Math.min(6, Math.max(3, (field.options ?? []).length))}
+            value={selected}
+            onChange={(e) => onChange(Array.from(e.target.selectedOptions, (o) => o.value))}
+          >
+            {(field.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        );
+      }
       return (
         <select className={s.select} value={v} onChange={(e) => onChange(e.target.value)}>
           <option value="">{field.placeholder || 'Select an option…'}</option>
           {(field.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
       );
+    }
     case 'radiogroup':
       return (
         <div className={s.choiceGroup}>
@@ -339,6 +372,30 @@ function FieldInput({ field, value, onChange }) {
               onClick={() => onChange(n)}
             />
           ))}
+        </div>
+      );
+    }
+    case 'slider': {
+      const min  = Number(field.minValue ?? 0);
+      const max  = Number(field.maxValue ?? 100);
+      const step = Number(field.step    ?? 1);
+      const cur  = v === '' || v == null ? min : Number(v);
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 12, color: '#64748b', minWidth: 24, textAlign: 'right' }}>{min}</span>
+          <input
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            value={cur}
+            onChange={(e) => onChange(Number(e.target.value))}
+            style={{ flex: 1 }}
+          />
+          <span style={{ fontSize: 12, color: '#64748b', minWidth: 24 }}>{max}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a', minWidth: 32, textAlign: 'right' }}>
+            {cur}
+          </span>
         </div>
       );
     }

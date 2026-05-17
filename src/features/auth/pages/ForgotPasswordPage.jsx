@@ -30,7 +30,7 @@ export default function ForgotPasswordPage() {
     setError('');
     setLoading(true);
     try {
-      await apiClient.post('/auth/forgot-password', { email: trimmed });
+      await apiClient.post('/api/v1/auth/forgot-password', { email: trimmed });
       setSent(true);
     } catch {
       // Show same success UI regardless of 404/other errors to prevent enumeration

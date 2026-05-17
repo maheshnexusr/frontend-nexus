@@ -66,7 +66,6 @@ export const locationsClient = {
     const fd = new FormData();
     fd.append('file', file);
     return axiosClient.post('/api/v1/masters/locations/import', fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
 

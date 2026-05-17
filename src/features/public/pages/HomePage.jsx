@@ -16,8 +16,7 @@ export default function HomePage() {
             multi-site collaboration.
           </p>
           <div className={styles.heroCta}>
-            <Link to="/signup" className={styles.ctaPrimary}>Get Started Free</Link>
-            <Link to="/signin" className={styles.ctaSecondary}>Sign In</Link>
+            <Link to="/signin" className={styles.ctaPrimary}>Sign In</Link>
           </div>
         </div>
       </section>

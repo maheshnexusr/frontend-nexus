@@ -12,6 +12,7 @@
 import { useState }              from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { addToast }              from '@/app/notificationSlice';
+import { studiesClient }         from '@/features/cro/api/studiesClient';
 import { setStep3, selectStep1, selectStep3 } from '@/features/cro/store/studyWizardSlice';
 import styles from './StudyWizardStep3.module.css';
 
@@ -36,6 +37,12 @@ const ALL_CONFIGS = [
     edcOnly: true,
   },
   {
+    key:     'verificationManager',
+    label:   'Enable Verification Manager',
+    info:    'Enables source data verification and approval workflows for entered data.',
+    scopes:  ['EDC', 'Survey', 'ePRO'],
+  },
+  {
     key:     'navigationBar',
     label:   'Enable Navigation Bar',
     info:    'Displays study navigation menu for users.',
@@ -48,29 +55,39 @@ export default function StudyWizardStep3({ onCancel, onNext }) {
   const step1    = useSelector(selectStep1);
   const saved    = useSelector(selectStep3);
 
-  const scope           = step1.scope ?? [];
-  const hasEDC          = scope.includes('EDC');
-  const hasSurveyOrEPRO = scope.includes('Survey') || scope.includes('ePRO');
+  // Backwards-compat: scope may still arrive as an array from older state.
+  const scope           = Array.isArray(step1.scope) ? (step1.scope[0] ?? '') : (step1.scope ?? '');
+  const hasEDC          = scope === 'EDC';
+  const hasSurveyOrEPRO = scope === 'Survey' || scope === 'ePRO';
 
   const [form, setForm] = useState({
-    consentManager: saved.consentManager ?? false,
-    queryManager:   saved.queryManager   ?? false,
-    dataManager:    saved.dataManager    ?? false,
-    navigationBar:  saved.navigationBar  ?? false,
+    consentManager:      saved.consentManager      ?? false,
+    queryManager:        saved.queryManager        ?? false,
+    dataManager:         saved.dataManager         ?? false,
+    verificationManager: saved.verificationManager ?? false,
+    navigationBar:       saved.navigationBar       ?? false,
   });
 
   // Which config items to show based on active scope
-  const visibleConfigs = ALL_CONFIGS.filter((c) =>
-    c.scopes.some((s) => scope.includes(s)),
-  );
+  const visibleConfigs = ALL_CONFIGS.filter((c) => c.scopes.includes(scope));
+
+  const [saving, setSaving] = useState(false);
 
   const toggle = (key) =>
     setForm((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  const handleSave = () => {
+  const handleSave = async () => {
     dispatch(setStep3({ ...form }));
-    dispatch(addToast({ type: 'success', message: 'Study configuration saved.', duration: 3000 }));
-    onNext?.();
+    setSaving(true);
+    try {
+      await studiesClient.step3(step1.studyDbId, form);
+      dispatch(addToast({ type: 'success', message: 'Study configuration saved.', duration: 3000 }));
+      onNext?.();
+    } catch {
+      dispatch(addToast({ type: 'error', message: 'Failed to save configuration. Please try again.', duration: 4000 }));
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Guard: scope not selected yet
@@ -128,8 +145,8 @@ export default function StudyWizardStep3({ onCancel, onNext }) {
         <button type="button" className={styles.btnCancel} onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" className={styles.btnSave} onClick={handleSave}>
-          Save
+        <button type="button" className={styles.btnSave} onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
     </div>

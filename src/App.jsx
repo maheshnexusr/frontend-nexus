@@ -10,6 +10,7 @@ import { RouterProvider }  from 'react-router-dom';
 import store               from '@/app/store';
 import { router }          from '@/app/router';
 import ToastContainer      from '@/components/feedback/ToastContainer';
+import { useBootPermissions } from '@/features/auth/useBootPermissions';
 
 /**
  * Catches errors thrown by lazy-loaded route chunks (ChunkLoadError).
@@ -85,10 +86,19 @@ class AppErrorBoundary extends Component {
   }
 }
 
+/* Boot-time effects that need redux/router context — kept thin. */
+function AppEffects() {
+  // Refresh /profile/me/permissions whenever the active user changes so the
+  // sidebar gates always reflect the latest backend state.
+  useBootPermissions();
+  return null;
+}
+
 export default function App() {
   return (
     <AppErrorBoundary>
       <Provider store={store}>
+        <AppEffects />
         <RouterProvider router={router} />
         <ToastContainer />
       </Provider>

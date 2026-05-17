@@ -9,7 +9,7 @@ import axiosClient from '@/api/axiosClient';
 function normalize(raw) {
   return {
     id:                 raw.sponsor_id          ?? raw.id,
-    photograph:         raw.photograph_path      ?? raw.photograph ?? null,
+    photograph:         raw.photograph_url       ?? raw.photograph_path ?? raw.photograph ?? null,
     fullName:           raw.full_name            ?? raw.fullName   ?? '',
     contactNumber:      raw.contact_number       ?? raw.contactNumber ?? '',
     email:              raw.email_address        ?? raw.email ?? '',
@@ -18,6 +18,8 @@ function normalize(raw) {
     registrationNumber: raw.registration_number  ?? raw.registrationNumber ?? '',
     addressLine1:       raw.address_line1        ?? raw.addressLine1 ?? '',
     addressLine2:       raw.address_line2        ?? raw.addressLine2 ?? '',
+    locationId:         raw.location_id          ?? raw.locationId ?? '',
+    locationName:       raw.location_name        ?? raw.locationName ?? '',
     city:               raw.city                 ?? '',
     district:           raw.district             ?? '',
     state:              raw.state                ?? '',
@@ -31,7 +33,9 @@ function normalize(raw) {
 }
 
 function extractList(res) {
-  const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
+  const arr = Array.isArray(res)
+    ? res
+    : (res?.items ?? res?.data ?? res?.sponsors ?? []);
   return arr.map(normalize);
 }
 
@@ -48,7 +52,10 @@ function toFormData(form) {
   add('website',             form.website);
   add('address_line1',       form.addressLine1);
   add('address_line2',       form.addressLine2);
+  // Spec fields (5.4): location_id + country_id
+  add('location_id',         form.locationId);
   add('country_id',          form.countryId);
+  // UI-only granular address fields — backend ignores if not supported
   add('city',                form.city);
   add('district',            form.district);
   add('state',               form.state);
@@ -89,21 +96,17 @@ export const sponsorsClient = {
 
   async getById(id) {
     const res = await axiosClient.get(`/api/v1/sponsors/${id}`);
-    return normalize(res?.item ?? res);
+    return normalize(res?.item ?? res?.data ?? res?.sponsor ?? res);
   },
 
   async create(form) {
-    const res = await axiosClient.post('/api/v1/sponsors', toFormData(form), {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return normalize(res?.item ?? res);
+    const res = await axiosClient.post('/api/v1/sponsors', toFormData(form));
+    return normalize(res?.item ?? res?.data ?? res?.sponsor ?? res);
   },
 
   async update(id, form) {
-    const res = await axiosClient.put(`/api/v1/sponsors/${id}`, toFormData(form), {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return normalize(res?.item ?? res);
+    const res = await axiosClient.put(`/api/v1/sponsors/${id}`, toFormData(form));
+    return normalize(res?.item ?? res?.data ?? res?.sponsor ?? res);
   },
 
   async delete(id) {

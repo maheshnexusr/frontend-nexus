@@ -1,0 +1,227 @@
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(37, 99, 235, .08), transparent 60%),
+    radial-gradient(1000px 500px at 100% 100%, rgba(59, 130, 246, .08), transparent 60%),
+    #f8fafc;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: #fff;
+  border-bottom: 1px solid var(--border-medium, #e2e8f0);
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  letter-spacing: -0.1px;
+}
+.brandIcon { color: var(--color-primary, #2563eb); }
+
+.signOut {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-medium, #e2e8f0);
+  border-radius: 7px;
+  background: #fff;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary, #475569);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.signOut:hover {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+/* ── Main / card ─────────────────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+}
+
+.card {
+  width: 100%;
+  max-width: 520px;
+  background: #fff;
+  border: 1px solid var(--border-medium, #e2e8f0);
+  border-radius: 14px;
+  padding: 32px 30px;
+  box-shadow: 0 10px 32px rgba(15, 23, 42, .08), 0 2px 6px rgba(15, 23, 42, .04);
+  text-align: center;
+}
+
+.iconWrap {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  margin: 0 auto 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.title {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  margin: 0 0 6px;
+  letter-spacing: -0.2px;
+}
+
+.sub {
+  font-size: 13.5px;
+  color: var(--text-secondary, #475569);
+  margin: 0 0 20px;
+  line-height: 1.55;
+}
+
+/* ── Summary ─────────────────────────────────────────────────────────────── */
+.summary {
+  padding: 14px 16px;
+  background: var(--bg-muted, #f8fafc);
+  border: 1px solid var(--border-light, #f1f5f9);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  margin-bottom: 18px;
+}
+.summaryRow {
+  display: grid;
+  grid-template-columns: 18px 72px 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+.summaryIcon  { color: var(--color-primary, #2563eb); display: inline-flex; }
+.summaryLabel { color: var(--text-muted, #94a3b8); font-weight: 500; }
+.summaryValue { color: var(--text-primary, #0f172a); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.fineprint {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-muted, #94a3b8);
+  line-height: 1.55;
+  text-align: left;
+}
+.fineprint a {
+  color: var(--color-primary, #2563eb);
+  text-decoration: none;
+  font-weight: 500;
+}
+.fineprint a:hover { text-decoration: underline; }
+
+/* ── Study picker + switch (added with the two-token site flow) ─────────── */
+.errorBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-danger-bg, #fef2f2);
+  color: var(--color-danger, #dc2626);
+  border: 1px solid var(--color-danger-border, #fecaca);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  margin-bottom: 14px;
+  text-align: left;
+}
+.studyList {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.studyCard {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.studyCard:hover:not(:disabled) {
+  border-color: var(--color-primary, #2563eb);
+  box-shadow: 0 1px 6px rgba(37, 99, 235, .12);
+}
+.studyCard:disabled { opacity: .55; cursor: not-allowed; }
+.studyTitle { font-size: 13.5px; font-weight: 600; color: var(--text-primary, #0f172a); }
+.studyMeta  { font-size: 11.5px; color: var(--text-muted, #94a3b8); }
+.contextBar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.spinner {
+  display: inline-block;
+  vertical-align: middle;
+  animation: site-spin 1s linear infinite;
+}
+@keyframes site-spin { to { transform: rotate(360deg); } }
+
+/* ── Dashboard sections + permission tiles ─────────────────────────────── */
+.sectionTitle {
+  margin: 18px 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted, #94a3b8);
+}
+/* Wider label column so metric labels don't clip. */
+.summaryRow { grid-template-columns: 18px 150px 1fr; }
+
+.tileGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 13px;
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+}
+.tileIcon { display: inline-flex; color: var(--color-primary, #2563eb); margin-bottom: 3px; }
+.tileLabel { font-size: 13px; font-weight: 600; color: var(--text-primary, #0f172a); }
+.tileDesc { font-size: 11px; color: var(--text-muted, #94a3b8); line-height: 1.4; }
+.tileActions {
+  margin-top: 4px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--color-primary, #2563eb);
+  text-transform: capitalize;
+}

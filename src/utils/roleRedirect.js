@@ -1,27 +1,60 @@
 /**
  * getRoleRedirect — returns the post-login destination path.
  *
- * Logic:
- *   CRO roles   → /cro/dashboard
- *   Sponsor roles
- *     with studyId  → /sponsor/:studyId/dashboard   (single study, go straight in)
- *     without studyId → /sponsor/select-study        (multiple studies, pick one)
+ * Logic (token-scope first to prevent redirect loops):
  *
- * The `user` object comes directly from the API login response.
- * When the real backend is connected, include `studyId` in the response
- * for single-study sponsor users, or omit it to show the study picker.
+ *   1. siteAccessToken exists                        → site scope
+ *      Always → /site/dashboard. SiteLayout reads siteStudyContext and:
+ *        - no chosen study → redirects to /site/studies (picker)
+ *        - chosen study    → renders the dashboard inside the site shell
+ *      Site users do NOT enter the sponsor workspace shell — they have
+ *      their own SiteLayout with a permission-gated sidebar.
  *
- * @param {object|null|undefined} user  - Full user object from authSlice
+ *   2. sponsorAccessToken or sponsorViewToken exists → sponsor scope
+ *      • with user.studyId → /sponsor/:studyId/dashboard
+ *      • otherwise → /sponsor/select-study
+ *
+ *   3. CRO accessToken only                          → /cro/dashboard
+ *      Site personnel never reach here: the shared /signin page dispatches
+ *      by auth_identities, and a `scope: 'site'` response is persisted into
+ *      site-scope storage (siteAccessToken) by loginAsync — so they match
+ *      rule 1, not this one.
+ *
+ *   4. No token / unknown user                       → /signin
+ *
+ * @param {object|null|undefined} user
  * @returns {string}
  */
-export function getRoleRedirect(user) {
-  // API login response uses `roleName` (e.g. "CRO Admin", "Sponsor")
-  const roleName = (user?.roleName ?? '').toLowerCase();
 
-  if (roleName.includes('sponsor')) {
-    return '/workspace';
+function readToken(key) {
+  if (typeof window === 'undefined') return null;
+  try { return window.localStorage.getItem(key); }
+  catch { return null; }
+}
+
+const hasSiteToken    = () => !!readToken('siteAccessToken');
+const hasSponsorToken = () => !!readToken('sponsorAccessToken') || !!readToken('sponsorViewToken');
+const hasCroToken     = () => !!readToken('accessToken');
+
+export function getRoleRedirect(user) {
+  // 1. Site auth scope — always land in SiteLayout's dashboard. The layout
+  //    itself bounces to /site/studies if no study has been chosen yet.
+  if (hasSiteToken()) return '/site/dashboard';
+
+  // 2. Sponsor auth scope (direct sponsor login or CRO viewer entered)
+  if (hasSponsorToken()) {
+    if (user?.studyId) return `/sponsor/${user.studyId}/dashboard`;
+    return '/sponsor/select-study';
   }
 
-  // All CRO / admin roles → CRO dashboard
-  return '/cro/dashboard';
+  // 3. CRO scope only — never redirect to sponsor routes without the token.
+  if (hasCroToken()) return '/cro/dashboard';
+
+  // 4. No tokens at all
+  return '/signin';
+}
+
+/** True if the active scope should land in the sponsor workspace shell. */
+export function isSponsorRole() {
+  return hasSiteToken() || hasSponsorToken();
 }

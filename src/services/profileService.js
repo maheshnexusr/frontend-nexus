@@ -21,18 +21,24 @@ export const profileService = {
    */
   update: (formData) =>
     axiosClient.put('/api/v1/profile/me', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
     }),
 
   /**
-   * POST /api/v1/profile/change-password
-   * Payload: { currentPassword, newPassword, confirmNewPassword }
+   * GET /api/v1/profile/me/permissions
+   * Returns the current user's role permissions array.
+   */
+  getPermissions: () =>
+    axiosClient.get('/api/v1/profile/me/permissions'),
+
+  /**
+   * POST /api/v1/profile/change-password (spec §2.4)
+   * Payload: { current_password, new_password, confirm_new_password }
    * Returns: { success, message }
    */
-  changePassword: ({ currentPassword, newPassword, confirmNewPassword }) =>
+  changePassword: ({ currentPassword, newPassword, confirmPassword, confirmNewPassword }) =>
     axiosClient.post('/api/v1/profile/change-password', {
       current_password:     currentPassword,
       new_password:         newPassword,
-      confirm_new_password: confirmNewPassword,
+      confirm_new_password: confirmNewPassword ?? confirmPassword,
     }),
 };

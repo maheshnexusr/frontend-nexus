@@ -1,5 +1,9 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import apiClient from '@/api/axiosClient';
+import {
+  sponsorStudiesService,
+  sponsorStudyContextStore,
+} from '@/services/sponsorAuthService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // State shape
@@ -13,10 +17,16 @@ import apiClient from '@/api/axiosClient';
 
 /**
  * @typedef {Object} StudyConfig
- * @property {boolean} consentEnabled
- * @property {boolean} queryEnabled
- * @property {boolean} dataManagerEnabled
- * @property {boolean} navBarEnabled
+ * Step 3 module toggles. Both the new key names (consentManager, queryManager,
+ * dataManager, verificationManager, navigationBar) and the legacy aliases
+ * (consentEnabled, queryEnabled, dataManagerEnabled, navBarEnabled) are
+ * supported via resolveStudyConfig in studyConfigGating.js.
+ *
+ * @property {boolean} [consentManager]
+ * @property {boolean} [queryManager]
+ * @property {boolean} [dataManager]
+ * @property {boolean} [verificationManager]
+ * @property {boolean} [navigationBar]
  */
 
 /**
@@ -50,67 +60,55 @@ const initialState = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DEV mock studies (removed in production builds)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const DEV_MOCK_STUDIES = import.meta.env.DEV
-  ? {
-      'st-101': {
-        id:    'st-101',
-        title: 'TRIAL-X Phase II',
-        scope: 'EDC',
-        config: {
-          consentEnabled:     true,
-          queryEnabled:       true,
-          dataManagerEnabled: false,
-          navBarEnabled:      true,
-        },
-      },
-      'st-102': {
-        id:    'st-102',
-        title: 'CardioSafe Study',
-        scope: 'EDC',
-        config: {
-          consentEnabled:     false,
-          queryEnabled:       true,
-          dataManagerEnabled: true,
-          navBarEnabled:      true,
-        },
-      },
-    }
-  : null;
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Async thunks
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Fetch study details by ID from the backend.
- * In DEV mode, resolves from mock data without hitting the API.
+ * Rehydrate the active study by id (e.g. on direct nav or browser refresh).
  *
- * Backend expected response shape:
- * {
- *   id:     string,
- *   title:  string,
- *   scope?: 'EDC'|'Survey'|'ePRO',
- *   config: { consentEnabled, queryEnabled, dataManagerEnabled, navBarEnabled }
- * }
+ * Scope routing:
+ *   - Sponsor (sponsorAccessToken present) → GET /api/v1/sponsor/studies and
+ *     pick the assignment that matches studyId (+ persisted environment if
+ *     the user is assigned to the same study under multiple envs). Metadata
+ *     we care about: scope + title. Config isn't in the list response, so we
+ *     return it as null and SponsorLayout falls back to all-enabled.
+ *   - CRO → GET /studies/:id (the legacy shape).
+ *
+ * Returned shape:
+ *   { id, title, scope?: 'EDC'|'Survey'|'ePRO', config?: StudyConfig|null }
  */
 export const fetchStudyAsync = createAsyncThunk(
   'workspace/fetchStudy',
   async (studyId, { rejectWithValue }) => {
-    // DEV: return mock study without hitting the backend
-    if (import.meta.env.DEV && DEV_MOCK_STUDIES) {
-      const mock = DEV_MOCK_STUDIES[studyId];
-      if (mock) return mock;
-      return rejectWithValue(`No mock study found for id "${studyId}"`);
+    const hasSponsorToken = !!localStorage.getItem('sponsorAccessToken');
+
+    if (hasSponsorToken) {
+      try {
+        const list = await sponsorStudiesService.list();
+        const ctx  = sponsorStudyContextStore.get();
+        const match =
+          (ctx?.environment && list.find((s) => s.id === studyId && s.environment === ctx.environment))
+          ?? list.find((s) => s.id === studyId);
+        if (!match) {
+          return rejectWithValue(`Study "${studyId}" is not assigned to your account.`);
+        }
+        return {
+          id:     match.id,
+          title:  match.title,
+          scope:  match.scope,
+          config: match.config ?? null,
+        };
+      } catch (err) {
+        return rejectWithValue(err?.message ?? 'Failed to load sponsor study.');
+      }
     }
 
     try {
-      const { data } = await apiClient.get(`/studies/${studyId}`);
-      return data;
+      const res = await apiClient.get(`/api/v1/studies/${studyId}`);
+      // axiosClient interceptors already unwrap the response body.
+      return res?.data ?? res;
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message ?? err.message);
+      return rejectWithValue(err?.response?.data?.message ?? err?.message ?? 'Failed to load study.');
     }
   },
 );

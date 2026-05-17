@@ -2,16 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
 import { logout, selectIsAuthenticated } from "@/features/auth/authSlice";
-import sclinTechLogo      from "@/assets/images/Sclintech_BB_logo.png";
-import colorLogo          from "@/assets/images/SclinNexus_color_logo.png";
-import logoLight          from "@/assets/images/1.svg";
-import logoDark           from "@/assets/images/2.svg";
-import clientAbbott       from "@/assets/images/ClientLogos/abbott_logo.png";
-import clientAlkem        from "@/assets/images/ClientLogos/alkem_logo.png";
-import clientCipla        from "@/assets/images/ClientLogos/cipla_logo.png";
-import clientDrReddys     from "@/assets/images/ClientLogos/dr_reddys_logo.png";
-import clientAlphaMd      from "@/assets/images/ClientLogos/alpha_md.png";
-import clientBharatBiotech from "@/assets/images/ClientLogos/bharat-biotech-logo.jpg";
+import sclinTechLogo from "@/assets/images/Sclintech_BB_logo.png";
+import colorLogo     from "@/assets/images/SclinNexus_color_logo.png";
 
 
 // ─── Inline Styles ────────────────────────────────────────────────────────────
@@ -55,6 +47,51 @@ const heroSlides = [
       "Stay audit-ready with FDA 21 CFR Part 11, GDPR, and ICH-GCP compliant document management and electronic signatures.",
   },
 ];
+
+// ─── i18n (EN / ES) ────────────────────────────────────────────────────────────
+const LANGUAGES = [
+  { code: "en", label: "English", short: "EN" },
+  { code: "es", label: "Español", short: "ES" },
+];
+const LANG_STORAGE_KEY = "sclinnexus.lang";
+
+const TRANSLATIONS = {
+  en: {
+    signIn:     "Sign In",
+    getStarted: "Get Started",
+    heroSlides,
+  },
+  es: {
+    signIn:     "Iniciar sesión",
+    getStarted: "Comenzar",
+    heroSlides: [
+      {
+        image: heroSlides[0].image,
+        title: "Transforme sus",
+        highlight: " Ensayos Clínicos ",
+        titleEnd: "con soluciones modernas SclinNexus",
+        subtitle:
+          "Una plataforma de gestión de ensayos clínicos potente e intuitiva que simplifica la ejecución, garantiza el cumplimiento y acelera el camino hacia descubrimientos revolucionarios.",
+      },
+      {
+        image: heroSlides[1].image,
+        title: "Optimice sus",
+        highlight: " Operaciones de Investigación ",
+        titleEnd: "con análisis avanzados",
+        subtitle:
+          "Aproveche los conocimientos en tiempo real y los análisis predictivos para optimizar sus ensayos clínicos y acelerar los plazos de desarrollo de fármacos.",
+      },
+      {
+        image: heroSlides[2].image,
+        title: "Garantice un",
+        highlight: " Cumplimiento Normativo Total ",
+        titleEnd: "con estándares integrados",
+        subtitle:
+          "Manténgase listo para auditorías con gestión documental y firmas electrónicas conformes con FDA 21 CFR Parte 11, GDPR e ICH-GCP.",
+      },
+    ],
+  },
+};
 
 const stats = [
   { number: "500+", label: "Clinical Trials Managed" },
@@ -179,14 +216,14 @@ const testimonials = [
 ];
 
 const clientLogos = [
-  { name: "Abbott",         src: clientAbbott        },
-  { name: "Alkem",          src: clientAlkem         },
-  { name: "Cipla",          src: clientCipla         },
-  { name: "Dr. Reddy's",    src: clientDrReddys      },
-  { name: "Bharat Biotech", src: clientBharatBiotech },
-  { name: "Alpha MD",       src: clientAlphaMd       },
-  { name: "Abbott",         src: clientAbbott        },
-  { name: "Cipla",          src: clientCipla         },
+  { name: "Pharma Corp A",      abbr: "PC-A", color: "#2563eb" },
+  { name: "BioResearch Ltd",    abbr: "BRL",  color: "#059669" },
+  { name: "Global Trials Inc",  abbr: "GTI",  color: "#7c3aed" },
+  { name: "MedScience Group",   abbr: "MSG",  color: "#d97706" },
+  { name: "ClinPath Solutions", abbr: "CPS",  color: "#0ea5e9" },
+  { name: "Research Alliance",  abbr: "RA",   color: "#dc2626" },
+  { name: "LifeScience Co",     abbr: "LSC",  color: "#2563eb" },
+  { name: "Nexus Pharma",       abbr: "NP",   color: "#059669" },
 ];
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
@@ -358,6 +395,77 @@ const LEGAL_PAGES = {
   },
 };
 
+// ─── Demo Form Component ──────────────────────────────────────────────────────
+function DemoForm({ PRIMARY, GRADIENT }) {
+  const [form, setForm] = useState({ name: "", email: "", organization: "", role: "", message: "" });
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.name || !form.email || !form.organization) return;
+    setSubmitted(true);
+  };
+
+  const set = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
+
+  const inputStyle = {
+    width: "100%", padding: "0.75rem 1rem", fontSize: "0.9375rem",
+    border: "1px solid #e2e8f0", borderRadius: 8, outline: "none",
+    fontFamily: "inherit", boxSizing: "border-box", background: "#fff",
+  };
+
+  if (submitted) {
+    return (
+      <div style={{ background: "#fff", borderRadius: 20, padding: "2.5rem", boxShadow: "0 25px 50px rgba(0,0,0,0.08)", textAlign: "center" }}>
+        <div style={{ fontSize: 48, marginBottom: "1rem" }}>✅</div>
+        <h3 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#1e293b", marginBottom: "0.75rem" }}>Request Received!</h3>
+        <p style={{ color: "#64748b", lineHeight: 1.6 }}>
+          Thank you for your interest. A SclinNexus specialist will contact you within 1 business day to schedule your personalised demo.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} style={{ background: "#fff", borderRadius: 20, padding: "2.5rem", boxShadow: "0 25px 50px rgba(0,0,0,0.08)", display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <h3 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#1e293b", margin: 0 }}>Schedule a Demo</h3>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+        <div>
+          <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>Full Name *</label>
+          <input style={inputStyle} value={form.name} onChange={set("name")} placeholder="Your full name" required />
+        </div>
+        <div>
+          <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>Work Email *</label>
+          <input style={inputStyle} type="email" value={form.email} onChange={set("email")} placeholder="you@company.com" required />
+        </div>
+      </div>
+      <div>
+        <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>Organization *</label>
+        <input style={inputStyle} value={form.organization} onChange={set("organization")} placeholder="Your company or institution" required />
+      </div>
+      <div>
+        <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>Your Role</label>
+        <select style={inputStyle} value={form.role} onChange={set("role")}>
+          <option value="">Select your role…</option>
+          {["Sponsor", "CRO", "Principal Investigator", "Clinical Data Manager", "Regulatory Affairs", "IT / Technology", "Other"].map((r) => (
+            <option key={r} value={r}>{r}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>Message (Optional)</label>
+        <textarea style={{ ...inputStyle, minHeight: 80, resize: "vertical" }} value={form.message} onChange={set("message")} placeholder="Tell us about your study needs…" />
+      </div>
+      <button type="submit" style={{ padding: "0.875rem 1.5rem", fontSize: "1rem", fontWeight: 600, borderRadius: 10, background: GRADIENT, border: "none", color: "#fff", cursor: "pointer", transition: "all 0.3s ease" }}>
+        Request a Demo
+      </button>
+      <p style={{ fontSize: "0.8125rem", color: "#94a3b8", margin: 0, textAlign: "center" }}>
+        By submitting, you agree to our Privacy Policy.
+      </p>
+    </form>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const dispatch        = useAppDispatch();
@@ -370,6 +478,20 @@ export default function LandingPage() {
   const [hoveredFeature, setHoveredFeature] = useState(null);
   const [hoveredBenefit, setHoveredBenefit] = useState(null);
   const [hoveredSocial, setHoveredSocial] = useState(null);
+  const [lang, setLang] = useState(() => {
+    try {
+      const saved = localStorage.getItem(LANG_STORAGE_KEY);
+      return saved && TRANSLATIONS[saved] ? saved : "en";
+    } catch { return "en"; }
+  });
+  const [langOpen, setLangOpen] = useState(false);
+  const t = TRANSLATIONS[lang] ?? TRANSLATIONS.en;
+  const localizedHeroSlides = t.heroSlides;
+
+  useEffect(() => {
+    try { localStorage.setItem(LANG_STORAGE_KEY, lang); } catch { /* ignore */ }
+    try { document.documentElement.lang = lang; } catch { /* ignore */ }
+  }, [lang]);
 
   // Clear any active session when the landing page mounts.
   // This ensures Sign In always asks for credentials after returning here.
@@ -472,7 +594,6 @@ export default function LandingPage() {
         .cta-primary-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(14,165,233,0.4) !important; }
         .cta-secondary-btn:hover { background: rgba(255,255,255,0.1) !important; border-color: rgba(255,255,255,0.6) !important; }
         .logo-item:hover { opacity: 1 !important; transform: scale(1.05) !important; }
-        .logo-item:hover img { filter: grayscale(0%) !important; }
         .back-btn:hover { background: #e2e8f0 !important; color: #0ea5e9 !important; }
         .feature-link:hover { gap: 0.625rem !important; color: #0284c7 !important; }
         .signin-btn:hover { color: #0ea5e9 !important; }
@@ -527,6 +648,77 @@ export default function LandingPage() {
             <div
               style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}
             >
+              {/* Language switcher */}
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  aria-label="Change language"
+                  aria-haspopup="menu"
+                  aria-expanded={langOpen}
+                  onClick={() => setLangOpen((o) => !o)}
+                  onBlur={() => setTimeout(() => setLangOpen(false), 160)}
+                  style={{
+                    ...navBtnBase,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    color: scrolled ? "#1e293b" : "#fff",
+                    padding: "0.5rem 0.75rem",
+                    borderRadius: 8,
+                    border: scrolled ? "1px solid #e2e8f0" : "1px solid rgba(255,255,255,0.4)",
+                    fontWeight: 600,
+                  }}
+                >
+                  <span role="img" aria-hidden="true">🌐</span>
+                  <span>{LANGUAGES.find((l) => l.code === lang)?.short ?? "EN"}</span>
+                  <span style={{ fontSize: 10 }}>▾</span>
+                </button>
+                {langOpen && (
+                  <div
+                    role="menu"
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 6px)",
+                      right: 0,
+                      minWidth: 140,
+                      background: "#ffffff",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 8,
+                      boxShadow: "0 12px 24px rgba(15,23,42,0.12)",
+                      padding: 4,
+                      zIndex: 50,
+                    }}
+                  >
+                    {LANGUAGES.map((l) => (
+                      <button
+                        key={l.code}
+                        type="button"
+                        role="menuitem"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setLang(l.code);
+                          setLangOpen(false);
+                        }}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "8px 10px",
+                          border: 0,
+                          background: l.code === lang ? "#f1f5f9" : "transparent",
+                          color: "#0f172a",
+                          fontSize: 13,
+                          fontWeight: l.code === lang ? 700 : 500,
+                          borderRadius: 6,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 className="signin-btn"
                 style={{
@@ -536,7 +728,7 @@ export default function LandingPage() {
                 }}
                 onClick={() => navigate("/signin")}
               >
-                Sign In
+                {t.signIn}
               </button>
               <button
                 className="signup-btn"
@@ -550,9 +742,9 @@ export default function LandingPage() {
                   boxShadow: "0 4px 15px rgba(14,165,233,0.3)",
                   transition: "all 0.3s ease",
                 }}
-                onClick={() => navigate("/signup")}
+                onClick={() => navigate("/signin")}
               >
-                Get Started
+                {t.getStarted}
               </button>
             </div>
           </div>
@@ -623,7 +815,7 @@ export default function LandingPage() {
                     textShadow: "2px 2px 8px rgba(0,0,0,0.5)",
                   }}
                 >
-                  {heroSlides[currentSlide].title}
+                  {localizedHeroSlides[currentSlide].title}
                   <span
                     style={{
                       background:
@@ -633,9 +825,9 @@ export default function LandingPage() {
                       backgroundClip: "text",
                     }}
                   >
-                    {heroSlides[currentSlide].highlight}
+                    {localizedHeroSlides[currentSlide].highlight}
                   </span>
-                  {heroSlides[currentSlide].titleEnd}
+                  {localizedHeroSlides[currentSlide].titleEnd}
                 </h1>
                 <p
                   style={{
@@ -648,7 +840,7 @@ export default function LandingPage() {
                     textShadow: "1px 1px 6px rgba(0,0,0,0.5)",
                   }}
                 >
-                  {heroSlides[currentSlide].subtitle}
+                  {localizedHeroSlides[currentSlide].subtitle}
                 </p>
               </div>
 
@@ -850,25 +1042,27 @@ export default function LandingPage() {
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
+                        gap: "0.5rem",
                         opacity: 0.7,
                         transition: "all 0.3s ease",
                         padding: "0.75rem 1.5rem",
                         borderRadius: 8,
                         background: "#fff",
                         boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                        minWidth: 120,
+                        minWidth: 140,
                       }}
                     >
-                      <img
-                        src={logo.src}
-                        alt={logo.name}
-                        style={{
-                          maxHeight: 50,
-                          maxWidth: 100,
-                          objectFit: "contain",
-                          filter: "grayscale(100%)",
-                        }}
-                      />
+                      <div style={{
+                        width: 36, height: 36, borderRadius: 8,
+                        background: logo.color + "20",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontWeight: 700, fontSize: "0.7rem", color: logo.color, flexShrink: 0,
+                      }}>
+                        {logo.abbr}
+                      </div>
+                      <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "#475569", whiteSpace: "nowrap" }}>
+                        {logo.name}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -1478,88 +1672,62 @@ export default function LandingPage() {
               </div>
             </section>
 
-            {/* ── CTA ──────────────────────────────────────────────────────── */}
-            <section
-              id="contact"
-              style={{
-                position: "relative",
-                padding: "6rem 2rem",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: `linear-gradient(135deg, ${DARK_BG} 0%, #1e3a5f 50%, ${PRIMARY_DARK} 100%)`,
-                }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  backgroundImage:
-                    "radial-gradient(circle at 20% 80%, rgba(14,165,233,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(16,185,129,0.15) 0%, transparent 50%)",
-                }}
-              />
-              <div
-                style={{
-                  position: "relative",
-                  zIndex: 10,
-                  textAlign: "center",
-                  maxWidth: 700,
-                  margin: "0 auto",
-                }}
-              >
-                <h2
-                  style={{
-                    fontSize: "clamp(1.75rem, 4vw, 2.75rem)",
-                    fontWeight: 800,
-                    color: "#fff",
-                    marginBottom: "1.25rem",
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  Ready to Accelerate Your Clinical Trials?
-                </h2>
-                <p
-                  style={{
-                    fontSize: "1.125rem",
-                    color: "rgba(255,255,255,0.85)",
-                    marginBottom: "2rem",
-                    lineHeight: 1.7,
-                  }}
-                >
-                  Join hundreds of research organizations already using
-                  SclinNexus to streamline their clinical operations and bring
-                  treatments to patients faster.
-                </p>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "1rem",
-                    justifyContent: "center",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <button
-                    className="cta-main-btn"
-                    style={{
-                      padding: "1rem 2rem",
-                      fontSize: "1rem",
-                      fontWeight: 600,
-                      borderRadius: 12,
-                      background: "#fff",
-                      border: "none",
-                      color: PRIMARY_DARK,
-                      boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-                      cursor: "pointer",
-                      transition: "all 0.3s ease",
-                    }}
-                    onClick={() => navigate("/signup")}
-                  >
-                    Contact Us Today
-                  </button>
+            {/* ── Schedule a Demo ──────────────────────────────────────── */}
+            <section id="demo" style={{ padding: "6rem 2rem", background: "#f8fafc" }}>
+              <div style={{ maxWidth: 1100, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "4rem", alignItems: "center" }}>
+                <div>
+                  <span style={{ display: "inline-block", padding: "0.375rem 1rem", background: "rgba(14,165,233,0.1)", color: PRIMARY, fontSize: "0.8125rem", fontWeight: 600, borderRadius: 50, marginBottom: "1rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Get Started
+                  </span>
+                  <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, color: "#1e293b", marginBottom: "1rem", letterSpacing: "-0.02em" }}>
+                    Ready to Accelerate Your Clinical Trials?
+                  </h2>
+                  <p style={{ fontSize: "1.0625rem", color: "#64748b", lineHeight: 1.7, marginBottom: "1.5rem" }}>
+                    Schedule a personalised demo with our clinical technology specialists and discover how SclinNexus can streamline your study operations and ensure regulatory compliance.
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                    {["Personalised 30-minute walkthrough", "Live Q&A with product specialists", "No commitment required"].map((item, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                        <div style={{ width: 22, height: 22, borderRadius: "50%", background: GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <Check size={14} />
+                        </div>
+                        <span style={{ fontSize: "0.9375rem", color: "#475569" }}>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <DemoForm PRIMARY={PRIMARY} GRADIENT={GRADIENT} />
+              </div>
+            </section>
+
+            {/* ── Contact Us ───────────────────────────────────────────────── */}
+            <section id="contact" style={{ padding: "6rem 2rem", background: "#fff" }}>
+              <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+                <div style={{ textAlign: "center", marginBottom: "3rem" }}>
+                  <span style={{ display: "inline-block", padding: "0.375rem 1rem", background: "rgba(14,165,233,0.1)", color: PRIMARY, fontSize: "0.8125rem", fontWeight: 600, borderRadius: 50, marginBottom: "1rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Contact
+                  </span>
+                  <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, color: "#1e293b", marginBottom: "0.75rem", letterSpacing: "-0.02em" }}>
+                    Get In Touch
+                  </h2>
+                  <p style={{ fontSize: "1.125rem", color: "#64748b", maxWidth: 560, margin: "0 auto" }}>
+                    Have questions about SclinNexus? Our team is here to help.
+                  </p>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "2rem" }}>
+                  {[
+                    { icon: "📧", title: "Email Us",       desc: "support@sclinnexus.com",  sub: "We respond within 24 hours on business days." },
+                    { icon: "📞", title: "Call Us",        desc: "+1 (800) SCL-NEXUS",       sub: "Available Mon–Fri, 9 AM – 6 PM EST." },
+                    { icon: "💬", title: "Live Chat",      desc: "Chat with our team",       sub: "Available in the platform after sign-in." },
+                    { icon: "📍", title: "Headquarters",   desc: "Clinical Research Plaza",  sub: "Global offices — US, EU, and APAC." },
+                  ].map((item, i) => (
+                    <div key={i} style={{ background: "#f8fafc", borderRadius: 16, padding: "2rem", border: "1px solid #e2e8f0" }}>
+                      <div style={{ fontSize: 32, marginBottom: "1rem" }}>{item.icon}</div>
+                      <h3 style={{ fontSize: "1.125rem", fontWeight: 700, color: "#1e293b", marginBottom: "0.5rem" }}>{item.title}</h3>
+                      <p style={{ fontSize: "0.9375rem", color: PRIMARY, fontWeight: 600, marginBottom: "0.5rem" }}>{item.desc}</p>
+                      <p style={{ fontSize: "0.875rem", color: "#94a3b8", margin: 0 }}>{item.sub}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
             </section>

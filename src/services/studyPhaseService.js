@@ -14,9 +14,20 @@ function csvDownload(blob) {
 }
 
 export const studyPhaseService = {
-  /** GET /api/v1/masters/study-phases — params: { page, pageSize, search, status } */
-  list: (params = {}) =>
-    axiosClient.get(`/api/v1/masters/study-phases${buildQueryString(params)}`),
+  /**
+   * GET /api/v1/masters/study-phases (spec §5.2)
+   * Accepts camelCase: { page, pageSize, search, status }
+   * Sends snake_case:  ?page=&limit=&search=&status=
+   */
+  list: (params = {}) => {
+    const query = {
+      page:   params.page,
+      limit:  params.limit ?? params.pageSize,
+      search: params.search,
+      status: params.status,
+    };
+    return axiosClient.get(`/api/v1/masters/study-phases${buildQueryString(query)}`);
+  },
 
   /** POST /api/v1/masters/study-phases — { phaseName, description?, status? } */
   create: (data) =>

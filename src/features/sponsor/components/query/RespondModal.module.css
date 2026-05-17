@@ -1,0 +1,112 @@
+.body { display: flex; flex-direction: column; gap: 14px; }
+
+.querySnippet {
+  padding: 10px 12px;
+  background: var(--bg-subtle, #f8fafc);
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-left: 3px solid var(--color-primary, #2563eb);
+  border-radius: 6px;
+}
+.snippetLabel { font-size: 10.5px; font-weight: 700; color: var(--text-secondary, #94a3b8); text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 3px; }
+.snippetText  { font-size: 12.5px; color: var(--text-secondary, #374151); margin: 0; line-height: 1.5; }
+
+.input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-primary, #0f172a);
+  background: var(--bg-card, #fff);
+  outline: none;
+  box-sizing: border-box;
+}
+.input:focus { border-color: var(--color-primary, #2563eb); box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
+
+.textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary, #0f172a);
+  background: var(--bg-card, #fff);
+  outline: none;
+  resize: vertical;
+  box-sizing: border-box;
+  line-height: 1.5;
+}
+.textarea:focus { border-color: var(--color-primary, #2563eb); box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
+.inputError     { border-color: #dc2626 !important; }
+
+/* Status options */
+.statusOptions { display: flex; gap: 6px; flex-wrap: wrap; }
+.statusOption {
+  padding: 6px 12px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 6px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary, #64748b);
+  cursor: pointer;
+  user-select: none;
+}
+.statusOption:hover       { border-color: var(--color-primary, #2563eb); color: var(--color-primary, #2563eb); }
+.statusOptionActive       { background: var(--color-primary, #2563eb); color: #fff; border-color: var(--color-primary, #2563eb); }
+
+/* Attachments */
+.attachArea { display: flex; flex-wrap: wrap; gap: 6px; }
+.attachBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  color: var(--color-primary, #2563eb);
+  background: rgba(37,99,235,.06);
+  border: 1px solid rgba(37,99,235,.25);
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.attachBtn:hover { background: rgba(37,99,235,.12); }
+.attachPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: var(--bg-subtle, #f1f5f9);
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 5px;
+}
+.attachName   { font-size: 12px; color: var(--text-primary, #374151); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attachRemove { display: flex; align-items: center; background: none; border: none; cursor: pointer; color: var(--text-secondary, #94a3b8); padding: 0; }
+.attachRemove:hover { color: #dc2626; }
+
+/* Buttons */
+.btnCancel {
+  padding: 8px 16px;
+  background: var(--bg-subtle, #f8fafc);
+  color: var(--text-secondary, #374151);
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btnCancel:hover    { background: #f1f5f9; }
+.btnCancel:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.btnSave {
+  padding: 8px 20px;
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btnSave:hover    { background: #1d4ed8; }
+.btnSave:disabled { opacity: 0.55; cursor: not-allowed; }

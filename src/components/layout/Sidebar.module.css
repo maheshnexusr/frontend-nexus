@@ -570,6 +570,9 @@
 
 .navSubItem:hover         { background: var(--bg-hover); color: var(--text-primary); }
 .navSubItem.subItemActive { color: var(--text-primary); font-weight: 600; }
+.navSubAction             { background: none; border: none; cursor: pointer; width: 100%;
+                            text-align: left; color: var(--color-danger, #dc2626); }
+.navSubAction:hover       { background: var(--bg-hover); }
 
 .navBullet {
   flex-shrink: 0;

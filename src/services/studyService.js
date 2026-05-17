@@ -20,12 +20,20 @@ function csvDownload(blob, filename = 'studies.csv') {
 
 export const studyService = {
   /**
-   * GET /api/v1/studies
-   * params: { page, pageSize, search, status, sponsorId }
-   * Returns: { success, items, pagination }
+   * GET /api/v1/studies (spec §7.1)
+   * Accepts camelCase: { page, pageSize, search, status, sponsorId }
+   * Sends snake_case:  ?page=&limit=&search=&status=&sponsor_id=
    */
-  list: (params = {}) =>
-    axiosClient.get(`/api/v1/studies${buildQueryString(params)}`),
+  list: (params = {}) => {
+    const query = {
+      page:       params.page,
+      limit:      params.limit      ?? params.pageSize,
+      search:     params.search,
+      status:     params.status,
+      sponsor_id: params.sponsor_id ?? params.sponsorId,
+    };
+    return axiosClient.get(`/api/v1/studies${buildQueryString(query)}`);
+  },
 
   /**
    * GET /api/v1/studies/:id
@@ -75,13 +83,6 @@ export const studyService = {
    */
   updateStep4: (id, data) =>
     axiosClient.put(`/api/v1/studies/${id}/step-4`, data),
-
-  /**
-   * PUT /api/v1/studies/:id/step-5
-   * Payload: { assignments: [{ teamMemberId, studyRole }] }
-   */
-  updateStep5: (id, data) =>
-    axiosClient.put(`/api/v1/studies/${id}/step-5`, data),
 
   /* ── Lifecycle ─────────────────────────────────────────────────────────── */
 

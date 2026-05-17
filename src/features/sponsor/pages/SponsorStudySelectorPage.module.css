@@ -38,6 +38,31 @@
   line-height: 1.6;
 }
 
+/* ── Toolbar (search + remember) ─────────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-6);
+}
+
+.remember {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 13.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.remember input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
 /* ── Search bar ──────────────────────────────────────────────────────────── */
 .searchWrap {
   display: flex;
@@ -48,7 +73,7 @@
   border-radius: var(--r-md);
   padding: 0 var(--sp-4);
   height: 44px;
-  margin-bottom: var(--sp-6);
+  flex: 1 1 320px;
   max-width: 480px;
   transition: border-color var(--t-fast), box-shadow var(--t-fast);
 }

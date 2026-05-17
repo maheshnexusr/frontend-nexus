@@ -1,12 +1,20 @@
 /**
  * ProtectedRoute — guards routes that require authentication and/or permissions.
  *
+ * Two auth scopes are supported per spec §11 (CRO and sponsor tokens are
+ * separate and cannot be swapped):
+ *   scope="cro"     → gate on the CRO Redux auth state (default)
+ *   scope="sponsor" → gate on the presence of a sponsor access token
+ *
  * Usage:
- *   // Auth-only
+ *   // CRO auth-only
  *   <Route element={<ProtectedRoute><CROLayout /></ProtectedRoute>} />
  *
- *   // Auth + permission
+ *   // CRO auth + permission
  *   <Route element={<ProtectedRoute requiredPermission="team:read"><TeamPage /></ProtectedRoute>} />
+ *
+ *   // Sponsor scope
+ *   <Route element={<ProtectedRoute scope="sponsor"><SponsorLayout /></ProtectedRoute>} />
  */
 
 import { Navigate } from 'react-router-dom';
@@ -62,15 +70,32 @@ function Forbidden() {
 }
 
 /* ── ProtectedRoute ──────────────────────────────────────────────────────── */
-export default function ProtectedRoute({ children, requiredPermission }) {
+export default function ProtectedRoute({ children, requiredPermission, scope }) {
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const permissions     = useAppSelector(selectPermissions);
+
+  if (scope === 'sponsor') {
+    // The sponsor workspace shell is reachable by three token scopes:
+    //   • sponsorAccessToken  — direct sponsor login
+    //   • sponsorViewToken    — CRO user viewing a sponsor workspace
+    //   • siteAccessToken     — activated site personnel (PI / Coordinator /
+    //                           Nurse / etc.) whose menu is then filtered by
+    //                           their site-role's permission tree.
+    const hasSponsorToken     = !!localStorage.getItem('sponsorAccessToken');
+    const hasSponsorViewToken = !!localStorage.getItem('sponsorViewToken');
+    const hasSiteTokenScope   = !!localStorage.getItem('siteAccessToken');
+    if (!hasSponsorToken && !hasSponsorViewToken && !hasSiteTokenScope) {
+      return <Navigate to="/signin" replace />;
+    }
+    return children;
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/signin" replace />;
   }
 
-  if (requiredPermission && !permissions.includes(requiredPermission)) {
+  const isAdmin = permissions.includes('*');
+  if (requiredPermission && !isAdmin && !permissions.includes(requiredPermission)) {
     return <Forbidden />;
   }
 
@@ -80,8 +105,10 @@ export default function ProtectedRoute({ children, requiredPermission }) {
 ProtectedRoute.propTypes = {
   children:           PropTypes.node.isRequired,
   requiredPermission: PropTypes.string,
+  scope:              PropTypes.oneOf(['cro', 'sponsor']),
 };
 
 ProtectedRoute.defaultProps = {
   requiredPermission: null,
+  scope:              'cro',
 };

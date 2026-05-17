@@ -7,14 +7,15 @@ import axiosClient from '@/api/axiosClient';
 
 function normalize(raw) {
   return {
-    id:          raw.region_id   ?? raw.id,
-    regionName:  raw.region_name ?? raw.regionName,
-    description: raw.description ?? '',
-    status:      raw.status      ?? 'Active',
-    isSystem:    raw.is_system_region ?? false,
-    displayOrder: raw.display_order ?? null,
-    createdAt:   raw.created_at  ?? raw.createdAt,
-    updatedAt:   raw.updated_at  ?? raw.updatedAt,
+    id:           raw.region_id      ?? raw.id,
+    regionName:   raw.region_name    ?? raw.regionName,
+    description:  raw.description    ?? '',
+    countryIds:   raw.country_ids    ?? raw.countryIds ?? [],
+    status:       raw.status         ?? 'Active',
+    isSystem:     raw.is_system_region ?? false,
+    displayOrder: raw.display_order  ?? null,
+    createdAt:    raw.created_at     ?? raw.createdAt,
+    updatedAt:    raw.updated_at     ?? raw.updatedAt,
   };
 }
 
@@ -35,6 +36,7 @@ export const regionsClient = {
     const res = await axiosClient.post('/api/v1/masters/regions', {
       region_name: data.regionName,
       description: data.description ?? '',
+      country_ids: Array.isArray(data.countryIds) ? data.countryIds : [],
       status:      data.status ?? 'Active',
     });
     return normalize(res?.item ?? res);
@@ -44,6 +46,7 @@ export const regionsClient = {
     const res = await axiosClient.put(`/api/v1/masters/regions/${id}`, {
       region_name: data.regionName,
       description: data.description ?? '',
+      country_ids: Array.isArray(data.countryIds) ? data.countryIds : [],
       status:      data.status,
     });
     return normalize(res?.item ?? res);

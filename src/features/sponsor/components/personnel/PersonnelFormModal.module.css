@@ -1,0 +1,161 @@
+.body { display: flex; flex-direction: column; gap: 16px; }
+
+.apiError {
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: #dc2626;
+}
+
+/* ── Sections ────────────────────────────────────────────────────────────── */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: var(--bg-subtle, #f8fafc);
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 8px;
+}
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary, #64748b);
+  margin: 0 0 2px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+/* ── Grids ───────────────────────────────────────────────────────────────── */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 600px) { .grid2 { grid-template-columns: 1fr; } }
+
+/* ── Field ───────────────────────────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 4px; }
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+}
+.req        { color: #dc2626; }
+.fieldError { font-size: 11px; color: #dc2626; }
+
+.input {
+  padding: 7px 10px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 7px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary, #0f172a);
+  background: var(--bg-card, #fff);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.input:focus      { border-color: var(--color-primary, #2563eb); }
+.inputError       { border-color: #dc2626; }
+.inputReadonly    { background: var(--bg-subtle, #f1f5f9); color: var(--text-secondary, #94a3b8); cursor: not-allowed; }
+
+/* Amount row */
+.amountRow { display: flex; gap: 6px; }
+.currencySelect { width: 80px; flex-shrink: 0; }
+.amountInput    { flex: 1; }
+
+/* ── Consent ─────────────────────────────────────────────────────────────── */
+.consentRequiredRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.consentHint { font-size: 12px; color: var(--text-secondary, #64748b); }
+
+.checkLabel {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #374151);
+  cursor: pointer;
+}
+.checkLabel input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
+
+.tmplNote {
+  font-size: 12.5px;
+  color: var(--text-secondary, #94a3b8);
+  margin: 0;
+  font-style: italic;
+}
+
+.tmplList { display: flex; flex-direction: column; gap: 6px; }
+.tmplOption {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 7px;
+  background: var(--bg-card, #fff);
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.tmplOption:hover  { border-color: var(--color-primary, #2563eb); }
+.tmplOptionActive  { border-color: var(--color-primary, #2563eb); background: #eff6ff; }
+.tmplOption input  { flex-shrink: 0; }
+.tmplInfo    { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.tmplName    { font-size: 13px; font-weight: 600; color: var(--text-primary, #0f172a); }
+.tmplMeta    { font-size: 11px; color: var(--text-secondary, #94a3b8); }
+.tmplPreview { color: var(--text-secondary, #94a3b8); flex-shrink: 0; }
+
+.tmplFallback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 7px;
+  font-size: 12.5px;
+  color: #1d4ed8;
+}
+
+/* ── Compensation note ───────────────────────────────────────────────────── */
+.compNote {
+  font-size: 12px;
+  color: var(--text-secondary, #64748b);
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  padding: 8px 12px;
+  line-height: 1.5;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.footer { display: flex; justify-content: flex-end; gap: 8px; }
+.btnCancel {
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--bg-subtle, #f8fafc);
+  color: var(--text-secondary, #374151);
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.btnCancel:hover    { background: #f1f5f9; }
+.btnCancel:disabled { opacity: 0.55; cursor: not-allowed; }
+.btnSave {
+  padding: 7px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--color-primary, #2563eb);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.btnSave:hover    { background: #1d4ed8; }
+.btnSave:disabled { opacity: 0.55; cursor: not-allowed; }

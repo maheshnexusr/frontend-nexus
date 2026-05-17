@@ -48,21 +48,43 @@ function PwdField({ id, value, onChange, placeholder, hasError, autoComplete }) 
   );
 }
 
-/* ── Requirement checklist ───────────────────────────────────────────────── */
-function RequirementList({ password }) {
+/* ── Strength helpers ────────────────────────────────────────────────────── */
+function strengthOf(password) {
+  const passed = RULES.filter((r) => r.test(password)).length;
+  if (!password) return null;
+  if (passed <= 2) return 'weak';
+  if (passed <= 4) return 'medium';
+  return 'strong';
+}
+
+/* ── Strength meter + requirement checklist ──────────────────────────────── */
+function StrengthMeter({ password }) {
+  const strength = strengthOf(password);
   if (!password) return null;
   return (
-    <ul className={styles.ruleList}>
-      {RULES.map((r) => {
-        const ok = r.test(password);
-        return (
-          <li key={r.id} className={`${styles.ruleItem} ${ok ? styles.ruleOk : styles.ruleFail}`}>
-            {ok ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
-            {r.label}
-          </li>
-        );
-      })}
-    </ul>
+    <div className={styles.strengthWrap}>
+      <div className={styles.strengthBars}>
+        <div className={`${styles.strengthBar} ${strength !== null ? styles[`bar_${strength}`] : ''}`} />
+        <div className={`${styles.strengthBar} ${strength === 'medium' || strength === 'strong' ? styles[`bar_${strength}`] : ''}`} />
+        <div className={`${styles.strengthBar} ${strength === 'strong' ? styles.bar_strong : ''}`} />
+      </div>
+      <span className={`${styles.strengthLabel} ${styles[`label_${strength}`]}`}>
+        {strength === 'weak' && 'Weak'}
+        {strength === 'medium' && 'Medium'}
+        {strength === 'strong' && 'Strong'}
+      </span>
+      <ul className={styles.ruleList}>
+        {RULES.map((r) => {
+          const ok = r.test(password);
+          return (
+            <li key={r.id} className={`${styles.ruleItem} ${ok ? styles.ruleOk : styles.ruleFail}`}>
+              {ok ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
+              {r.label}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -192,7 +214,7 @@ export default function AccountActivationPage() {
               autoComplete="new-password"
             />
             {errors.password && <p className={styles.fieldError}>{errors.password}</p>}
-            <RequirementList password={password} />
+            <StrengthMeter password={password} />
           </div>
 
           {/* Confirm Password */}

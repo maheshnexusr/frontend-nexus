@@ -11,3 +11,8 @@ export { default as PersonnelPage }         from './pages/PersonnelPage';
 export { default as RolesPage }             from './pages/RolesPage';
 export { default as ReportsPage }           from './pages/ReportsPage';
 export { default as SponsorActivityLogPage} from './pages/SponsorActivityLogPage';
+export { default as MasterEmailTemplatesPage } from './pages/MasterEmailTemplatesPage';
+export { default as MasterCountriesPage }      from './pages/MasterCountriesPage';
+export { default as MasterLocationsPage }      from './pages/MasterLocationsPage';
+export { default as MasterRegionsPage }        from './pages/MasterRegionsPage';
+export { default as MasterEmailTriggersPage }  from './pages/MasterEmailTriggersPage';

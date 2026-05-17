@@ -1,10 +1,12 @@
 import { configureStore } from '@reduxjs/toolkit';
 import authReducer          from '@/features/auth/authSlice';
 import workspaceReducer     from '@/features/workspace/store/workspaceSlice';
+import sponsorViewReducer   from '@/features/workspace/store/sponsorViewSlice';
 import notificationReducer  from '@/app/notificationSlice';
 import formReducer          from '@/features/form-builder/store/formSlice';
 import studyWizardReducer   from '@/features/cro/store/studyWizardSlice';
 import studyFormReducer     from '@/features/cro/store/studyFormSlice';
+import formRuntimeReducer   from '@/features/cro/store/formRuntimeSlice';
 
 /**
  * RTK Query API middleware placeholders.
@@ -34,10 +36,12 @@ const store = configureStore({
   reducer: {
     auth:          authReducer,
     workspace:     workspaceReducer,
+    sponsorView:   sponsorViewReducer,
     notifications: notificationReducer,
     form:          formReducer,
     studyWizard:   studyWizardReducer,
     studyForm:     studyFormReducer,
+    formRuntime:   formRuntimeReducer,
   },
 
   middleware: (getDefaultMiddleware) =>

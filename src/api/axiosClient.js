@@ -13,10 +13,11 @@
 
 import axios from 'axios';
 import { normalizeError } from './apiHelpers';
+import { handleLocked }  from './apiInterceptors';
 
 /* ── Instance ─────────────────────────────────────────────────────────────── */
 const BASE_URL = import.meta.env.VITE_USE_LOCAL === 'true'
-  ? (import.meta.env.VITE_LOCAL_API_URL ?? 'http://localhost:4050')
+  ? (import.meta.env.VITE_LOCAL_API_URL ?? 'http://187.127.139.10:8080')
   : (import.meta.env.VITE_PROD_API_URL  ?? 'https://backend-nexusr.onrender.com');
 
 // Print the active API server on every page load so you know where calls go
@@ -30,6 +31,18 @@ const axiosClient = axios.create({
     Accept:         'application/json',
   },
 });
+
+/* ── camelCase → snake_case converter ────────────────────────────────────── */
+const toSnake = (str) =>
+  str.replace(/([A-Z])/g, (c) => `_${c.toLowerCase()}`);
+
+function deepToSnake(obj) {
+  if (Array.isArray(obj))        return obj.map(deepToSnake);
+  if (obj === null || typeof obj !== 'object') return obj;
+  return Object.fromEntries(
+    Object.entries(obj).map(([k, v]) => [toSnake(k), deepToSnake(v)])
+  );
+}
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 const TOKEN_KEY   = 'accessToken';
@@ -106,6 +119,13 @@ axiosClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    if (config.data instanceof FormData) {
+      // Let browser set Content-Type with the multipart boundary automatically
+      delete config.headers['Content-Type'];
+    } else if (config.data && typeof config.data === 'object') {
+      // Auto-convert camelCase keys → snake_case for all JSON payloads
+      config.data = deepToSnake(config.data);
+    }
     logRequest(config);
     return config;
   },
@@ -134,6 +154,13 @@ axiosClient.interceptors.response.use(
   async (error) => {
     logError(error);
     const original = error.config;
+
+    // 423 — Study/Site/Subject locked. Toast + broadcast a window event so
+    // any open form can refresh its lock state and disable Save buttons.
+    if (error.response?.status === 423) {
+      handleLocked(error);
+      return Promise.reject(normalizeError(error));
+    }
 
     /* 401 handling — one refresh attempt per request.
        Skip for auth endpoints: a 401 there means wrong credentials, not expired session. */

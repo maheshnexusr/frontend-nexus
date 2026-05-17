@@ -26,11 +26,15 @@ import {
   ArrowLeftRight,
 } from 'lucide-react';
 import { useAppSelector, useAppDispatch } from '@/app/hooks';
-import { selectCurrentUser, logout }      from '@/features/auth/authSlice';
+import { selectCurrentUser, logoutAsync } from '@/features/auth/authSlice';
 import {
   selectActiveStudy,
   selectEnvironment,
 } from '@/features/workspace/store/workspaceSlice';
+import {
+  exitSponsorView,
+  selectIsViewingSponsor,
+} from '@/features/workspace/store/sponsorViewSlice';
 import styles from './WorkspaceHeader.module.css';
 
 const clx = (...a) => a.filter(Boolean).join(' ');
@@ -90,8 +94,17 @@ export default function WorkspaceHeader({
     if (e.key === 'Escape') setSearchOpen(false);
   };
 
+  const isViewingSponsor = useAppSelector(selectIsViewingSponsor);
+
   const handleLogout = () => {
-    dispatch(logout());
+    // While viewing a sponsor workspace (CRO entered via /enter), "logout"
+    // only exits the viewer — the CRO session stays alive.
+    if (isViewingSponsor) {
+      dispatch(exitSponsorView());
+      navigate('/cro/dashboard');
+      return;
+    }
+    dispatch(logoutAsync());
     navigate('/');
   };
 

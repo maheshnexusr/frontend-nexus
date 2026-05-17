@@ -20,24 +20,23 @@ function apiPermsToNested(apiPerms) {
   const result = buildPermissions(false);
 
   for (const p of apiPerms) {
-    const featureName = (p.featureName ?? p.feature_name ?? '').toLowerCase();
+    const featureName = (p.featurename ?? p.featureName ?? p.feature_name ?? '').toLowerCase();
     for (const group of PERMISSION_GROUPS) {
       for (const feature of group.features) {
         if (feature.label.toLowerCase() === featureName) {
           result[group.key][feature.key] = {};
           feature.perms.forEach(({ key }) => {
-            // Map API field names to internal perm keys
             const apiMap = {
-              view:          p.canView      ?? p.can_view      ?? false,
-              create:        p.canCreate    ?? p.can_create    ?? false,
-              edit:          p.canEdit      ?? p.can_edit      ?? false,
-              delete:        p.canDelete    ?? p.can_delete    ?? false,
-              export:        p.canExport    ?? p.can_export    ?? false,
-              duplicate:     p.canDuplicate ?? p.can_duplicate ?? false,
-              locked:        p.canLock      ?? p.can_lock      ?? false,
-              import:        p.canImport    ?? p.can_import    ?? false,
-              configuration: p.canConfigure ?? p.can_configure ?? false,
-              publish:       p.canPublish   ?? p.can_publish   ?? false,
+              view:          p.canview      ?? p.canView      ?? p.can_view      ?? false,
+              create:        p.cancreate    ?? p.canCreate    ?? p.can_create    ?? false,
+              edit:          p.canedit      ?? p.canEdit      ?? p.can_edit      ?? false,
+              delete:        p.candelete    ?? p.canDelete    ?? p.can_delete    ?? false,
+              export:        p.canexport    ?? p.canExport    ?? p.can_export    ?? false,
+              duplicate:     p.canduplicate ?? p.canDuplicate ?? p.can_duplicate ?? false,
+              locked:        p.canlock      ?? p.canLock      ?? p.can_lock      ?? false,
+              import:        p.canimport    ?? p.canImport    ?? p.can_import    ?? false,
+              configuration: p.canconfigure ?? p.canConfigure ?? p.can_configure ?? false,
+              publish:       p.canpublish   ?? p.canPublish   ?? p.can_publish   ?? false,
             };
             result[group.key][feature.key][key] = apiMap[key] ?? false;
           });
@@ -56,17 +55,17 @@ function nestedPermsToApi(permsObj) {
     for (const feature of group.features) {
       const fp = permsObj?.[group.key]?.[feature.key] ?? {};
       result.push({
-        feature_name:  feature.label,
-        can_view:      fp.view          ?? false,
-        can_create:    fp.create        ?? false,
-        can_edit:      fp.edit          ?? false,
-        can_delete:    fp.delete        ?? false,
-        can_export:    fp.export        ?? false,
-        can_duplicate: fp.duplicate     ?? false,
-        can_lock:      fp.locked        ?? false,
-        can_import:    fp.import        ?? false,
-        can_configure: fp.configuration ?? false,
-        can_publish:   fp.publish       ?? false,
+        featurename:  feature.label,
+        canview:      fp.view          ?? false,
+        cancreate:    fp.create        ?? false,
+        canedit:      fp.edit          ?? false,
+        candelete:    fp.delete        ?? false,
+        canexport:    fp.export        ?? false,
+        canduplicate: fp.duplicate     ?? false,
+        canlock:      fp.locked        ?? false,
+        canimport:    fp.import        ?? false,
+        canconfigure: fp.configuration ?? false,
+        canpublish:   fp.publish       ?? false,
       });
     }
   }

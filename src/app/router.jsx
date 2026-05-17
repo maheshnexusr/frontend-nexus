@@ -81,10 +81,8 @@ const CookiePolicyPage    = lazy(() => import('@/features/public/pages/CookiePol
 // Lazy page imports — Auth
 // ─────────────────────────────────────────────────────────────────────────────
 
-const AuthLayout              = lazy(() => import('@/layouts/AuthLayout'));
-const SignUpPage               = lazy(() => import('@/features/auth/pages/SignUpPage'));
+const AuthLayout               = lazy(() => import('@/layouts/AuthLayout'));
 const SignInPage               = lazy(() => import('@/features/auth/pages/SignInPage'));
-const EmailVerificationPage    = lazy(() => import('@/features/auth/pages/EmailVerificationPage'));
 const ForgotPasswordPage       = lazy(() => import('@/features/auth/pages/ForgotPasswordPage'));
 const AccountActivationPage    = lazy(() => import('@/features/auth/pages/AccountActivationPage'));
 
@@ -136,13 +134,29 @@ const ConsentReviewPage      = lazy(() => import('@/features/sponsor/pages/Conse
 const QueriesPage            = lazy(() => import('@/features/sponsor/pages/QueriesPage'));
 const VerificationPage       = lazy(() => import('@/features/sponsor/pages/VerificationPage'));
 const SitesPage              = lazy(() => import('@/features/sponsor/pages/SitesPage'));
+const SiteFormPage           = lazy(() => import('@/features/sponsor/pages/SiteFormPage'));
+const SiteRoleFormPage       = lazy(() => import('@/features/sponsor/pages/SiteRoleFormPage'));
 const PersonnelPage          = lazy(() => import('@/features/sponsor/pages/PersonnelPage'));
+const PersonnelFormPage      = lazy(() => import('@/features/sponsor/pages/PersonnelFormPage'));
+const SitePersonnelActivationPage    = lazy(() => import('@/features/site/pages/SitePersonnelActivationPage'));
+const SiteDashboardPage              = lazy(() => import('@/features/site/pages/SiteDashboardPage'));
+const SiteLayout                     = lazy(() => import('@/layouts/SiteLayout'));
+const SiteWorkspaceDashboardPage     = lazy(() => import('@/features/site/pages/SiteWorkspaceDashboardPage'));
+const SiteCapturePage                = lazy(() => import('@/features/site/pages/SiteCapturePage'));
+const SiteCaptureFormPage            = lazy(() => import('@/features/site/pages/SiteCaptureFormPage'));
+const SiteSubjectFormPage            = lazy(() => import('@/features/site/pages/SiteSubjectFormPage'));
+const SitePersonnelPage              = lazy(() => import('@/features/site/pages/SitePersonnelPage'));
+const SiteFeaturePlaceholderPage     = lazy(() => import('@/features/site/pages/SiteFeaturePlaceholderPage'));
 const RolesPage              = lazy(() => import('@/features/sponsor/pages/RolesPage'));
 const ReportsPage            = lazy(() => import('@/features/sponsor/pages/ReportsPage'));
 const SponsorActivityLogPage      = lazy(() => import('@/features/sponsor/pages/SponsorActivityLogPage'));
 const MasterEmailTemplatesPage    = lazy(() => import('@/features/sponsor/pages/MasterEmailTemplatesPage'));
 const MasterCountriesPage         = lazy(() => import('@/features/sponsor/pages/MasterCountriesPage'));
 const MasterLocationsPage         = lazy(() => import('@/features/sponsor/pages/MasterLocationsPage'));
+const MasterRegionsPage           = lazy(() => import('@/features/sponsor/pages/MasterRegionsPage'));
+const MasterEmailTriggersPage     = lazy(() => import('@/features/sponsor/pages/MasterEmailTriggersPage'));
+const SponsorProfilePage          = lazy(() => import('@/features/cro/pages/profile/CROProfilePage'));
+const SponsorChangePasswordPage   = lazy(() => import('@/features/cro/pages/profile/ChangePasswordPage'));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inline 404 page
@@ -248,11 +262,56 @@ export const router = createBrowserRouter([
       {
         element: sp(AuthLayout),
         children: [
-          { path: 'signup',            element: sp(SignUpPage) },
           { path: 'signin',            element: sp(SignInPage) },
-          { path: 'verify/:token',     element: sp(EmailVerificationPage) },
           { path: 'forgot-password',   element: sp(ForgotPasswordPage) },
           { path: 'activate',          element: sp(AccountActivationPage) },
+        ],
+      },
+
+      // ── Site portal (auth scope: site, separate from CRO/sponsor) ────────
+      // Sign-in is the SHARED /signin page — the backend dispatches by
+      // auth_identities and the response's `scope: 'site'` routes here.
+      //
+      //   /site/invite/:token  — activation (Pending account → Active)
+      //   /site/studies        — STUDY PICKER (no shell, no sidebar)
+      //   /site/...            — SiteLayout shell (sidebar gated by the
+      //                          user's role permissions in siteStudyContext;
+      //                          bounces to /site/studies if no chosen study)
+      { path: 'site/invite/:token',  element: sp(SitePersonnelActivationPage) },
+      { path: 'site/studies',        element: sp(SiteDashboardPage) },
+      {
+        path: 'site',
+        element: (
+          <Suspense fallback={<PageLoader />}>
+            <SiteLayout />
+          </Suspense>
+        ),
+        children: [
+          { index: true, element: <Navigate to="dashboard" replace /> },
+
+          { path: 'dashboard',     element: sp(SiteWorkspaceDashboardPage) },
+
+          // Sidebar features — placeholder until a real page is built.
+          // SiteLayout's nav links straight here; replacing a placeholder
+          // with a real page is a one-line element swap.
+          { path: 'capture',                                element: sp(SiteCapturePage) },
+          { path: 'capture/subjects/new',                   element: sp(SiteSubjectFormPage) },
+          { path: 'capture/subjects/:subjectId/edit',       element: sp(SiteSubjectFormPage) },
+          { path: 'capture/form',                           element: sp(SiteCaptureFormPage) },
+          { path: 'queries',                 element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'verification',            element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'consent/config',          element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'consent/review',          element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'reports',                 element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'sites',                   element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'personnel',               element: sp(SitePersonnelPage) },
+          { path: 'roles',                   element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'masters/email-templates', element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'masters/countries',       element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'masters/locations',       element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'masters/regions',         element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'activity-log',            element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'profile',                 element: sp(SiteFeaturePlaceholderPage) },
         ],
       },
 
@@ -334,7 +393,7 @@ export const router = createBrowserRouter([
       {
         path: 'sponsor/select-study',
         element: (
-          <ProtectedRoute>
+          <ProtectedRoute scope="sponsor">
             {sp(SponsorStudySelectorPage)}
           </ProtectedRoute>
         ),
@@ -344,7 +403,7 @@ export const router = createBrowserRouter([
       {
         path: 'sponsor/:studyId',
         element: (
-          <ProtectedRoute>
+          <ProtectedRoute scope="sponsor">
             <Suspense fallback={<PageLoader />}>
               <SponsorLayout />
             </Suspense>
@@ -361,14 +420,24 @@ export const router = createBrowserRouter([
           { path: 'consent/review', element: sp(ConsentReviewPage) },
           { path: 'queries',        element: sp(QueriesPage) },
           { path: 'verification',   element: sp(VerificationPage) },
-          { path: 'sites',          element: sp(SitesPage) },
-          { path: 'personnel',      element: sp(PersonnelPage) },
-          { path: 'roles',          element: sp(RolesPage) },
+          { path: 'sites',                 element: sp(SitesPage)     },
+          { path: 'sites/new',             element: sp(SiteFormPage)  },
+          { path: 'sites/:siteId/edit',    element: sp(SiteFormPage)  },
+          { path: 'personnel',                     element: sp(PersonnelPage)     },
+          { path: 'personnel/new',                 element: sp(PersonnelFormPage) },
+          { path: 'personnel/:personnelId/edit',   element: sp(PersonnelFormPage) },
+          { path: 'roles',                 element: sp(RolesPage)         },
+          { path: 'roles/new',             element: sp(SiteRoleFormPage)  },
+          { path: 'roles/:roleId/edit',    element: sp(SiteRoleFormPage)  },
           { path: 'reports',        element: sp(ReportsPage) },
           { path: 'activity-log',              element: sp(SponsorActivityLogPage)   },
           { path: 'masters/email-templates',   element: sp(MasterEmailTemplatesPage) },
           { path: 'masters/countries',         element: sp(MasterCountriesPage)      },
           { path: 'masters/locations',         element: sp(MasterLocationsPage)      },
+          { path: 'masters/regions',           element: sp(MasterRegionsPage)        },
+          { path: 'masters/email-triggers',    element: sp(MasterEmailTriggersPage)  },
+          { path: 'profile',                   element: sp(SponsorProfilePage)       },
+          { path: 'change-password',           element: sp(SponsorChangePasswordPage) },
         ],
       },
 
