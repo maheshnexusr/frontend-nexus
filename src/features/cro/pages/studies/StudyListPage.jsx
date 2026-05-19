@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate }  from 'react-router-dom';
 import { useDispatch }  from 'react-redux';
-import { Plus, Pencil, Trash2, FlaskConical, LayoutTemplate } from 'lucide-react';
+import {
+  Plus, Pencil, Trash2, FlaskConical, LayoutTemplate,
+  Calendar, Building2, Users,
+} from 'lucide-react';
 import { studiesClient } from '@/features/cro/api/studiesClient';
 import { addToast }      from '@/app/notificationSlice';
 import { resetWizard }   from '@/features/cro/store/studyWizardSlice';
@@ -9,6 +12,39 @@ import DataTable         from '@/components/data-table/DataTable';
 import StatusBadge       from '@/components/feedback/StatusBadge';
 import ConfirmDialog     from '@/components/feedback/ConfirmDialog';
 import styles from './StudyListPage.module.css';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtDate(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/**
+ * Progress % for a study based on its timeline (start → expectedEnd).
+ *   - Completed status / past end date → 100
+ *   - Not started yet / no dates → 0
+ *   - Otherwise → linear elapsed/total clipped to [0, 100]
+ */
+function studyProgress(row) {
+  if ((row.status ?? '').toLowerCase() === 'completed') return 100;
+  const start = row.startDate       ? new Date(row.startDate).getTime()       : null;
+  const end   = row.expectedEndDate ? new Date(row.expectedEndDate).getTime() : null;
+  if (!start || !end || end <= start) return 0;
+  const now = Date.now();
+  if (now <= start) return 0;
+  if (now >= end)   return 100;
+  return Math.round(((now - start) / (end - start)) * 100);
+}
+
+function progressColor(pct, status) {
+  if ((status ?? '').toLowerCase() === 'completed' || pct >= 100) return '#16a34a';   // green
+  if (pct >= 75) return '#f59e0b';   // amber
+  if (pct >= 1)  return '#2563eb';   // blue
+  return '#94a3b8';                  // gray (not started)
+}
 
 export default function StudyListPage() {
   const navigate = useNavigate();
@@ -74,20 +110,20 @@ export default function StudyListPage() {
   const columns = useMemo(() => [
     {
       key:      'studyId',
-      label:    'Study ID',
+      label:    'Study Details',
       sortable: true,
-      render:   (val) => <span className={styles.studyId}>{val}</span>,
-    },
-    {
-      key:      'studyTitle',
-      label:    'Study Title',
-      sortable: true,
+      render:   (_, row) => (
+        <div className={styles.studyCell}>
+          <code className={styles.studyId}>{row.studyId}</code>
+          <span className={styles.studyTitle} title={row.studyTitle}>{row.studyTitle}</span>
+        </div>
+      ),
     },
     {
       key:      'studyPhaseName',
       label:    'Phase',
       sortable: true,
-      width:    '140px',
+      width:    '120px',
     },
     {
       key:      'sponsorName',
@@ -97,13 +133,67 @@ export default function StudyListPage() {
     {
       key:      'scope',
       label:    'Scope',
-      width:    '130px',
-      render:   (val) => (
-        <span className={styles.scopeTags}>
-          {(Array.isArray(val) ? val : []).map((s) => (
-            <span key={s} className={styles.scopeTag}>{s}</span>
-          ))}
-        </span>
+      width:    '110px',
+      render:   (val) => {
+        const list = Array.isArray(val) ? val : (val ? [val] : []);
+        return (
+          <span className={styles.scopeTags}>
+            {list.map((sc) => <span key={sc} className={styles.scopeTag}>{sc}</span>)}
+          </span>
+        );
+      },
+    },
+    {
+      key:    'startDate',
+      label:  'Timeline',
+      width:  '210px',
+      render: (_, row) => {
+        const start = fmtDate(row.startDate);
+        const end   = fmtDate(row.expectedEndDate);
+        if (!start && !end) return <span className={styles.na}>—</span>;
+        return (
+          <div className={styles.timeline}>
+            <Calendar size={12} className={styles.timelineIcon} aria-hidden="true" />
+            <span className={styles.timelineDates}>
+              {start || '—'} <span className={styles.timelineArrow}>→</span> {end || '—'}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      key:    'progress',
+      label:  'Progress',
+      width:  '150px',
+      render: (_, row) => {
+        const pct   = studyProgress(row);
+        const color = progressColor(pct, row.status);
+        return (
+          <div className={styles.progressCell}>
+            <div className={styles.progressTrack}>
+              <div className={styles.progressFill} style={{ width: `${pct}%`, background: color }} />
+            </div>
+            <span className={styles.progressPct} style={{ color }}>{pct}%</span>
+          </div>
+        );
+      },
+    },
+    {
+      key:    'maxSites',
+      label:  'Capacity',
+      width:  '160px',
+      render: (_, row) => (
+        <div className={styles.capacity}>
+          <span className={styles.capacityItem} title="Max Sites">
+            <Building2 size={11} aria-hidden="true" />
+            {row.maxSites ?? '—'}
+          </span>
+          <span className={styles.capacityDivider} />
+          <span className={styles.capacityItem} title="Max Enrollments">
+            <Users size={11} aria-hidden="true" />
+            {row.maxEnrollments ?? '—'}
+          </span>
+        </div>
       ),
     },
     {

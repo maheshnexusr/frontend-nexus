@@ -155,19 +155,18 @@ export default function SiteQueriesPage() {
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
+  // Spec'd grid columns — paired fields share one cell (stacked vertically).
   const COLUMNS = [
-    { key: 'id',                label: 'Query ID'         },
-    { key: 'siteId',            label: 'Site'             },
-    { key: 'subjectId',         label: 'Subject'          },
-    { key: 'pageName',          label: 'Block / Page'     },
-    { key: 'fieldName',         label: 'Field'            },
-    { key: 'queryText',         label: 'Query Description'},
-    { key: 'status',            label: 'Status'           },
-    { key: 'priority',          label: 'Priority'         },
-    { key: 'daysOpen',          label: 'Aging'            },
-    { key: 'raisedBy',          label: 'Actioned By'      },
-    { key: 'raisedDate',        label: 'Actioned Date'    },
-    { key: 'resolutionComment', label: 'Resolution'       },
+    { key: 'id',                label: 'Query ID'                  },
+    { key: 'siteId',            label: 'Site'                      },
+    { key: 'subjectId',         label: 'Subject'                   },
+    { key: 'pageName',          label: 'Block / Page'              },
+    { key: 'fieldName',         label: 'Field / Query Description' },
+    { key: 'status',            label: 'Status / Priority'         },
+    { key: 'daysOpen',          label: 'Aging'                     },
+    { key: 'raisedBy',          label: 'Actioned By'               },
+    { key: 'raisedDate',        label: 'Actioned Date'             },
+    { key: 'resolutionComment', label: 'Resolution'                },
   ];
 
   return (
@@ -326,45 +325,72 @@ export default function SiteQueriesPage() {
                                   : display === 'Answered' ? (q.responseDate || q.raisedDate)
                                   : q.raisedDate;
 
-              const siteLabel = q.siteId
-                ? `${q.siteId}${q.siteName ? ` — ${q.siteName}` : ''}`
-                : (q.siteName || '—');
-              const subjectLabel = q.subjectId
-                ? `${q.subjectId}${q.subjectInitials ? ` (${q.subjectInitials})` : ''}`
-                : '—';
-              const blockPageLabel = q.blockName && q.pageName
-                ? `${q.blockName} / ${q.pageName}`
-                : (q.pageName || q.blockName || q.formName || '—');
-
               return (
                 <tr
                   key={q.id}
                   className={`${styles.row} ${isOverdue ? styles.rowOverdue : ''}`}
+                  title={q.queryText ? `${q.fieldName || ''}: ${q.queryText}` : ''}
                 >
                   <td className={styles.td}><code className={styles.qid}>{q.id}</code></td>
-                  <td className={styles.td} title={q.siteName || ''}>{siteLabel}</td>
-                  <td className={styles.td}><span className={styles.pill}>{subjectLabel}</span></td>
-                  <td className={styles.td}>{blockPageLabel}</td>
-                  <td className={styles.td}><span className={styles.fieldName}>{q.fieldName || '—'}</span></td>
+
+                  {/* Site ID + Site Name */}
                   <td className={styles.td}>
-                    <span className={styles.queryText} title={q.queryText}>
-                      {q.queryText?.length > 50 ? `${q.queryText.slice(0, 50)}…` : (q.queryText || '—')}
-                    </span>
+                    <div className={styles.stack}>
+                      <span className={styles.stackPrimary}>{q.siteId || '—'}</span>
+                      {q.siteName && <span className={styles.stackSecondary}>{q.siteName}</span>}
+                    </div>
                   </td>
+
+                  {/* Subject ID + Subject Initials */}
                   <td className={styles.td}>
-                    <span
-                      className={styles.statusBadge}
-                      style={{ color: '#fff', background: sm.accent, borderColor: sm.accent }}
-                    >
-                      {display}
-                    </span>
+                    <div className={styles.stack}>
+                      <span className={styles.stackPrimary}>{q.subjectId || '—'}</span>
+                      {q.subjectInitials && (
+                        <span className={styles.stackSecondary}>{q.subjectInitials}</span>
+                      )}
+                    </div>
                   </td>
+
+                  {/* Block + Page */}
                   <td className={styles.td}>
-                    <span className={styles.priorityBadge} style={{ color: pm.color, background: pm.bg }}>
-                      <span className={styles.priorityDot} style={{ background: pm.dot }} />
-                      {q.priority}
-                    </span>
+                    <div className={styles.stack}>
+                      <span className={styles.stackPrimary}>{q.blockName || q.formName || '—'}</span>
+                      {(q.pageName || (q.formName && q.blockName)) && (
+                        <span className={styles.stackSecondary}>
+                          {q.pageName || q.formName || ''}
+                        </span>
+                      )}
+                    </div>
                   </td>
+
+                  {/* Field Name + Query Description */}
+                  <td className={styles.td} title={q.queryText || ''}>
+                    <div className={styles.stack} style={{ maxWidth: 280 }}>
+                      <span className={`${styles.stackPrimary} ${styles.fieldName}`}>{q.fieldName || '—'}</span>
+                      {q.queryText && (
+                        <span className={styles.stackSecondary} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+                          {q.queryText}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* Query Status + Priority */}
+                  <td className={styles.td}>
+                    <div className={styles.stack} style={{ alignItems: 'flex-start', gap: 4 }}>
+                      <span
+                        className={styles.statusBadge}
+                        style={{ color: '#fff', background: sm.accent, borderColor: sm.accent }}
+                      >
+                        {display}
+                      </span>
+                      <span className={styles.priorityBadge} style={{ color: pm.color, background: pm.bg }}>
+                        <span className={styles.priorityDot} style={{ background: pm.dot }} />
+                        {q.priority}
+                      </span>
+                    </div>
+                  </td>
+
                   <td className={styles.td}>
                     <span className={isOverdue ? styles.overdueText : styles.daysText}>
                       {fmtAging(q.daysOpen)}

@@ -6,6 +6,7 @@ import {
 } from '@/features/cro/store/formRuntimeSlice';
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import Popover from './Popover';
+import { useFieldCapabilities } from './useFieldCapabilities';
 import s from './runtime.module.css';
 
 /**
@@ -45,6 +46,7 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
   const dispatch = useDispatch();
   const user     = useSelector(selectCurrentUser);
   const bucket   = useSelector(selectFieldBucket(fieldId));
+  const caps     = useFieldCapabilities();
 
   const me = {
     by:     user?.id ?? 'unknown',
@@ -103,7 +105,7 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
       onClose={onClose}
       footer={<button type="button" className={s.btnSecondary} onClick={onClose}>Close</button>}
     >
-      {!creating && (
+      {!creating && caps.canCreateQuery && (
         <div style={{ marginBottom: 10 }}>
           <button type="button" className={s.btnPrimary} onClick={startNew}>
             <Plus size={13} /> Raise Query
@@ -156,7 +158,13 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 4 }}>
             <button type="button" className={s.btnSecondary} onClick={() => setCreating(false)}>Cancel</button>
-            <button type="button" className={s.btnPrimary} onClick={submit} disabled={!draft.description.trim()}>
+            <button
+              type="button"
+              className={s.btnPrimary}
+              onClick={submit}
+              disabled={!draft.description.trim() || !caps.canCreateQuery}
+              title={!caps.canCreateQuery ? 'You do not have permission to raise queries.' : undefined}
+            >
               Submit
             </button>
           </div>
@@ -186,7 +194,7 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
                     </div>
                   </div>
                   <div className={s.itemActions}>
-                    {nextSt && (
+                    {nextSt && caps.canEditQuery && (
                       <button
                         type="button"
                         className={s.btnSecondary}
@@ -196,14 +204,16 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
                         → {nextSt}
                       </button>
                     )}
-                    <button
-                      type="button"
-                      className={`${s.itemActionBtn} ${s.itemActionBtnDanger}`}
-                      title="Delete"
-                      onClick={() => dispatch(deleteQuery({ fieldId, queryId: q.id, ...me }))}
-                    >
-                      <Trash2 size={13} />
-                    </button>
+                    {caps.canDeleteQuery && (
+                      <button
+                        type="button"
+                        className={`${s.itemActionBtn} ${s.itemActionBtnDanger}`}
+                        title="Delete"
+                        onClick={() => dispatch(deleteQuery({ fieldId, queryId: q.id, ...me }))}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
                   </div>
                 </div>
                 {q.description && <div className={s.itemBody}>{q.description}</div>}

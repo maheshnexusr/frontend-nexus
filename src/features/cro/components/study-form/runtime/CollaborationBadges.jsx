@@ -1,5 +1,5 @@
 import { useSelector } from 'react-redux';
-import { MessageSquare, AlertCircle, Paperclip, StickyNote, CheckCircle2, Clock } from 'lucide-react';
+import { AlertCircle, Paperclip, StickyNote, CheckCircle2, Clock } from 'lucide-react';
 import { selectFieldBucket } from '@/features/cro/store/formRuntimeSlice';
 import s from './runtime.module.css';
 
@@ -27,7 +27,7 @@ export default function CollaborationBadges({ fieldId, onOpen }) {
   const bucket = useSelector(selectFieldBucket(fieldId));
   if (!bucket) return null;
 
-  const annotationCount = bucket.annotations.filter((a) => !a.resolved).length;
+  // Annotations are a global master now — no per-field count badge.
   const attachmentCount = bucket.attachments.length;
   const noteCount       = bucket.notes.length;
   const verified        = !!bucket.verification?.verified;
@@ -36,7 +36,7 @@ export default function CollaborationBadges({ fieldId, onOpen }) {
   for (const q of bucket.queries) byStatus[normalizeStatus(q.status)].push(q);
 
   const totalActiveQueries = byStatus.Raised.length + byStatus.Answered.length;
-  const has = annotationCount + totalActiveQueries + attachmentCount + noteCount + byStatus.Resolved.length > 0 || verified;
+  const has = totalActiveQueries + attachmentCount + noteCount + byStatus.Resolved.length > 0 || verified;
   if (!has) return null;
 
   const handle = (kind) => (e) => {
@@ -48,12 +48,6 @@ export default function CollaborationBadges({ fieldId, onOpen }) {
 
   return (
     <div className={s.badges}>
-      {annotationCount > 0 && (
-        <button type="button" className={`${s.badge} ${s.badgeAnnotation}`} title="Annotations" onClick={handle('annotations')}>
-          <MessageSquare size={11} /> {annotationCount}
-        </button>
-      )}
-
       {byStatus.Raised.length > 0 && (
         <button
           type="button"
@@ -100,7 +94,7 @@ export default function CollaborationBadges({ fieldId, onOpen }) {
           <CheckCircle2 size={11} /> Verified
         </button>
       )}
-      {!verified && (annotationCount > 0 || totalActiveQueries > 0) && (
+      {!verified && totalActiveQueries > 0 && (
         <span className={`${s.badge} ${s.badgePending}`} title="Pending verification">
           <Clock size={11} /> Pending
         </span>

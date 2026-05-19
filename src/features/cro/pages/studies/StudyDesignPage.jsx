@@ -5,22 +5,39 @@
  * "Design Study" action. Hydrates the wizard's Step 1 slice with the study's
  * primary key so the existing StudyFormBuilder (which reads selectStep1) can
  * load, save, and publish the form design without going through the wizard.
+ *
+ * The visible chrome (sticky top header) uses the new EDC design language —
+ * white surface, blue accent, search + user + Publish — wrapping the existing
+ * StudyFormBuilder body untouched. None of the form-builder elements
+ * (SFBLeft / SFBCanvas / SFBRight / SFBPreview) are modified.
  */
 
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useDispatch }           from 'react-redux';
-import { ArrowLeft }             from 'lucide-react';
+import { useDispatch }            from 'react-redux';
+import {
+  ArrowLeft, Bell, Clock, Bookmark, Send,
+} from 'lucide-react';
 import { studiesClient }         from '@/features/cro/api/studiesClient';
 import { addToast }              from '@/app/notificationSlice';
 import { resetWizard, setStep1 } from '@/features/cro/store/studyWizardSlice';
+import { useAppSelector }        from '@/app/hooks';
+import { selectCurrentUser }     from '@/features/auth/authSlice';
 import StudyFormBuilder          from '@/features/cro/components/study-form/StudyFormBuilder';
+import StudyDesignSearch         from './StudyDesignSearch';
 import styles from './StudyDesignPage.module.css';
+
+function initials(name = '') {
+  return name
+    .split(/\s+/).filter(Boolean).slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? '').join('') || 'PS';
+}
 
 export default function StudyDesignPage() {
   const { studyId } = useParams();
   const navigate    = useNavigate();
   const dispatch    = useDispatch();
+  const user        = useAppSelector(selectCurrentUser);
 
   const [loading,  setLoading]  = useState(true);
   const [study,    setStudy]    = useState(null);
@@ -69,32 +86,78 @@ export default function StudyDesignPage() {
     );
   }
 
+  const fullName  = user?.fullName || 'Prashant S.';
+  const roleName  = user?.roleName || 'Data Manager';
+  const studyCode = study?.protocolNumber || study?.studyId || '—';
+  const studyTtl  = study?.studyTitle;
+
   return (
     <div className={styles.page}>
-      <header className={styles.topBar}>
+      {/* ── Sticky top header ─────────────────────────────────────────────── */}
+      <header className={styles.header}>
+        {/* Brand + study identity */}
         <div className={styles.brand}>
-          <span className={styles.brandLogo}>EDC</span>
-          <span className={styles.brandLabel}>Form Builder</span>
+          <div className={styles.brandLogo}>K</div>
+          <div className={styles.brandText}>
+            <span className={styles.brandTitle}>EDC</span>
+            <span className={styles.brandSub}>Form Builder</span>
+          </div>
+          <span className={styles.crumbSep}>/</span>
+          <div className={styles.studyChip}>
+            <span className={styles.studyChipKey}>Study:</span>
+            <span className={styles.studyChipValue}>{studyCode}</span>
+            {studyTtl && (
+              <>
+                <span className={styles.studyChipDot}>•</span>
+                <span className={styles.studyChipTitle}>{studyTtl}</span>
+              </>
+            )}
+          </div>
         </div>
 
-        <div className={styles.crumbs}>
-          <span className={styles.crumbMute}>Study:</span>
-          <span className={styles.crumbStrong}>{study?.protocolNumber || study?.studyId || '—'}</span>
-          {study?.studyTitle && (
-            <>
-              <span className={styles.crumbSep}>•</span>
-              <span className={styles.crumb}>{study.studyTitle}</span>
-            </>
-          )}
+        {/* Global search (wired) */}
+        <div className={styles.searchWrap}>
+          <StudyDesignSearch />
         </div>
 
-        <div className={styles.topActions}>
-          <button className={styles.btnExit} onClick={handleExit}>
-            <ArrowLeft size={14} /> Exit Design
+        {/* Actions */}
+        <div className={styles.headerActions}>
+          <button type="button" className={styles.headerBtn}>
+            <Clock size={14} /> Recent
+          </button>
+          <button type="button" className={styles.headerBtn}>
+            <Bookmark size={14} /> Pinned
+          </button>
+
+          <button type="button" className={styles.publishBtn}>
+            <Send size={13} /> Publish
+          </button>
+
+          <button type="button" className={styles.notif} aria-label="Notifications">
+            <Bell size={16} color="#475569" />
+            <span className={styles.notifBadge}>12</span>
+          </button>
+
+          <div className={styles.user}>
+            <div className={styles.userAvatar}>{initials(fullName)}</div>
+            <div className={styles.userMeta}>
+              <span className={styles.userName}>{fullName}</span>
+              <span className={styles.userRole}>{roleName}</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className={styles.btnExit}
+            onClick={handleExit}
+            title="Exit Design"
+          >
+            <ArrowLeft size={14} /> Exit
           </button>
         </div>
       </header>
 
+      {/* ── Builder body (untouched) ──────────────────────────────────────── */}
       <main className={styles.builderHost}>
         <StudyFormBuilder
           formId={study?.formId}

@@ -93,10 +93,20 @@ export const sponsorLocationsClient = {
   },
 
   // ── Non-spec extensions ───────────────────────────────────────────────────
-  async bulkImport(_studyId, file) {
+  /**
+   * Bulk-import locations from a CSV or XLSX file. Same contract as the CRO
+   * master endpoint (see locationsClient.bulkImport) but scoped to the
+   * sponsor study workspace. `onProgress` receives upload percentage 0–100.
+   */
+  async bulkImport(_studyId, file, { onProgress } = {}) {
     const fd = new FormData();
     fd.append('file', file);
-    const res = await sponsorAxiosClient.post(`${BASE}/import`, fd);
+    const res = await sponsorAxiosClient.post(`${BASE}/import`, fd, {
+      onUploadProgress: (evt) => {
+        if (!onProgress || !evt?.total) return;
+        onProgress(Math.round((evt.loaded * 100) / evt.total));
+      },
+    });
     return { imported: res?.imported ?? 0, skipped: res?.skipped ?? 0 };
   },
 

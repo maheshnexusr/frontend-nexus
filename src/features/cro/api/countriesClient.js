@@ -55,10 +55,26 @@ export const countriesClient = {
     return axiosClient.delete(`/api/v1/masters/countries/${id}`);
   },
 
-  async bulkImport(file) {
+  /**
+   * Bulk-import countries from a CSV or XLSX file.
+   *
+   * Backend contract:
+   *   - File: `Countries.csv` or `Countries.xlsx` (sheet name `Countries`)
+   *   - Columns: Country Name, Description, Status
+   *   - Duplicates (by Country Name) are skipped, not overwritten.
+   *   - Successful imports are recorded in the master Activity Log.
+   *
+   * `onProgress` is invoked with a percentage (0–100) as the file uploads.
+   */
+  async bulkImport(file, { onProgress } = {}) {
     const fd = new FormData();
     fd.append('file', file);
     return axiosClient.post('/api/v1/masters/countries/import', fd, {
+      onUploadProgress: (evt) => {
+        if (!onProgress || !evt?.total) return;
+        const pct = Math.round((evt.loaded * 100) / evt.total);
+        onProgress(pct);
+      },
     });
   },
 

@@ -15,7 +15,6 @@ import RespondModal             from '@/features/sponsor/components/query/Respon
 import CloseReopenModal         from '@/features/sponsor/components/query/CloseReopenModal';
 import EscalateModal            from '@/features/sponsor/components/query/EscalateModal';
 import ConfirmDialog            from '@/components/feedback/ConfirmDialog';
-import { Card, CardContent }    from '@/components/ui/card';
 import { useReadOnlyView }      from '@/features/workspace/hooks/useReadOnlyView';
 import styles from './QueriesPage.module.css';
 
@@ -306,7 +305,7 @@ export default function QueriesPage() {
         </div>
       </div>
 
-      {/* Counts banner — uses shared Card primitive */}
+      {/* Counts banner */}
       <div className={styles.statsBar}>
         {[
           { label: 'Total Queries', value: stats.total,    color: '#0f172a', bg: '#f1f5f9' },
@@ -315,20 +314,18 @@ export default function QueriesPage() {
           { label: 'Resolved',      value: stats.resolved, color: '#16A34A', bg: '#dcfce7' },
           { label: 'Overdue',       value: stats.overdue,  color: '#dc2626', bg: '#fee2e2' },
         ].map(({ label, value, color, bg }) => (
-          <Card key={label}>
-            <CardContent className="flex items-center justify-between gap-3 p-5 pt-5">
-              <div className="flex min-w-0 flex-col gap-1">
-                <span className="text-2xl font-extrabold leading-none" style={{ color }}>{value}</span>
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</span>
-              </div>
-              <span
-                className="inline-flex h-11 w-11 flex-none items-center justify-center rounded-full text-base font-extrabold"
-                style={{ background: bg, color }}
-              >
-                {label.charAt(0)}
-              </span>
-            </CardContent>
-          </Card>
+          <div key={label} className={styles.statCard}>
+            <div className={styles.statText}>
+              <span className={styles.statValue} style={{ color }}>{value}</span>
+              <span className={styles.statLabel}>{label}</span>
+            </div>
+            <span
+              className={styles.statBadge}
+              style={{ background: bg, color }}
+            >
+              {label.charAt(0)}
+            </span>
+          </div>
         ))}
       </div>
 

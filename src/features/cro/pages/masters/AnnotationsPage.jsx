@@ -1,100 +1,101 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useDispatch } from 'react-redux';
-import { Plus, Pencil, Trash2, Globe, Filter, Upload, Download, FileDown } from 'lucide-react';
-import { countriesClient } from '@/features/cro/api/countriesClient';
-import { addToast }        from '@/app/notificationSlice';
-import DataTable           from '@/components/data-table/DataTable';
-import StatusBadge         from '@/components/feedback/StatusBadge';
-import ConfirmDialog       from '@/components/feedback/ConfirmDialog';
-import CountryModal        from '@/features/cro/components/countries/CountryModal';
-import styles from './CountryPage.module.css';
+import { Plus, Pencil, Trash2, MessageSquare, Filter, Upload, FileDown } from 'lucide-react';
+import { annotationsClient } from '@/features/cro/api/annotationsClient';
+import { addToast }          from '@/app/notificationSlice';
+import DataTable             from '@/components/data-table/DataTable';
+import StatusBadge           from '@/components/feedback/StatusBadge';
+import ConfirmDialog         from '@/components/feedback/ConfirmDialog';
+import AnnotationFormModal   from '@/features/cro/components/annotations/AnnotationFormModal';
+import styles from './AnnotationsPage.module.css';
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a   = document.createElement('a');
-  a.href     = url;
-  a.download = filename;
-  a.click();
+  a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
 
-function exportCSV(data) {
-  const headers = ['Country Name', 'Description', 'Status'];
-  const rows    = data.map((c) => [
-    `"${(c.countryName  ?? '').replace(/"/g, '""')}"`,
-    `"${(c.description  ?? '').replace(/"/g, '""')}"`,
-    `"${(c.status       ?? '').replace(/"/g, '""')}"`,
-  ]);
-  const csv  = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+function exportCSV(rows) {
+  const headers = ['Annotation', 'Full Form', 'Description', 'Status'];
+  const esc     = (v) => `"${(v ?? '').toString().replace(/"/g, '""')}"`;
+  const csv = [
+    headers.join(','),
+    ...rows.map((r) => [esc(r.annotation), esc(r.fullForm), esc(r.description), esc(r.status)].join(',')),
+  ].join('\n');
   downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }),
-               `countries_${new Date().toISOString().slice(0, 10)}.csv`);
+               `annotations_${new Date().toISOString().slice(0, 10)}.csv`);
 }
 
 /**
- * Build and download a sample template matching the documented format:
- *   File: Countries.csv  (Sheet: Countries when saved as XLSX)
- *   Columns: Country Name, Description, Status
+ * Sample template per spec:
+ *   File: Annotation List.csv   (Sheet: Annotations when saved as XLSX)
+ *   Columns: Annotation, Full Form, Description.
  */
 function downloadSampleCSV() {
   const sample = [
-    ['Country Name', 'Description', 'Status'],
-    ['India',         'South Asian country',  'Active'],
-    ['United States', 'North American country', 'Active'],
-    ['Brazil',        '',                       'Inactive'],
+    ['Annotation', 'Full Form',             'Description'],
+    ['AE',         'Adverse Event',         'Any untoward medical occurrence during the study'],
+    ['SAE',        'Serious Adverse Event', 'AE resulting in death, hospitalisation, or disability'],
+    ['DOB',        'Date of Birth',         'Subject date of birth'],
   ];
   const csv = sample.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-  downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), 'Countries.csv');
+  downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), 'Annotation List.csv');
 }
-
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-export default function CountryPage() {
-  const dispatch  = useDispatch();
-  const fileRef   = useRef(null);
+export default function AnnotationsPage() {
+  const dispatch = useDispatch();
+  const fileRef  = useRef(null);
 
-  const [countries, setCountries] = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [query, setQuery]         = useState('');
-  const [statusFilter, setStatus] = useState('All');
-  const [modalMode, setModalMode] = useState(null);   // 'create' | 'edit'
-  const [selected, setSelected]   = useState(null);
-  const [deleteTarget, setDelete] = useState(null);
-  const [importing, setImporting] = useState(false);
+  const [rows, setRows]               = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [query, setQuery]             = useState('');
+  const [statusFilter, setStatus]     = useState('All');
+  const [modalMode, setModalMode]     = useState(null);   // 'create' | 'edit'
+  const [selected, setSelected]       = useState(null);
+  const [deleteTarget, setDelete]     = useState(null);
+  const [importing, setImporting]         = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const [importFileName, setImportFileName] = useState('');
 
   // pagination / sort
   const [page, setPage]         = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [sortKey, setSortKey]   = useState('countryName');
+  const [sortKey, setSortKey]   = useState('annotation');
   const [sortDir, setSortDir]   = useState('asc');
 
   const load = useCallback(() => {
     setLoading(true);
-    countriesClient.list().then((data) => { setCountries(data); setLoading(false); });
-  }, []);
+    annotationsClient.list()
+      .then(setRows)
+      .catch(() => dispatch(addToast({ type: 'error', message: 'Failed to load annotations.' })))
+      .finally(() => setLoading(false));
+  }, [dispatch]);
 
   useEffect(() => { load(); }, [load]);
 
   // ── filter + sort ─────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    let rows = countries.filter((c) => {
-      const matchQ = !query || c.countryName.toLowerCase().includes(query.toLowerCase());
-      const matchS = statusFilter === 'All' || c.status === statusFilter;
+    let r = rows.filter((a) => {
+      const q     = query.toLowerCase();
+      const matchQ = !q || [a.annotation, a.fullForm, a.description]
+        .some((v) => (v ?? '').toLowerCase().includes(q));
+      const matchS = statusFilter === 'All' || a.status === statusFilter;
       return matchQ && matchS;
     });
     if (sortKey) {
-      rows = [...rows].sort((a, b) => {
+      r = [...r].sort((a, b) => {
         const av = (a[sortKey] ?? '').toString().toLowerCase();
         const bv = (b[sortKey] ?? '').toString().toLowerCase();
         return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
       });
     }
-    return rows;
-  }, [countries, query, statusFilter, sortKey, sortDir]);
+    return r;
+  }, [rows, query, statusFilter, sortKey, sortDir]);
 
   const pageData = useMemo(
     () => filtered.slice((page - 1) * pageSize, page * pageSize),
@@ -105,40 +106,40 @@ export default function CountryPage() {
 
   // ── CRUD actions ──────────────────────────────────────────────────────────
   const openCreate = () => { setSelected(null); setModalMode('create'); };
-  const openEdit   = (c)  => { setSelected(c);  setModalMode('edit');   };
+  const openEdit   = (a)  => { setSelected(a);  setModalMode('edit');   };
   const closeModal = ()   => { setModalMode(null); setSelected(null);    };
 
-  const handleSave = (country) => {
+  const handleSave = (saved) => {
     const isEdit = modalMode === 'edit';
     dispatch(addToast({
       type:    'success',
-      message: `Country '${country.countryName}' ${isEdit ? 'updated' : 'created'} successfully.`,
+      message: `Annotation '${saved.annotation}' ${isEdit ? 'updated' : 'created'} successfully.`,
     }));
     closeModal();
     load();
   };
 
-  const handleDeleteClick = async (country) => {
-    const hasDeps = await countriesClient.checkDependencies(country.id);
+  const handleDeleteClick = async (rec) => {
+    const hasDeps = await annotationsClient.checkDependencies(rec.id);
     if (hasDeps) {
       dispatch(addToast({
         type:     'error',
-        message:  `Cannot delete Country '${country.countryName}'. It is associated with existing records (Sponsors, Studies, Locations). Consider deactivating it instead.`,
+        message:  `Cannot delete Annotation '${rec.annotation}'. It is associated with existing records. Consider deactivating it instead.`,
         duration: 7000,
       }));
       return;
     }
-    setDelete(country);
+    setDelete(rec);
   };
 
   const handleDelete = () => {
-    countriesClient
+    annotationsClient
       .delete(deleteTarget.id)
       .then(() => {
-        dispatch(addToast({ type: 'success', message: `Country '${deleteTarget.countryName}' deleted successfully.` }));
+        dispatch(addToast({ type: 'success', message: `Annotation '${deleteTarget.annotation}' deleted successfully.` }));
         load();
       })
-      .catch(() => dispatch(addToast({ type: 'error', message: 'Failed to delete Country. Please try again.' })));
+      .catch(() => dispatch(addToast({ type: 'error', message: 'Failed to delete Annotation. Please try again.' })));
   };
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -155,16 +156,17 @@ export default function CountryPage() {
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    e.target.value = '';   // allow re-selecting same file
+    e.target.value = '';
 
-    // Basic client-side validation: only CSV / XLSX per the documented format.
-    const name = file.name.toLowerCase();
+    const name   = file.name.toLowerCase();
     const isCsv  = name.endsWith('.csv')  || file.type === 'text/csv';
-    const isXlsx = name.endsWith('.xlsx') || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const isXlsx = name.endsWith('.xlsx') || name.endsWith('.xls')
+                || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                || file.type === 'application/vnd.ms-excel';
     if (!isCsv && !isXlsx) {
       dispatch(addToast({
         type: 'error',
-        message: 'Unsupported file. Please upload a CSV (Countries.csv) or Excel (Countries.xlsx) file.',
+        message: 'Unsupported file. Please upload a CSV (Annotation List.csv) or Excel (Annotation List.xlsx) file.',
       }));
       return;
     }
@@ -173,21 +175,19 @@ export default function CountryPage() {
     setImportFileName(file.name);
     setImportProgress(0);
     try {
-      const { imported = 0, skipped = 0 } = await countriesClient.bulkImport(file, {
+      const { imported = 0, skipped = 0 } = await annotationsClient.bulkImport(file, {
         onProgress: setImportProgress,
       });
-      // Once upload completes, leave the bar at 100 briefly before closing.
       setImportProgress(100);
       dispatch(addToast({
         type:    imported > 0 ? 'success' : 'warning',
-        message: `${imported} countr${imported !== 1 ? 'ies' : 'y'} imported successfully.${skipped > 0 ? ` ${skipped} record${skipped !== 1 ? 's' : ''} skipped (duplicate or missing name).` : ''}`,
+        message: `${imported} annotation${imported !== 1 ? 's' : ''} imported successfully.${skipped > 0 ? ` ${skipped} record${skipped !== 1 ? 's' : ''} skipped (duplicate or missing Annotation).` : ''}`,
         duration: 6000,
       }));
       load();
     } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to import countries. Please check file format and try again.' }));
+      dispatch(addToast({ type: 'error', message: 'Failed to import annotations. Please check file format and try again.' }));
     } finally {
-      // Small hold so the user can see 100% before the modal disappears.
       setTimeout(() => {
         setImporting(false);
         setImportProgress(0);
@@ -197,34 +197,36 @@ export default function CountryPage() {
   };
 
   const handleSampleDownload = () => {
-    try {
-      downloadSampleCSV();
-      dispatch(addToast({ type: 'info', message: 'Sample template downloaded (Countries.csv).' }));
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to download sample template.' }));
-    }
+    downloadSampleCSV();
+    dispatch(addToast({ type: 'info', message: 'Sample template downloaded (Annotation List.csv).' }));
   };
 
   // ── Columns ───────────────────────────────────────────────────────────────
   const columns = useMemo(() => [
     {
-      key:      'countryName',
-      label:    'Country Name',
+      key:      'annotation',
+      label:    'Annotation',
       sortable: true,
+      width:    '180px',
+      render:   (v) => <span className={styles.code}>{v}</span>,
     },
     {
-      key:      'description',
-      label:    'Description',
-      render:   (val) => val
-        ? <span className={styles.desc}>{val}</span>
-        : <span className={styles.na}>—</span>,
+      key:      'fullForm',
+      label:    'Full Form',
+      sortable: true,
+      render:   (v) => v || <span className={styles.na}>—</span>,
+    },
+    {
+      key:    'description',
+      label:  'Description',
+      render: (v) => v ? <span className={styles.desc}>{v}</span> : <span className={styles.na}>—</span>,
     },
     {
       key:      'status',
       label:    'Status',
       width:    '110px',
       sortable: true,
-      render:   (val) => <StatusBadge status={val} />,
+      render:   (v) => <StatusBadge status={v} />,
     },
     {
       key:   'id',
@@ -251,46 +253,32 @@ export default function CountryPage() {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className={styles.page}>
-
-      {/* Header */}
       <div className={styles.header}>
         <div>
-          <h1 className={styles.title}>Countries</h1>
-          <p className={styles.sub}>Manage countries used across sponsors, studies, and locations.</p>
+          <h1 className={styles.title}>Annotations</h1>
+          <p className={styles.sub}>Clinical annotations and their full forms — used across study forms.</p>
         </div>
         <div className={styles.headerActions}>
-          <button
-            className={styles.btnSecondary}
-            onClick={handleSampleDownload}
-            title="Download sample template (Countries.csv)"
-          >
-            <FileDown size={14} />
-            Sample Template
+          <button className={styles.btnSecondary} onClick={handleSampleDownload} title="Download sample template (Annotation List.csv)">
+            <FileDown size={14} /> Sample Template
           </button>
-          <button
-            className={styles.btnSecondary}
-            onClick={() => fileRef.current?.click()}
-            disabled={importing}
-            title="Import from CSV or Excel"
-          >
+          <button className={styles.btnSecondary} onClick={() => fileRef.current?.click()} disabled={importing} title="Import from CSV or Excel">
             <Upload size={14} />
             {importing ? 'Importing…' : 'Import'}
           </button>
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             style={{ display: 'none' }}
             onChange={handleFileChange}
           />
           <button className={styles.btnPrimary} onClick={openCreate}>
-            <Plus size={15} />
-            Add Country
+            <Plus size={15} /> Add Annotation
           </button>
         </div>
       </div>
 
-      {/* Status filter */}
       <div className={styles.toolbar}>
         <div className={styles.filterWrap}>
           <Filter size={14} className={styles.filterIcon} />
@@ -305,11 +293,10 @@ export default function CountryPage() {
           ))}
         </div>
         <span className={styles.count}>
-          {filtered.length} of {countries.length} countr{countries.length !== 1 ? 'ies' : 'y'}
+          {filtered.length} of {rows.length} annotation{rows.length !== 1 ? 's' : ''}
         </span>
       </div>
 
-      {/* Table — DataTable's onExport shows its own Export button in toolbar */}
       <DataTable
         columns={columns}
         data={pageData}
@@ -322,20 +309,19 @@ export default function CountryPage() {
         onSort={(key, dir) => { setSortKey(dir ? key : null); setSortDir(dir || 'asc'); }}
         onSearch={setQuery}
         onExport={handleExport}
-        searchPlaceholder="Search countries…"
+        searchPlaceholder="Search annotations…"
         emptyStateMessage={
-          countries.length === 0
-            ? 'No countries found. Click "Add Country" to create one.'
-            : 'No countries match your search or filter.'
+          rows.length === 0
+            ? 'No annotations yet. Click "Add Annotation" to create one.'
+            : 'No annotations match your search or filter.'
         }
-        emptyStateIllustration={<Globe size={40} strokeWidth={1.25} />}
+        emptyStateIllustration={<MessageSquare size={40} strokeWidth={1.25} />}
       />
 
-      {/* Modals */}
       {modalMode && (
-        <CountryModal
+        <AnnotationFormModal
           mode={modalMode}
-          country={selected}
+          annotation={selected}
           onSave={handleSave}
           onClose={closeModal}
           onError={(msg) => dispatch(addToast({ type: 'error', message: msg }))}
@@ -347,27 +333,21 @@ export default function CountryPage() {
         onClose={() => setDelete(null)}
         onConfirm={handleDelete}
         variant="danger"
-        title="Delete Country"
-        message={`Are you sure you want to delete '${deleteTarget?.countryName}'? This action cannot be undone.`}
+        title="Delete Annotation"
+        message={`Are you sure you want to delete '${deleteTarget?.annotation}'? This action cannot be undone.`}
         confirmLabel="Delete"
       />
 
-      {/* Import progress overlay */}
       {importing && (
-        <div className={styles.importBackdrop} role="dialog" aria-label="Importing countries">
+        <div className={styles.importBackdrop} role="dialog" aria-label="Importing annotations">
           <div className={styles.importDialog}>
-            <div className={styles.importIcon}>
-              <Upload size={18} />
-            </div>
-            <h3 className={styles.importTitle}>Importing countries…</h3>
+            <div className={styles.importIcon}><Upload size={18} /></div>
+            <h3 className={styles.importTitle}>Importing annotations…</h3>
             <p className={styles.importSub}>
               {importFileName ? `Uploading ${importFileName}` : 'Processing your file.'} Please don&apos;t close this window.
             </p>
             <div className={styles.progressTrack}>
-              <div
-                className={styles.progressFill}
-                style={{ width: `${Math.max(2, Math.min(100, importProgress))}%` }}
-              />
+              <div className={styles.progressFill} style={{ width: `${Math.max(2, Math.min(100, importProgress))}%` }} />
             </div>
             <div className={styles.progressRow}>
               <span>{importProgress < 100 ? 'Uploading' : 'Saving records'}</span>

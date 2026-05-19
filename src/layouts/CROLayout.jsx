@@ -53,6 +53,7 @@ const NAV_ITEMS = [
       { key: 'country',         label: 'Country',         path: '/cro/masters/country',         permission: 'masters.country.view'        },
       { key: 'locations',       label: 'Locations',       path: '/cro/masters/locations',       permission: 'masters.locations.view'      },
       { key: 'regions',         label: 'Regions',         path: '/cro/masters/regions'                                                   },
+      { key: 'annotations',     label: 'Annotations',     path: '/cro/masters/annotations',     permission: 'masters.annotations.view'    },
     ],
   },
   {

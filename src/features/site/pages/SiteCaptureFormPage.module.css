@@ -1,10 +1,41 @@
+/* Full-viewport shell — the route is registered outside SiteLayout so the
+   runner fills the entire screen, matching the form-builder Preview's
+   full-screen mode. */
 .page {
-  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  min-height: 100%;
+  height: 100vh;
+  width: 100%;
+  background: #f8fafc;
+  padding: 0;
+  margin: 0;
 }
+.page > * { flex: 0 0 auto; }
+.page > :last-child { flex: 1 1 auto; min-height: 0; }
+
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  height: 56px;
+}
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 7px;
+  background: var(--bg-card, #fff);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary, #475569);
+  cursor: pointer;
+}
+.backBtn:hover { background: #f1f5f9; }
 
 .back {
   display: inline-flex;

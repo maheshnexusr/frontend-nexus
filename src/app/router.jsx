@@ -119,6 +119,7 @@ const StudyPhasesPage    = lazy(() => import('@/features/cro/pages/masters/Study
 const CountryPage        = lazy(() => import('@/features/cro/pages/masters/CountryPage'));
 const LocationsPage      = lazy(() => import('@/features/cro/pages/masters/LocationsPage'));
 const RegionsPage        = lazy(() => import('@/features/cro/pages/masters/RegionsPage'));
+const AnnotationsPage    = lazy(() => import('@/features/cro/pages/masters/AnnotationsPage'));
 const CROActivityLogPage = lazy(() => import('@/features/cro/pages/activity-log/ActivityLogPage'));
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -299,7 +300,9 @@ export const router = createBrowserRouter([
           { path: 'capture',                                element: sp(SiteCapturePage) },
           { path: 'capture/subjects/new',                   element: sp(SiteSubjectFormPage) },
           { path: 'capture/subjects/:subjectId/edit',       element: sp(SiteSubjectFormPage) },
-          { path: 'capture/form',                           element: sp(SiteCaptureFormPage) },
+          // 'capture/form' is registered as a top-level standalone route
+          // (see below) so the runner fills the entire viewport, matching
+          // the form-builder Preview's full-screen experience.
           { path: 'queries',                 element: sp(SiteQueriesPage) },
           { path: 'verification',            element: sp(SiteFeaturePlaceholderPage) },
           { path: 'consent/config',          element: sp(SiteFeaturePlaceholderPage) },
@@ -341,6 +344,31 @@ export const router = createBrowserRouter([
           <ProtectedRoute>
             <Suspense fallback={<PageLoader />}>
               <StudyDesignPage />
+            </Suspense>
+          </ProtectedRoute>
+        ),
+      },
+
+      // ── Data Capture (sponsor + site, full-screen) ───────────────────────
+      // Both portals open the actual CRF form in a viewport-filling shell so
+      // the runner mirrors the CRO form-builder Preview's full-screen mode
+      // (no sidebar, no topbar). Exit returns to the workspace.
+      {
+        path: 'sponsor/:studyId/capture/form',
+        element: (
+          <ProtectedRoute>
+            <Suspense fallback={<PageLoader />}>
+              <CaptureFormPage />
+            </Suspense>
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'site/capture/form',
+        element: (
+          <ProtectedRoute>
+            <Suspense fallback={<PageLoader />}>
+              <SiteCaptureFormPage />
             </Suspense>
           </ProtectedRoute>
         ),
@@ -388,6 +416,7 @@ export const router = createBrowserRouter([
           { path: 'masters/country',         element: sp(CountryPage) },
           { path: 'masters/locations',       element: sp(LocationsPage) },
           { path: 'masters/regions',         element: sp(RegionsPage) },
+          { path: 'masters/annotations',     element: sp(AnnotationsPage) },
 
           // Form builder
           { path: 'forms',           element: sp(FormsListPage) },
@@ -432,7 +461,9 @@ export const router = createBrowserRouter([
 
           { path: 'dashboard',      element: sp(SponsorDashboardPage) },
           { path: 'capture',        element: sp(CapturePage) },
-          { path: 'capture/form',   element: sp(CaptureFormPage) },
+          // 'capture/form' is registered as a top-level standalone route
+          // (see below) so the runner fills the entire viewport, matching
+          // the form-builder Preview's full-screen experience.
           { path: 'consent/config', element: sp(ConsentConfigPage) },
           { path: 'consent/review', element: sp(ConsentReviewPage) },
           { path: 'queries',        element: sp(QueriesPage) },

@@ -49,11 +49,57 @@
 }
 .btnRefresh:hover { border-color: var(--color-primary, #2563eb); color: var(--color-primary, #2563eb); }
 
-/* ── Stats bar (grid wrapper — card chrome comes from <Card>) ────────────── */
+/* ── Stats bar — plain div cards, same pattern as VerificationPage ──────── */
 .statsBar {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 16px;
+}
+
+.statCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  background: var(--bg-card, #fff);
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+}
+
+.statText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.statValue {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.statLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary, #64748b);
+}
+
+.statBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  font-size: 16px;
+  font-weight: 800;
+  flex-shrink: 0;
 }
 
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */
@@ -223,6 +269,25 @@
 .queryText { color: var(--text-secondary, #374151); }
 .daysText  { font-weight: 600; }
 .overdueText { font-weight: 700; color: #dc2626; }
+
+/* Stacked two-line cell (Site ID/Name, Subject ID/Initials, Block/Page,
+   Field/Description, Status/Priority — all use this pattern). */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.25;
+  min-width: 0;
+}
+.stackPrimary {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+}
+.stackSecondary {
+  font-size: 11px;
+  color: var(--text-secondary, #64748b);
+}
 
 .priorityBadge {
   display: inline-flex;

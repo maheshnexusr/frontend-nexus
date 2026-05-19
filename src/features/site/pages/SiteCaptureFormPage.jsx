@@ -144,9 +144,12 @@ export default function SiteCaptureFormPage() {
   // ── Form fill ──────────────────────────────────────────────────────────
   return (
     <div className={s.page}>
-      <button className={s.backBtn} onClick={() => navigate(-1)}>
-        <ArrowLeft size={14} /> Back
-      </button>
+      <div className={s.topBar}>
+        <button className={s.backBtn} onClick={() => navigate(-1)} style={{ marginBottom: 0 }}>
+          <ArrowLeft size={14} /> Back
+        </button>
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{formTitle || 'Data Capture'}</span>
+      </div>
       <StudyFormRunner
         blocks={blocks}
         formTitle={formTitle}

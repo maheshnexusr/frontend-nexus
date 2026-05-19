@@ -1,7 +1,27 @@
+/* Full-viewport shell — the route is registered outside SponsorLayout so
+   the runner fills the entire screen, matching the form-builder Preview's
+   full-screen mode. */
 .page {
-  padding: 16px 20px 24px;
-  max-width: none;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  background: #f8fafc;
+  padding: 0;
   margin: 0;
+}
+.page > * { flex: 0 0 auto; }
+/* The StudyFormRunner is the last child and should take the remaining height. */
+.page > :last-child { flex: 1 1 auto; min-height: 0; }
+
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  height: 56px;
 }
 
 .center {

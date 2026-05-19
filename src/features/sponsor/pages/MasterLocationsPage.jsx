@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { Plus, Pencil, Trash2, MapPin, Filter, Upload, Download } from 'lucide-react';
+import { Plus, Pencil, Trash2, MapPin, Filter, Upload, Download, FileDown } from 'lucide-react';
 import { sponsorLocationsClient } from '@/features/sponsor/api/sponsorLocationsClient';
 import { sponsorCountriesClient } from '@/features/sponsor/api/sponsorCountriesClient';
 import { useReadOnlyView }        from '@/features/workspace/hooks/useReadOnlyView';
@@ -13,20 +13,51 @@ import SearchableDropdown         from '@/components/form/SearchableDropdown';
 import SponsorLocationModal       from '@/features/sponsor/components/SponsorLocationModal';
 import styles from './MasterLocationsPage.module.css';
 
-// ── CSV export helper ─────────────────────────────────────────────────────────
+// ── CSV helpers ───────────────────────────────────────────────────────────────
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
 function exportCSVLocal(data) {
-  const headers = ['Country', 'State', 'District', 'City', 'Postal Code', 'Status'];
+  const headers = ['Country Name', 'State/Province', 'District/County', 'City', 'Postal Code', 'Status'];
   const esc     = (v) => `"${(v ?? '').toString().replace(/"/g, '""')}"`;
   const rows    = data.map((r) => [
     esc(r.countryName), esc(r.state), esc(r.district),
     esc(r.city), esc(r.postalCode), esc(r.status),
   ]);
   const csv  = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url; a.download = `Locations_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }),
+               `Locations_${new Date().toISOString().slice(0, 10)}.csv`);
+}
+
+/**
+ * Sample template: Locations.csv (Sheet: Locations when saved as XLSX).
+ * Columns: Country Name, State/Province, District/County, City, Postal Code, Status.
+ *
+ * Country Name is seeded with countries already present in the study's
+ * Countries master so the sample imports cleanly; otherwise the backend's
+ * "country must exist" rule would skip every row.
+ */
+function downloadSampleCSV(countryNames = []) {
+  const active = countryNames.filter(Boolean);
+  const examples = active.length > 0
+    ? [
+        [active[0],              'State / Province name', 'District / County', 'City name 1', '560001',    'Active'  ],
+        [active[1] ?? active[0], 'State / Province name', '',                  'City name 2', '94103',     'Active'  ],
+        [active[2] ?? active[0], 'State / Province name', '',                  'City name 3', '01000-000', 'Inactive'],
+      ]
+    : [
+        ['<add country from Countries master>', 'State / Province', 'District / County', 'City', 'Postal Code', 'Active'],
+      ];
+  const sample = [
+    ['Country Name', 'State/Province', 'District/County', 'City', 'Postal Code', 'Status'],
+    ...examples,
+  ];
+  const csv = sample.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), 'Locations.csv');
 }
 
 export default function MasterLocationsPage() {
@@ -44,7 +75,9 @@ export default function MasterLocationsPage() {
   const [modalMode,    setModalMode]  = useState(null);
   const [selected,     setSelected]   = useState(null);
   const [deleteTarget, setDelete]     = useState(null);
-  const [importing,    setImporting]  = useState(false);
+  const [importing,    setImporting]      = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importFileName, setImportFileName] = useState('');
 
   const [page,     setPage]     = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -159,25 +192,59 @@ export default function MasterLocationsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';
+
+    const name   = file.name.toLowerCase();
+    const isCsv  = name.endsWith('.csv')  || file.type === 'text/csv';
+    const isXlsx = name.endsWith('.xlsx') || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (!isCsv && !isXlsx) {
+      dispatch(addToast({
+        type: 'error',
+        message: 'Unsupported file. Please upload a CSV (Locations.csv) or Excel (Locations.xlsx) file.',
+      }));
+      return;
+    }
+
     setImporting(true);
+    setImportFileName(file.name);
+    setImportProgress(0);
     try {
-      const { imported, skipped } = await sponsorLocationsClient.bulkImport(studyId, file);
+      const { imported = 0, skipped = 0 } = await sponsorLocationsClient.bulkImport(studyId, file, {
+        onProgress: setImportProgress,
+      });
+      setImportProgress(100);
       dispatch(addToast({
         type:     imported > 0 ? 'success' : 'warning',
-        message:  `${imported} location${imported !== 1 ? 's' : ''} imported successfully.${skipped > 0 ? ` ${skipped} record${skipped !== 1 ? 's' : ''} skipped due to errors.` : ''}`,
+        message:  `${imported} location${imported !== 1 ? 's' : ''} imported successfully.${skipped > 0 ? ` ${skipped} record${skipped !== 1 ? 's' : ''} skipped (duplicate, unknown country, or missing fields).` : ''}`,
         duration: 6000,
       }));
       load();
     } catch {
       dispatch(addToast({ type: 'error', message: 'Failed to import locations. Please check file format and try again.' }));
     } finally {
-      setImporting(false);
+      setTimeout(() => {
+        setImporting(false);
+        setImportProgress(0);
+        setImportFileName('');
+      }, 400);
+    }
+  };
+
+  const handleSampleDownload = () => {
+    try {
+      const names = countryOpts.map((o) => o.label);
+      downloadSampleCSV(names);
+      const msg = names.length === 0
+        ? 'Sample template downloaded. Add countries to the Countries master before importing — rows with unknown countries are skipped.'
+        : 'Sample template downloaded (Locations.csv).';
+      dispatch(addToast({ type: 'info', message: msg, duration: 6000 }));
+    } catch {
+      dispatch(addToast({ type: 'error', message: 'Failed to download sample template.' }));
     }
   };
 
   // ── Columns ─────────────────────────────────────────────────────────────────
   const columns = useMemo(() => [
-    { key: 'countryName', label: 'Country',     sortable: true, width: '140px' },
+    { key: 'countryName', label: 'Country Name', sortable: true, width: '160px' },
     { key: 'state',       label: 'State',       sortable: true },
     {
       key:    'district',
@@ -234,15 +301,29 @@ export default function MasterLocationsPage() {
         <div className={styles.headerActions}>
           <button
             className={styles.btnSecondary}
+            onClick={handleSampleDownload}
+            title="Download sample template (Locations.csv)"
+          >
+            <FileDown size={14} />
+            Sample Template
+          </button>
+          <button
+            className={styles.btnSecondary}
             onClick={() => !ro.isReadOnly && fileRef.current?.click()}
             disabled={importing || ro.isReadOnly}
             aria-disabled={importing || ro.isReadOnly}
-            title={ro.isReadOnly ? ro.readOnlyMessage : 'Import from CSV'}
+            title={ro.isReadOnly ? ro.readOnlyMessage : 'Import from CSV or Excel'}
           >
             <Upload size={14} />
-            {importing ? 'Importing…' : 'Import CSV'}
+            {importing ? 'Importing…' : 'Import'}
           </button>
-          <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFileChange} />
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
+          />
           <button className={styles.btnPrimary} onClick={openCreate} {...ro.disabledProps('Add location')}>
             <Plus size={15} />
             Add Location
@@ -324,6 +405,30 @@ export default function MasterLocationsPage() {
         message="Are you sure you want to delete this location? This action cannot be undone."
         confirmLabel="Delete"
       />
+
+      {importing && (
+        <div className={styles.importBackdrop} role="dialog" aria-label="Importing locations">
+          <div className={styles.importDialog}>
+            <div className={styles.importIcon}>
+              <Upload size={18} />
+            </div>
+            <h3 className={styles.importTitle}>Importing locations…</h3>
+            <p className={styles.importSub}>
+              {importFileName ? `Uploading ${importFileName}` : 'Processing your file.'} Please don&apos;t close this window.
+            </p>
+            <div className={styles.progressTrack}>
+              <div
+                className={styles.progressFill}
+                style={{ width: `${Math.max(2, Math.min(100, importProgress))}%` }}
+              />
+            </div>
+            <div className={styles.progressRow}>
+              <span>{importProgress < 100 ? 'Uploading' : 'Saving records'}</span>
+              <span className={styles.progressPct}>{importProgress}%</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

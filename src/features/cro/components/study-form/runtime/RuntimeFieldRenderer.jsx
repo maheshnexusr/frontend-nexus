@@ -32,6 +32,8 @@ import {
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import FieldToolbar         from './FieldToolbar';
 import CollaborationBadges  from './CollaborationBadges';
+import CollaborationChips   from './CollaborationChips';
+import { useFieldCapabilities } from './useFieldCapabilities';
 import AnnotationModal      from './AnnotationModal';
 import NotesPopover         from './NotesPopover';
 import QueryDrawer          from './QueryDrawer';
@@ -50,6 +52,7 @@ export default function RuntimeFieldRenderer({
 }) {
   const dispatch = useDispatch();
   const user     = useSelector(selectCurrentUser);
+  const caps     = useFieldCapabilities();
   const me       = {
     by:     user?.id ?? 'unknown',
     byName: user?.fullName ?? user?.email ?? 'You',
@@ -152,10 +155,18 @@ export default function RuntimeFieldRenderer({
           {field.helpText && <p className={s.help}>{field.helpText}</p>}
         </div>
 
-        <FieldToolbar
-          enabled={field.collaboration}
-          onAction={openWith}
-        />
+        <div className={s.fieldHeadActions}>
+          <CollaborationChips
+            collaboration={field.collaboration}
+            capabilities={caps}
+            onOpen={openWith}
+          />
+          <FieldToolbar
+            enabled={field.collaboration}
+            capabilities={caps}
+            onAction={openWith}
+          />
+        </div>
       </div>
 
       {/* Field input — render-prop pattern keeps the wrapper agnostic of types. */}
