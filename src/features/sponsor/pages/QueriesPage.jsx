@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   Eye, MessageSquare, CheckCircle, AlertTriangle,
   RotateCcw, Download, Filter, Search, X as XIcon,
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { sponsorQueryClient }   from '@/features/sponsor/api/sponsorQueryClient';
 import { addToast }             from '@/app/notificationSlice';
+import { selectCurrentUser }    from '@/features/auth/authSlice';
 import SearchableDropdown       from '@/components/form/SearchableDropdown';
 import QueryDetailsModal        from '@/features/sponsor/components/query/QueryDetailsModal';
 import RespondModal             from '@/features/sponsor/components/query/RespondModal';
@@ -72,6 +73,9 @@ export default function QueriesPage() {
   const { studyId } = useParams();
   const dispatch    = useDispatch();
   const ro          = useReadOnlyView();
+  const currentUser = useSelector(selectCurrentUser);
+  // Phase 2 — "My Queries" toggle (filters to queries assigned to me).
+  const [onlyMine, setOnlyMine] = useState(false);
 
   // ── Data ─────────────────────────────────────────────────────────────────
   const [queries,   setQueries]   = useState([]);
@@ -101,7 +105,10 @@ export default function QueriesPage() {
   const [closeTarget,    setClose]     = useState(null);
   const [reopenTarget,   setReopen]    = useState(null);
   const [escalateTarget, setEscalate]  = useState(null);
-  const [bulkCloseOpen,  setBulkClose] = useState(false);
+  const [bulkCloseOpen,    setBulkClose]    = useState(false);
+  // Phase 2 — additional bulk actions
+  const [bulkReassignOpen, setBulkReassign] = useState(false);
+  const [bulkEscalateOpen, setBulkEscalate] = useState(false);
   const [exporting,      setExporting] = useState(false);
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -129,11 +136,21 @@ export default function QueriesPage() {
   }, [studyId, statusFilter, priorityFilter, siteFilter, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); setSelected(new Set()); }, [statusFilter, priorityFilter, siteFilter, query, dateFrom, dateTo]);
+  useEffect(() => { setPage(1); setSelected(new Set()); }, [statusFilter, priorityFilter, siteFilter, query, dateFrom, dateTo, onlyMine]);
 
   // ── Local filter & sort ───────────────────────────────────────────────────
+  const meAssigneeKeys = useMemo(() => new Set(
+    [currentUser?.id, currentUser?.email, currentUser?.username, currentUser?.fullName]
+      .filter(Boolean)
+      .map((s) => String(s).toLowerCase()),
+  ), [currentUser]);
+
   const filtered = useMemo(() => {
-    let rows = queries.filter((q) => {
+    let rows = queries;
+    if (onlyMine) {
+      rows = rows.filter((q) => meAssigneeKeys.has(String(q.assignedTo ?? '').toLowerCase()));
+    }
+    rows = rows.filter((q) => {
       if (!query) return true;
       const s = query.toLowerCase();
       return [q.id, q.queryText, q.fieldName, q.subjectId, q.formName, q.raisedBy]
@@ -154,7 +171,7 @@ export default function QueriesPage() {
       });
     }
     return rows;
-  }, [queries, query, sortKey, sortDir]);
+  }, [queries, query, sortKey, sortDir, onlyMine, meAssigneeKeys]);
 
   const pageData   = useMemo(() => filtered.slice((page - 1) * pageSize, page * pageSize), [filtered, page, pageSize]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -256,6 +273,49 @@ export default function QueriesPage() {
     }
   };
 
+  // Phase 2 — Bulk Reassign / Bulk Escalate.
+  // Each loops over selected IDs and hits the per-query endpoint (no
+  // dedicated bulk API yet — falls back gracefully and is replaced with a
+  // single batched endpoint when the backend ships).
+  const handleBulkReassign = async (data) => {
+    const ids = [...selected];
+    let ok = 0;
+    for (const id of ids) {
+      try {
+        await sponsorQueryClient.reassign?.(studyId, id, data)
+          ?? await sponsorQueryClient.respond(studyId, id, { responseText: '', assignedTo: data.assignedTo });
+        ok += 1;
+      } catch { /* keep going */ }
+    }
+    if (ok > 0) {
+      dispatch(addToast({ type: 'success', message: `${ok} of ${ids.length} queries reassigned to ${data.assignedTo}.` }));
+      setBulkReassign(false);
+      setSelected(new Set());
+      load();
+    } else {
+      dispatch(addToast({ type: 'error', message: 'Failed to reassign queries.' }));
+    }
+  };
+
+  const handleBulkEscalate = async (data) => {
+    const ids = [...selected];
+    let ok = 0;
+    for (const id of ids) {
+      try {
+        await sponsorQueryClient.escalate(studyId, id, data);
+        ok += 1;
+      } catch { /* keep going */ }
+    }
+    if (ok > 0) {
+      dispatch(addToast({ type: 'success', message: `${ok} of ${ids.length} queries escalated.` }));
+      setBulkEscalate(false);
+      setSelected(new Set());
+      load();
+    } else {
+      dispatch(addToast({ type: 'error', message: 'Failed to escalate queries.' }));
+    }
+  };
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -332,6 +392,27 @@ export default function QueriesPage() {
       {/* Toolbar */}
       <div className={styles.toolbar}>
         <div className={styles.toolbarLeft}>
+          {/* All Queries / My Queries toggle (Phase 2). */}
+          <div className={styles.filterWrap}>
+            <button
+              type="button"
+              className={`${styles.filterBtn} ${!onlyMine ? styles.filterBtnActive : ''}`}
+              onClick={() => setOnlyMine(false)}
+              title="Show every query in this study"
+            >
+              All Queries
+            </button>
+            <button
+              type="button"
+              className={`${styles.filterBtn} ${onlyMine ? styles.filterBtnActive : ''}`}
+              onClick={() => setOnlyMine(true)}
+              title="Show only queries assigned to me"
+              disabled={meAssigneeKeys.size === 0}
+            >
+              My Queries
+            </button>
+          </div>
+
           {/* Status pills */}
           <div className={styles.filterWrap}>
             <Filter size={13} className={styles.filterIcon} />
@@ -407,6 +488,22 @@ export default function QueriesPage() {
             {...ro.disabledProps('Bulk close queries')}
           >
             <CheckCircle size={13} /> Bulk Close
+          </button>
+          <button
+            className={styles.bulkExport}
+            onClick={() => setBulkReassign(true)}
+            {...ro.disabledProps('Bulk reassign queries')}
+            title="Reassign selected queries to a different user"
+          >
+            <MessageSquare size={13} /> Bulk Reassign
+          </button>
+          <button
+            className={styles.bulkExport}
+            onClick={() => setBulkEscalate(true)}
+            {...ro.disabledProps('Bulk escalate queries')}
+            title="Escalate selected queries"
+          >
+            <AlertTriangle size={13} /> Bulk Escalate
           </button>
           <button className={styles.bulkExport} onClick={handleExport}>
             <Download size={13} /> Export Selected
@@ -670,6 +767,83 @@ export default function QueriesPage() {
           onClose={() => setBulkClose(false)}
         />
       )}
+
+      {bulkReassignOpen && (
+        <BulkSimplePrompt
+          title={`Reassign ${selectedCount} quer${selectedCount !== 1 ? 'ies' : 'y'}`}
+          fieldLabel="Assign to (email or username) *"
+          placeholder="user@org.com"
+          submitLabel="Reassign"
+          onSubmit={(value) => handleBulkReassign({ assignedTo: value })}
+          onClose={() => setBulkReassign(false)}
+        />
+      )}
+
+      {bulkEscalateOpen && (
+        <BulkSimplePrompt
+          title={`Escalate ${selectedCount} quer${selectedCount !== 1 ? 'ies' : 'y'}`}
+          fieldLabel="Escalation reason *"
+          placeholder="Reason for escalation…"
+          submitLabel="Escalate"
+          isTextarea
+          onSubmit={(value) => handleBulkEscalate({ escalationReason: value })}
+          onClose={() => setBulkEscalate(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Tiny inline prompt used by Bulk Reassign / Bulk Escalate ──────────── */
+function BulkSimplePrompt({ title, fieldLabel, placeholder, submitLabel, isTextarea, onSubmit, onClose }) {
+  const [value, setValue] = useState('');
+  const Input = isTextarea ? 'textarea' : 'input';
+  return (
+    <div
+      role="dialog"
+      aria-label={title}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 1100, padding: 16,
+      }}
+    >
+      <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 420, boxShadow: '0 18px 40px rgba(15,23,42,0.25)' }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', fontWeight: 700, color: '#0f172a' }}>{title}</div>
+        <div style={{ padding: '16px 18px' }}>
+          <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+            {fieldLabel}
+          </label>
+          <Input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={placeholder}
+            rows={isTextarea ? 3 : undefined}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: 10, fontSize: 13, color: '#0f172a',
+              border: '1px solid #e2e8f0', borderRadius: 8, outline: 'none',
+              resize: isTextarea ? 'vertical' : 'none',
+            }}
+            autoFocus
+          />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 18px', borderTop: '1px solid #f1f5f9', background: '#fafbff', borderRadius: '0 0 12px 12px' }}>
+          <button type="button" onClick={onClose} style={{ padding: '6px 14px', background: '#fff', color: '#475569', border: '1px solid #cbd5e1', borderRadius: 7, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+          <button
+            type="button"
+            onClick={() => onSubmit(value.trim())}
+            disabled={!value.trim()}
+            style={{
+              padding: '6px 14px', background: '#2563eb', color: '#fff',
+              border: 'none', borderRadius: 7, fontSize: 12.5, fontWeight: 600,
+              cursor: value.trim() ? 'pointer' : 'not-allowed', opacity: value.trim() ? 1 : 0.55,
+            }}
+          >
+            {submitLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

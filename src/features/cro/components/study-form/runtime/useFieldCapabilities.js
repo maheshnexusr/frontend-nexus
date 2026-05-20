@@ -26,9 +26,9 @@
 
 import { useMemo } from 'react';
 import { useSelector } from 'react-redux';
-import { selectPermissions } from '@/features/auth/authSlice';
 import { selectActiveStudy } from '@/features/workspace/store/workspaceSlice';
 import { resolveStudyConfig } from '@/features/cro/utils/studyConfigGating';
+import { usePermissions } from '@/features/auth/usePermissions';
 
 const ALLOW_ALL = Object.freeze({
   // Stage 1 + Stage 2 — whether the feature is visible on a field at all.
@@ -51,53 +51,42 @@ const ALLOW_ALL = Object.freeze({
   _hasPermissions: false,
 });
 
-/**
- * Look up `perms[leaf][action]`. Treats:
- *   - permissions === null/undefined → fail open (true)
- *   - permissions === '*'            → super-admin (true)
- *   - permissions is plain object    → require leaf and action to be truthy
- */
-function canPerform(permissions, leaf, action) {
-  if (permissions == null) return true;            // not yet loaded → fail open
-  if (permissions === '*') return true;            // super-admin
-  if (typeof permissions !== 'object') return true;
-  const node = permissions[leaf];
-  if (!node) return false;
-  if (node === '*' || node === true) return true;  // role grants all actions
-  return !!node[action];
-}
-
 export function useFieldCapabilities() {
-  const permissions = useSelector(selectPermissions);
-  const study       = useSelector(selectActiveStudy);
+  // Read the spec's flat camelCase keys from the central hook. The previous
+  // `{leaf}.{action}` lookups still happen inside usePermissions, so no
+  // contract change for callers.
+  const p     = usePermissions();
+  const study = useSelector(selectActiveStudy);
 
   return useMemo(() => {
     const hasWorkspace = !!study?.id;
     if (!hasWorkspace) return ALLOW_ALL;
 
     const config = resolveStudyConfig(study?.config);
-    const can = (leaf, action) => canPerform(permissions, leaf, action);
 
     return {
       // ─ Stage 1 ∧ Stage 2: feature ON for the study AND user can view it ─
-      canSeeQueries:      config.queryManager        && can('query_manager',     'view'),
-      canSeeVerification: config.verificationManager && can('data_verification', 'view'),
-      canSeeAnnotations:  can('data_capture', 'view'),  // master is global; gate on form access
-      canSeeNotes:        can('data_capture', 'view'),
-      canSeeAttachments:  can('data_capture', 'view'),
-      canSeeAudit:        can('data_capture', 'view'),
-      canSeeClear:        can('data_capture', 'edit'),
+      canSeeQueries:      config.queryManager        && p.canAccessQueryManager,
+      canSeeVerification: config.verificationManager && p.canAccessVerificationManager,
+      canSeeAnnotations:  p.canViewForm,
+      canSeeNotes:        p.canViewForm,
+      canSeeAttachments:  p.canViewForm,
+      canSeeAudit:        p.canViewAuditTrail,
+      canSeeClear:        p.canClearField,
 
       // ─ Per-action perms — used to gate buttons inside popovers ─
-      canCreateQuery:     can('query_manager',     'create'),
-      canEditQuery:       can('query_manager',     'edit'),     // resolve / answer
-      canDeleteQuery:     can('query_manager',     'delete'),
-      canVerify:          can('data_verification', 'create') || can('data_verification', 'edit'),
-      canEditField:       can('data_capture',      'edit'),     // value change / clear
-      canSubmitForm:      can('data_capture',      'create') || can('data_capture', 'edit'),
+      canCreateQuery:     p.canRaiseQuery,
+      canEditQuery:       p.canRespondQuery || p.canResolveQuery || p.canReopenQuery,
+      canDeleteQuery:     p.canDeleteQuery,
+      canVerify:          p.canVerifyField,
+      canEditField:       p.canEditForm,
+      canSubmitForm:      p.canSubmitForm,
+
+      // ─ Phase 1/3 form-status gates (re-exposed for useFormGate) ─
+      canApproveForm:     p.canApproveForm,
 
       _hasWorkspace:   true,
-      _hasPermissions: permissions != null,
+      _hasPermissions: p.raw != null,
     };
-  }, [permissions, study]);
+  }, [p, study]);
 }

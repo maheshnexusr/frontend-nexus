@@ -82,6 +82,23 @@ export function resolveRolePermissions(studyId) {
     const list = Array.isArray(croUser?.assignedStudies) ? croUser.assignedStudies : [];
     const match = list.find((s) => s.studyId === studyId);
     if (match?.sponsorPermissions) return match.sponsorPermissions;
+
+    // Diagnostic: this is the single most common cause of "menu doesn't
+    // reflect my permissions" — the URL studyId doesn't match any of the
+    // user's assignedStudies, so the layout falls back to "unrestricted"
+    // (canViewLeaf returns true for everything → full default menu).
+    if (typeof window !== 'undefined' && window.__AUTH_DEBUG !== false) {
+      console.warn(
+        '[perms] useSiteRolePermissions falling back to unrestricted (default menu) — no assignedStudies match.',
+        {
+          urlStudyId:                 studyId,
+          authUserAssignedStudyIds:   list.map((s) => s.studyId),
+          hint: list.length === 0
+            ? 'authUser.assignedStudies is EMPTY — likely a cached pre-fix session. Sign out + sign in to refresh.'
+            : 'URL studyId is not in the list. Check that the route uses the DB id (e.g. "2yqpkim154kxjfl1"), not the protocol number.',
+        },
+      );
+    }
   }
 
   // Direct sponsor users + everyone else → unrestricted.

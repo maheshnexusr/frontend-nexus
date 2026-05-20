@@ -30,22 +30,9 @@ const ALL_CONFIGS = [
     scopes:  ['EDC', 'Survey', 'ePRO'],
   },
   {
-    key:     'dataManager',
-    label:   'Enable Data Manager',
-    info:    'Enables data validation and cleaning tools.',
-    scopes:  ['EDC'],                     // NOT shown for Survey/ePRO
-    edcOnly: true,
-  },
-  {
     key:     'verificationManager',
     label:   'Enable Verification Manager',
     info:    'Enables source data verification and approval workflows for entered data.',
-    scopes:  ['EDC', 'Survey', 'ePRO'],
-  },
-  {
-    key:     'navigationBar',
-    label:   'Enable Navigation Bar',
-    info:    'Displays study navigation menu for users.',
     scopes:  ['EDC', 'Survey', 'ePRO'],
   },
 ];

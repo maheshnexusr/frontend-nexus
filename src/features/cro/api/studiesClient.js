@@ -15,6 +15,23 @@ function deepToCamel(value) {
   );
 } 
 
+/**
+ * pickBool — first boolean across multiple sources, preserving `undefined`
+ * when none exists. Used for Step 3 module toggles where a *missing* flag
+ * must not be confused with an explicit `false`.
+ *
+ * Usage: pickBool(cfg, raw, 'enable_query_manager', 'enableQueryManager')
+ *   1. cfg[snake]   2. cfg[camel]   3. raw[snake]   4. raw[camel]
+ */
+function pickBool(cfg, raw, snake, camel) {
+  for (const src of [cfg, raw]) {
+    if (!src) continue;
+    if (typeof src[snake] === 'boolean') return src[snake];
+    if (typeof src[camel] === 'boolean') return src[camel];
+  }
+  return undefined;
+}
+
 /* ── region_covered → { type, id } ──────────────────────────────────────────
  * Backend stores coverage as "REGION:<id>" (EDC) or "COUNTRY:<id>" (Survey/ePRO).
  */
@@ -65,12 +82,26 @@ function normalize(raw) {
     lastCompletedStep:   raw.last_completed_step ?? raw.lastCompletedStep ?? 0,
     currentEnvironment:  raw.current_environment ?? raw.currentEnvironment ?? '',
     tenantDbName:        raw.tenant_db_name     ?? raw.tenantDbName ?? '',
-    // Flat module toggles from configuration sub-object
-    consentManager:      Boolean(cfg.enable_consent_manager      ?? cfg.enableConsentManager),
-    queryManager:        Boolean(cfg.enable_query_manager        ?? cfg.enableQueryManager),
-    dataManager:         Boolean(cfg.enable_data_manager         ?? cfg.enableDataManager),
-    verificationManager: Boolean(cfg.enable_verification_manager ?? cfg.enableVerificationManager),
-    navigationBar:       Boolean(cfg.enable_navigation_bar       ?? cfg.enableNavigationBar),
+    // Flat module toggles from Step 3.
+    //
+    // CAUTION: do NOT eagerly coerce to a boolean with `Boolean(value)` —
+    // that turns a *missing* field (undefined / null) into `false`, which
+    // the downstream gating (studyConfigGating.readConfigFlag) then reads
+    // as an explicit "disabled" instead of falling through to its default
+    // ("missing → enabled"). The bug surfaces in the team-member
+    // permissions matrix as enabled-in-Step-3 modules still being hidden.
+    //
+    // We accept the flag from any of these locations (in order):
+    //   1. `raw.configuration.enable_*`            (snake_case)
+    //   2. `raw.configuration.enable*Manager`      (camelCase)
+    //   3. `raw.enable_*` / `raw.enable*Manager`   (top-level on `raw`)
+    // and only normalise to a real boolean when one of those is itself a
+    // boolean. Otherwise we leave it `undefined`.
+    consentManager:      pickBool(cfg, raw, 'enable_consent_manager',      'enableConsentManager'),
+    queryManager:        pickBool(cfg, raw, 'enable_query_manager',        'enableQueryManager'),
+    dataManager:         pickBool(cfg, raw, 'enable_data_manager',         'enableDataManager'),
+    verificationManager: pickBool(cfg, raw, 'enable_verification_manager', 'enableVerificationManager'),
+    navigationBar:       pickBool(cfg, raw, 'enable_navigation_bar',       'enableNavigationBar'),
     configuration:       raw.configuration      ?? null,
     formId:              raw.form_definition?.form_id ?? raw.formDefinition?.formId ?? null,
     formDefinition:      normalizeFormDefinition(raw.form_definition ?? raw.formDefinition),

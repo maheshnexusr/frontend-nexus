@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
+import { selectCurrentUser } from '@/features/auth/authSlice';
 import {
   Eye, MessageSquare, Download, Filter, Search, X as XIcon,
   RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown,
@@ -71,6 +72,13 @@ export default function SiteQueriesPage() {
   const [query,          setQuery]          = useState('');
   const [dateFrom,       setDateFrom]       = useState('');
   const [dateTo,         setDateTo]         = useState('');
+  const [onlyMine,       setOnlyMine]       = useState(false);
+  const currentUser                         = useSelector(selectCurrentUser);
+  const meAssigneeKeys                      = useMemo(() => new Set(
+    [currentUser?.id, currentUser?.email, currentUser?.username, currentUser?.fullName]
+      .filter(Boolean)
+      .map((v) => String(v).toLowerCase()),
+  ), [currentUser]);
 
   // ── Pagination & sort ─────────────────────────────────────────────────────
   const [page,     setPage]     = useState(1);
@@ -94,11 +102,15 @@ export default function SiteQueriesPage() {
   }, [statusFilter, priorityFilter, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [statusFilter, priorityFilter, query, dateFrom, dateTo]);
+  useEffect(() => { setPage(1); }, [statusFilter, priorityFilter, query, dateFrom, dateTo, onlyMine]);
 
   // ── Local filter & sort ───────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    let rows = queries.filter((q) => {
+    let rows = queries;
+    if (onlyMine) {
+      rows = rows.filter((q) => meAssigneeKeys.has(String(q.assignedTo ?? '').toLowerCase()));
+    }
+    rows = rows.filter((q) => {
       if (!query) return true;
       const s = query.toLowerCase();
       return [q.id, q.queryText, q.fieldName, q.subjectId, q.formName, q.raisedBy]
@@ -119,7 +131,7 @@ export default function SiteQueriesPage() {
       });
     }
     return rows;
-  }, [queries, query, sortKey, sortDir]);
+  }, [queries, query, sortKey, sortDir, onlyMine, meAssigneeKeys]);
 
   const pageData   = useMemo(() => filtered.slice((page - 1) * pageSize, page * pageSize), [filtered, page, pageSize]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -214,6 +226,27 @@ export default function SiteQueriesPage() {
       {/* Toolbar */}
       <div className={styles.toolbar}>
         <div className={styles.toolbarLeft}>
+          {/* All Queries / My Queries toggle (Phase 2). */}
+          <div className={styles.filterWrap}>
+            <button
+              type="button"
+              className={`${styles.filterBtn} ${!onlyMine ? styles.filterBtnActive : ''}`}
+              onClick={() => setOnlyMine(false)}
+              title="Show every query for this site"
+            >
+              All Queries
+            </button>
+            <button
+              type="button"
+              className={`${styles.filterBtn} ${onlyMine ? styles.filterBtnActive : ''}`}
+              onClick={() => setOnlyMine(true)}
+              title="Show only queries assigned to me"
+              disabled={meAssigneeKeys.size === 0}
+            >
+              My Queries
+            </button>
+          </div>
+
           <div className={styles.filterWrap}>
             <Filter size={13} className={styles.filterIcon} />
             {STATUS_OPTIONS.map((s) => (

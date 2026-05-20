@@ -4,6 +4,36 @@ import { sponsorAuthService, sponsorTokenStore } from '@/services/sponsorAuthSer
 import { profileService }     from '@/services/profileService';
 import { setSiteSession }     from '@/features/site/authStore';
 import { PERMISSION_GROUPS }  from '@/features/cro/constants/permissionsSchema';
+import axiosClient            from '@/api/axiosClient';
+
+// Debug helper — `window.authDebug()` from the DevTools console dumps the
+// auth state the app is currently operating on. Used to diagnose menu /
+// permissions mismatches without making the user remember localStorage keys.
+if (typeof window !== 'undefined') {
+  window.authDebug = function authDebug() {
+    const parse = (k) => {
+      try { return JSON.parse(localStorage.getItem(k) || 'null'); }
+      catch { return localStorage.getItem(k); }
+    };
+    const out = {
+      path:            window.location.pathname,
+      accessToken:     localStorage.getItem('accessToken') ? '(present)' : '(missing)',
+      authPermissions: parse('authPermissions'),
+      authPermissionsTree: parse('authPermissionsTree'),
+      authUser:        parse('authUser'),
+    };
+    // Group + table so it's readable in the console
+    console.group('%c[authDebug]', 'color:#7c3aed;font-weight:bold');
+    console.log('path:                ', out.path);
+    console.log('accessToken:         ', out.accessToken);
+    console.log('authPermissions:     ', out.authPermissions);
+    console.log('authPermissionsTree: ', out.authPermissionsTree);
+    console.log('authUser:            ', out.authUser);
+    console.log('assignedStudies:     ', out.authUser?.assignedStudies);
+    console.groupEnd();
+    return out;
+  };
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // State shape
@@ -47,11 +77,16 @@ const _storedPerms = (() => {
   try { return JSON.parse(localStorage.getItem('authPermissions')) ?? []; } catch { return []; }
 })();
 
+const _storedPermTree = (() => {
+  try { return JSON.parse(localStorage.getItem('authPermissionsTree')) ?? null; } catch { return null; }
+})();
+
 const initialState = {
   user:            _storedUser,
   accessToken:     localStorage.getItem('accessToken')  || null,
   refreshToken:    localStorage.getItem('refreshToken') || null,
-  permissions:     _storedPerms,
+  permissions:     _storedPerms,        // flat dot-notation array — CRO sidebar
+  permissionsTree: _storedPermTree,     // raw backend tree — usePermissions / runtime fields
   isAuthenticated: Boolean(_storedUser && localStorage.getItem('accessToken')),
   status:          'idle',
   error:           null,
@@ -83,6 +118,90 @@ const loginResIsSponsor = (loginRes) => {
   return roleName.includes('sponsor');
 };
 
+/**
+ * Extract `{ accessToken, refreshToken, user }` from a login response,
+ * tolerating multiple possible wrapper shapes:
+ *
+ *   { access_token, refresh_token, user }
+ *   { accessToken, refreshToken, user }
+ *   { item: { … }  }
+ *   { data: { … }  }
+ *   { tokens: { access, refresh }, user }
+ *
+ * Backend has been observed to switch between these. We accept all of
+ * them to avoid silently dropping the token (which then never makes it
+ * onto the Authorization header for downstream requests, surfacing as
+ * "token not sending").
+ */
+/* Field names we recognise for access / refresh tokens, in priority order.
+   Add more here if the backend ever returns a new variant. */
+const ACCESS_KEYS  = ['accessToken', 'access_token', 'token', 'access', 'jwt', 'id_token', 'idToken', 'auth_token', 'authToken', 'bearer'];
+const REFRESH_KEYS = ['refreshToken', 'refresh_token', 'refresh', 'refresh_jwt', 'refreshJwt'];
+
+/** Walk an arbitrary JSON tree (BFS, depth ≤ 4) for the first string value
+ *  whose key matches one of `keys`. Used when the backend nests the tokens
+ *  inside a wrapper we don't otherwise recognise. */
+function deepFind(root, keys) {
+  if (!root || typeof root !== 'object') return null;
+  const queue = [[root, 0]];
+  while (queue.length) {
+    const [node, depth] = queue.shift();
+    if (!node || typeof node !== 'object' || depth > 4) continue;
+    for (const k of Object.keys(node)) {
+      const v = node[k];
+      if (keys.includes(k) && typeof v === 'string' && v.length > 10) return v;
+      if (v && typeof v === 'object') queue.push([v, depth + 1]);
+    }
+  }
+  return null;
+}
+
+function extractAuthTokens(loginRes) {
+  // 1) Quick win — check the common wrappers at the top level first.
+  const candidates = [
+    loginRes,
+    loginRes?.item,
+    loginRes?.data,
+    loginRes?.result,
+    loginRes?.payload,
+    loginRes?.tokens,
+    loginRes?.auth,
+    loginRes?.session,
+    loginRes?.body,
+  ].filter(Boolean);
+
+  let accessToken  = null;
+  let refreshToken = null;
+  let user         = loginRes?.user ?? null;
+
+  for (const c of candidates) {
+    for (const k of ACCESS_KEYS)  { if (!accessToken  && typeof c[k] === 'string' && c[k].length > 10) accessToken  = c[k]; }
+    for (const k of REFRESH_KEYS) { if (!refreshToken && typeof c[k] === 'string' && c[k].length > 10) refreshToken = c[k]; }
+    user = user || c.user || null;
+    if (accessToken && refreshToken && user) break;
+  }
+
+  // 2) Still missing? Walk the entire response tree as a last resort.
+  if (!accessToken)  accessToken  = deepFind(loginRes, ACCESS_KEYS);
+  if (!refreshToken) refreshToken = deepFind(loginRes, REFRESH_KEYS);
+
+  // 3) Dump the actual response shape so we can see what's really there.
+  //    This fires once per login and is bounded to a single console line.
+  if (!accessToken && typeof console !== 'undefined') {
+    try {
+      // Trim long values so we don't spam the console.
+      const safe = JSON.parse(JSON.stringify(loginRes, (_, v) =>
+        typeof v === 'string' && v.length > 80 ? `${v.slice(0, 40)}…(${v.length})` : v
+      ));
+      console.warn('[auth] login response shape (no access token found):', safe);
+    } catch {
+      console.warn('[auth] login response (raw):', loginRes);
+    }
+  }
+
+  return { accessToken, refreshToken, user };
+}
+
 /** POST /api/v1/auth/login/password
  *
  *  The backend serves both CRO and sponsor scopes from this single endpoint.
@@ -104,25 +223,192 @@ export const loginAsync = createAsyncThunk(
         return { scope: 'site', user: loginRes.user };
       }
 
-      // Save token immediately so the next request has Authorization header
-      const token = loginRes.accessToken ?? loginRes.access_token;
-      if (token) localStorage.setItem('accessToken', token);
+      // Multi-identity case — backend returns
+      //   { success: true, requires_choice: true, choice_token: "...", identities: [...] }
+      // when the same email + password unlocks more than one identity (e.g.
+      // CRO + Site under the same email/password). NO access token is issued
+      // at this step. The UI must render an identity picker and then call
+      // `chooseIdentityAsync({ choiceToken, identityId })` which hits the
+      // dedicated /auth/login/choose-identity endpoint and mints the real
+      // session. The choice_token is short-lived (~2 min) — if the user
+      // dawdles, choose-identity returns 401 and they go back to /signin.
+      if (loginRes?.requires_choice || loginRes?.requiresChoice) {
+        return {
+          requiresChoice: true,
+          choiceToken:    loginRes.choice_token ?? loginRes.choiceToken ?? null,
+          identities:     loginRes.identities ?? loginRes.identity_options ?? [],
+        };
+      }
 
-      if (loginResIsSponsor(loginRes)) {
-        sponsorTokenStore.saveTokens(loginRes);
-        if (loginRes.user) sponsorTokenStore.saveUser(loginRes.user);
-        return loginRes;
+      // Save tokens immediately so the next request has Authorization header.
+      // Handles multiple backend wrapper shapes (item / data / tokens / …).
+      const { accessToken, refreshToken } = extractAuthTokens(loginRes);
+
+      if (accessToken)  localStorage.setItem('accessToken',  accessToken);
+      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+
+      // Surface the flat tokens on the returned object so downstream slices
+      // and `sponsorTokenStore.saveTokens` see them at predictable keys.
+      const flatRes = { ...loginRes, accessToken, refreshToken };
+
+      if (loginResIsSponsor(flatRes)) {
+        sponsorTokenStore.saveTokens(flatRes);
+        if (flatRes.user) sponsorTokenStore.saveUser(flatRes.user);
+        return flatRes;
+      }
+
+      // Fire /profile/me/permissions immediately after login. The token
+      // saved above is picked up by the request interceptor. If the
+      // extractor failed to find a token (extractor logs a warning), the
+      // call will 401 with "Authentication required." — the response
+      // interceptor branches on that message and surfaces the rejection
+      // gracefully, so this still degrades cleanly.
+      //
+      // /profile/me/permissions returns MORE than just `permissions`:
+      // it also carries `assignedStudies` (CRO team-member's per-study
+      // sponsor permission trees) and updated `user` fields. We must
+      // forward those into the thunk payload so applyUser can merge them
+      // — otherwise authUser.assignedStudies stays empty and the sponsor
+      // workspace route guard rejects the user even though the data is
+      // available on the wire.
+      try {
+        const permRes = await profileService.getPermissions();
+        const perms   = permRes?.permissions ?? permRes?.items ?? permRes ?? [];
+        const assigned =
+          permRes?.assignedStudies
+          ?? permRes?.assigned_studies
+          ?? permRes?.studies
+          ?? null;
+        return {
+          ...flatRes,
+          permissions: perms,
+          ...(assigned ? { assignedStudies: assigned } : {}),
+          // Prefer the user object from /profile/me/permissions when present —
+          // it sometimes has fields (role_name, organization_id, etc.) the
+          // login endpoint omits.
+          ...(permRes?.user ? { user: { ...(flatRes.user ?? {}), ...permRes.user } } : {}),
+        };
+      } catch {
+        return flatRes;
+      }
+    } catch (err) {
+      return rejectWithValue(err.message ?? 'Sign-in failed.');
+    }
+  },
+);
+
+/**
+ * GET /api/v1/auth/me/identities
+ *
+ * Returns the list of identities for the *currently authenticated user*.
+ * Used by the in-app Workspace Switcher (the user already has one identity
+ * active; this lists everything they could switch to).
+ *
+ * Falls back to [] on 404 so the UI degrades to "only one workspace
+ * available" rather than crashing.
+ */
+export const fetchIdentitiesAsync = createAsyncThunk(
+  'auth/fetchIdentities',
+  async (_arg, { rejectWithValue }) => {
+    try {
+      const res = await axiosClient.get('/api/v1/auth/me/identities');
+      const arr = Array.isArray(res) ? res : (res?.identities ?? res?.items ?? res?.data ?? []);
+      return arr;
+    } catch (err) {
+      if (err?.response?.status === 404) return [];
+      return rejectWithValue(err?.message ?? 'Failed to load workspaces.');
+    }
+  },
+);
+
+/**
+ * Step 2 of the multi-identity login flow.
+ *
+ * POST /api/v1/auth/login/choose-identity
+ *   body: { choice_token, identity_id }
+ *
+ * The choice_token was issued at Step 1 (the requires_choice response from
+ * /auth/login/password). It carries the proof that the user passed the
+ * password check, so this endpoint does NOT need the password again. The
+ * token is short-lived (~2 minutes) — if it expires, the backend returns
+ * 401 with "...selection has expired..." and the user must restart from
+ * the email/password screen.
+ *
+ * Returns the same shape as a normal login (accessToken, refreshToken,
+ * user, scope, permissions) for the chosen identity.
+ *
+ * Args: { identityId, choiceToken }
+ */
+export const chooseIdentityAsync = createAsyncThunk(
+  'auth/chooseIdentity',
+  async ({ identityId, choiceToken }, { rejectWithValue }) => {
+    try {
+      const loginRes = await axiosClient.post('/api/v1/auth/login/choose-identity', {
+        choice_token: choiceToken,
+        identity_id:  identityId,
+      });
+
+      // Site personnel scope — persist to site storage, not CRO.
+      if (loginRes?.scope === 'site') {
+        setSiteSession(loginRes);
+        return { scope: 'site', user: loginRes.user };
+      }
+
+      const { accessToken, refreshToken } = extractAuthTokens(loginRes);
+
+      // If no token came back, the response is unusable. Reject so the UI
+      // shows an error rather than silently writing nothing to localStorage
+      // and bouncing through ProtectedRoute to /signin.
+      if (!accessToken) {
+        console.warn('[auth] choose-identity: no access token in response', loginRes);
+        return rejectWithValue('No access token returned by the server. Please try again.');
+      }
+
+      localStorage.setItem('accessToken',  accessToken);
+      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+
+      const flatRes = { ...loginRes, accessToken, refreshToken };
+
+      if (loginResIsSponsor(flatRes)) {
+        sponsorTokenStore.saveTokens(flatRes);
+        if (flatRes.user) sponsorTokenStore.saveUser(flatRes.user);
+        return flatRes;
+      }
+
+      // The choose-identity response already includes `permissions` AND
+      // `assignedStudies` for the chosen identity (both at the top level
+      // of loginRes — flatRes spreads them in automatically). Prefer that.
+      // Only fall back to /profile/me/permissions if `permissions` is
+      // absent, and in that case also forward `assignedStudies` from the
+      // fallback response so the sponsor route guard can see them.
+      if (loginRes?.permissions != null) {
+        return flatRes;
       }
 
       try {
         const permRes = await profileService.getPermissions();
         const perms   = permRes?.permissions ?? permRes?.items ?? permRes ?? [];
-        return { ...loginRes, permissions: perms };
+        const assigned =
+          permRes?.assignedStudies
+          ?? permRes?.assigned_studies
+          ?? permRes?.studies
+          ?? null;
+        return {
+          ...flatRes,
+          permissions: perms,
+          ...(assigned ? { assignedStudies: assigned } : {}),
+        };
       } catch {
-        return loginRes;
+        return flatRes;
       }
     } catch (err) {
-      return rejectWithValue(err.message ?? 'Sign-in failed.');
+      // choice_token expired (401) or identity_id not in the token's
+      // identity claim (403) — both mean the user must restart sign-in.
+      const status = err?.status ?? err?.response?.status;
+      if (status === 401 || status === 403) {
+        return rejectWithValue('Your sign-in selection expired. Please sign in again.');
+      }
+      return rejectWithValue(err.message ?? 'Failed to switch identity.');
     }
   },
 );
@@ -153,21 +439,33 @@ export const loginWithOtpAsync = createAsyncThunk(
         return { scope: 'site', user: loginRes.user };
       }
 
-      const token = loginRes.accessToken ?? loginRes.access_token;
-      if (token) localStorage.setItem('accessToken', token);
+      const { accessToken, refreshToken } = extractAuthTokens(loginRes);
+      if (accessToken)  localStorage.setItem('accessToken',  accessToken);
+      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
 
-      if (loginResIsSponsor(loginRes)) {
-        sponsorTokenStore.saveTokens(loginRes);
-        if (loginRes.user) sponsorTokenStore.saveUser(loginRes.user);
-        return loginRes;
+      const flatRes = { ...loginRes, accessToken, refreshToken };
+
+      if (loginResIsSponsor(flatRes)) {
+        sponsorTokenStore.saveTokens(flatRes);
+        if (flatRes.user) sponsorTokenStore.saveUser(flatRes.user);
+        return flatRes;
       }
 
       try {
         const permRes = await profileService.getPermissions();
         const perms   = permRes?.permissions ?? permRes?.items ?? permRes ?? [];
-        return { ...loginRes, permissions: perms };
+        const assigned =
+          permRes?.assignedStudies
+          ?? permRes?.assigned_studies
+          ?? permRes?.studies
+          ?? null;
+        return {
+          ...flatRes,
+          permissions: perms,
+          ...(assigned ? { assignedStudies: assigned } : {}),
+        };
       } catch {
-        return loginRes;
+        return flatRes;
       }
     } catch (err) {
       return rejectWithValue(err.message ?? 'OTP verification failed.');
@@ -301,17 +599,53 @@ function normalizeAssignedStudies(arr) {
   })).filter((s) => s.studyId);
 }
 
+/** snake_case → camelCase (clinical_programs → clinicalPrograms). Used only
+ *  by the legacy 3-level-tree fallback path in normalizePermissions; the
+ *  current backend shape is the flat 2-level leaf tree handled directly. */
+const snakeToCamel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+
+/** True if every value in `obj` is a leaf node `{ action: boolean }` rather
+ *  than another tree. Used to detect the backend's 2-level shape. */
+function isLeafActionTree(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  const keys = Object.keys(obj);
+  if (keys.length === 0) return false;
+  return keys.every((k) => {
+    const v = obj[k];
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+    return Object.values(v).every((vv) => typeof vv === 'boolean');
+  });
+}
+
+/** Find a node in `obj` whose key matches `targetKey` in any common casing:
+ *  exact, snake_case form, lowercased. Returns the value or undefined. */
+function lookupKey(obj, targetKey) {
+  if (!obj || typeof obj !== 'object') return undefined;
+  // 1. exact match (fast path)
+  if (obj[targetKey] !== undefined) return obj[targetKey];
+  // 2. snake_case match — convert each key to camelCase and compare
+  const targetLower = targetKey.toLowerCase();
+  for (const k of Object.keys(obj)) {
+    if (snakeToCamel(k) === targetKey) return obj[k];
+    if (k.toLowerCase() === targetLower) return obj[k];
+  }
+  return undefined;
+}
+
 /**
  * Convert API permissions to the flat dot-notation array the CRO sidebar
  * expects (`groupKey.featureKey.permKey`, e.g. `teamAdmin.teamMembers.view`).
  *
- * Accepts three input shapes the backend has used:
+ * Accepts four input shapes the backend has used:
  *   1. Flat object array (legacy): [ { featurename, canview, … }, … ]
- *   2. 3-level tree (current spec):
- *      { teamAdmin: { teamMembers: { view: true, create: false, … }, … }, … }
+ *   2. 3-level tree — keys may be camelCase OR snake_case OR mixed:
+ *      { teamAdmin:  { teamMembers:  { view: true, … } } }
+ *      { team_admin: { team_members: { view: true, … } } }
  *   3. Cached string array from a previous session — pass through.
+ *   4. Single-level flat object: { "teamAdmin.teamMembers.view": true, … }
  *
- * Anything else returns []. Unknown groups / features are silently ignored.
+ * Unknown groups / features are silently ignored, but if the input tree had
+ * keys and we matched NOTHING, we log a warning so casing bugs are visible.
  */
 function normalizePermissions(apiPerms) {
   // Empty input
@@ -323,17 +657,50 @@ function normalizePermissions(apiPerms) {
 
   // (2) 3-level tree: { groupKey: { featureKey: { perm: bool } } }
   if (!Array.isArray(apiPerms) && typeof apiPerms === 'object') {
+    // (4) Try single-level flat-object first — if every key contains a `.`
+    // and maps to a truthy boolean, treat it as { "a.b.c": true, ... }.
+    const keys = Object.keys(apiPerms);
+    if (keys.length && keys.every((k) => k.includes('.') && typeof apiPerms[k] !== 'object')) {
+      return keys.filter((k) => !!apiPerms[k]);
+    }
+
+    // (5) Backend's 2-level leaf shape: { studies: { view: true }, … }.
+    // Emit "{leaf}.{action}" strings directly. The CRO sidebar, dashboard
+    // guard, etc. now read leaves by their snake_case keys (matching the
+    // shape returned by /api/v1/profile/me/permissions) — no group/feature
+    // translation needed on the consumer side. The tree is still stored at
+    // state.permissionsTree for `can(tree, leaf, action)` lookups.
+    if (isLeafActionTree(apiPerms)) {
+      const result = [];
+      for (const leaf of keys) {
+        const node = apiPerms[leaf];
+        for (const [action, allowed] of Object.entries(node)) {
+          if (allowed) result.push(`${leaf}.${action}`);
+        }
+      }
+      return result;
+    }
+
     const result = [];
     for (const group of PERMISSION_GROUPS) {
-      const gNode = apiPerms[group.key];
+      const gNode = lookupKey(apiPerms, group.key);
       if (!gNode || typeof gNode !== 'object') continue;
       for (const feature of group.features) {
-        const fNode = gNode[feature.key];
+        const fNode = lookupKey(gNode, feature.key);
         if (!fNode || typeof fNode !== 'object') continue;
         feature.perms.forEach(({ key }) => {
-          if (fNode[key]) result.push(`${group.key}.${feature.key}.${key}`);
+          if (lookupKey(fNode, key)) result.push(`${group.key}.${feature.key}.${key}`);
         });
       }
+    }
+
+    // Diagnostic: tree had keys but nothing matched — almost certainly a
+    // schema mismatch between backend keys and PERMISSION_GROUPS.
+    if (result.length === 0 && keys.length > 0 && typeof console !== 'undefined') {
+      console.warn(
+        '[auth] permissions tree had keys but none matched PERMISSION_GROUPS — sidebar will look empty.',
+        { receivedTopLevelKeys: keys, expectedTopLevelKeys: PERMISSION_GROUPS.map((g) => g.key) },
+      );
     }
     return result;
   }
@@ -393,29 +760,68 @@ function applyTokens(state, raw) {
  *  are simply absent.
  */
 function applyUser(state, raw) {
-  const user = normalizeUser(raw.user);
+  // The backend may put `assigned_studies` either on the user object OR at
+  // the top level of the login response (currently top-level via
+  // /auth/login/choose-identity). normalizeUser only knows about the user
+  // object, so merge the top-level field in before normalizing — otherwise
+  // a CRO team-member's per-study sponsor permissions never land on
+  // state.user.assignedStudies, and the sponsor sidebar falls back to
+  // "unrestricted" (which looks like the default menu).
+  const userRaw = raw?.user ? { ...raw.user } : raw?.user;
+  if (userRaw && typeof userRaw === 'object') {
+    if (!userRaw.assigned_studies && !userRaw.assignedStudies) {
+      const topLevel = raw.assigned_studies ?? raw.assignedStudies ?? raw.studies;
+      if (Array.isArray(topLevel) && topLevel.length) {
+        userRaw.assignedStudies = topLevel;
+      }
+    }
+  }
+  const user = normalizeUser(userRaw);
 
   const rawPerms = raw.permissions ?? raw.permission;
 
+  // Diagnostic — surface the shape of permissions exactly once per login.
+  // Trimmed to first-level keys so the console doesn't get spammed for big
+  // payloads. Set window.__AUTH_DEBUG = false to silence.
+  try {
+    if (typeof window === 'undefined' || window.__AUTH_DEBUG !== false) {
+      const shape =
+        rawPerms == null               ? 'null/undefined'
+      : rawPerms === '*'               ? "'*' (wildcard)"
+      : rawPerms === true              ? 'true (wildcard)'
+      : Array.isArray(rawPerms)        ? `array(len=${rawPerms.length}, first=${typeof rawPerms[0]})`
+      : typeof rawPerms === 'object'   ? `object(keys=${Object.keys(rawPerms).join(',')})`
+                                       : typeof rawPerms;
+      console.info('[auth] applyUser → permissions shape:', shape, rawPerms);
+    }
+  } catch { /* ignore */ }
+
   let permissions;
+  let permissionsTree;
   if (rawPerms === '*' || rawPerms === true) {
-    permissions = ['*'];
+    permissions     = ['*'];
+    permissionsTree = '*';
   } else if (Array.isArray(rawPerms) && rawPerms.length > 0) {
-    permissions = normalizePermissions(rawPerms);
+    permissions     = normalizePermissions(rawPerms);
+    permissionsTree = null;             // array shape — no tree to expose
   } else if (rawPerms && typeof rawPerms === 'object' && Object.keys(rawPerms).length > 0) {
-    permissions = normalizePermissions(rawPerms);
+    permissions     = normalizePermissions(rawPerms);
+    permissionsTree = rawPerms;         // raw backend tree — usePermissions consumes this
   } else {
-    permissions = [];   // no CRO access — explicit
+    permissions     = [];               // no CRO access — explicit
+    permissionsTree = null;
   }
 
   state.user            = user;
   state.permissions     = permissions;
+  state.permissionsTree = permissionsTree;
   state.isAuthenticated = Boolean(user);
   state.status          = 'succeeded';
   state.error           = null;
   if (user) {
-    localStorage.setItem('authUser',        JSON.stringify(user));
-    localStorage.setItem('authPermissions', JSON.stringify(permissions));
+    localStorage.setItem('authUser',            JSON.stringify(user));
+    localStorage.setItem('authPermissions',     JSON.stringify(permissions));
+    localStorage.setItem('authPermissionsTree', JSON.stringify(permissionsTree));
   }
 }
 
@@ -443,23 +849,30 @@ const authSlice = createSlice({
       const { permissions, assignedStudies } = payload ?? {};
 
       let flat;
+      let tree;
       if (permissions === '*' || permissions === true) {
         flat = ['*'];
+        tree = '*';
       } else if (Array.isArray(permissions) && permissions.length > 0) {
         flat = normalizePermissions(permissions);
+        tree = null;
       } else if (permissions && typeof permissions === 'object' && Object.keys(permissions).length > 0) {
         flat = normalizePermissions(permissions);
+        tree = permissions;
       } else {
         flat = [];
+        tree = null;
       }
-      state.permissions = flat;
+      state.permissions     = flat;
+      state.permissionsTree = tree;
 
       if (state.user) {
         state.user.assignedStudies = Array.isArray(assignedStudies)
           ? assignedStudies
           : (state.user.assignedStudies ?? []);
       }
-      localStorage.setItem('authPermissions', JSON.stringify(state.permissions));
+      localStorage.setItem('authPermissions',     JSON.stringify(state.permissions));
+      localStorage.setItem('authPermissionsTree', JSON.stringify(state.permissionsTree));
       if (state.user) {
         localStorage.setItem('authUser', JSON.stringify(state.user));
       }
@@ -472,14 +885,17 @@ const authSlice = createSlice({
      * accidentally.
      */
     clearCroPermissions(state) {
-      state.permissions = [];
-      localStorage.setItem('authPermissions', JSON.stringify([]));
+      state.permissions     = [];
+      state.permissionsTree = null;
+      localStorage.setItem('authPermissions',     JSON.stringify([]));
+      localStorage.setItem('authPermissionsTree', JSON.stringify(null));
     },
     logout(state) {
       state.user            = null;
       state.accessToken     = null;
       state.refreshToken    = null;
       state.permissions     = [];
+      state.permissionsTree = null;
       state.isAuthenticated = false;
       state.status          = 'idle';
       state.error           = null;
@@ -488,6 +904,7 @@ const authSlice = createSlice({
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('authUser');
       localStorage.removeItem('authPermissions');
+      localStorage.removeItem('authPermissionsTree');
       // Sponsor scope
       localStorage.removeItem('sponsorAccessToken');
       localStorage.removeItem('sponsorRefreshToken');
@@ -526,6 +943,11 @@ const authSlice = createSlice({
     builder
       .addCase(loginAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
       .addCase(loginAsync.fulfilled, (state, { payload }) => {
+        // requires_choice response carries no tokens or final user — skip
+        // applying it (otherwise an in-app workspace switch would null
+        // out the currently authenticated user mid-flow). The component
+        // will call chooseIdentityAsync next, which DOES apply state.
+        if (payload?.requiresChoice) { state.status = 'succeeded'; return; }
         applyTokens(state, payload);
         applyUser(state, payload);
       })
@@ -539,6 +961,19 @@ const authSlice = createSlice({
         applyUser(state, payload);
       })
       .addCase(loginWithOtpAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
+
+    // ── chooseIdentityAsync ─────────────────────────────────────────────────
+    // Step 2 of multi-identity login. Must update Redux state the same way
+    // loginAsync does — otherwise isAuthenticated stays false and the
+    // ProtectedRoute bounces the user to /signin even though the token is
+    // already in localStorage.
+    builder
+      .addCase(chooseIdentityAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
+      .addCase(chooseIdentityAsync.fulfilled, (state, { payload }) => {
+        applyTokens(state, payload);
+        applyUser(state, payload);
+      })
+      .addCase(chooseIdentityAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
 
     // ── sponsor login (password + OTP) ──────────────────────────────────────
     // Sponsor tokens live in localStorage under sponsor-scope keys (handled by
@@ -589,6 +1024,7 @@ const authSlice = createSlice({
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('authUser');
         localStorage.removeItem('authPermissions');
+        localStorage.removeItem('authPermissionsTree');
       });
 
   },
@@ -612,6 +1048,10 @@ export const selectAuthError       = (state) => state.auth.error;
 /** Per-study sponsor permissions for a CRO team member assigned to studies. */
 export const selectAssignedStudies = (state) => state.auth.user?.assignedStudies ?? [];
 export const selectPermissions     = (state) => state.auth.permissions;
+/** Raw backend permissions tree (e.g. { studies: { view: true } }). Use this
+ *  with `usePermissions` / `hasPerm` for `{leaf}.{action}` lookups. Falls
+ *  back to selectPermissions for code paths that only care about wildcard. */
+export const selectPermissionsTree = (state) => state.auth.permissionsTree;
 export const selectGeoInfo         = (state) => state.auth.geoInfo;
 
 export default authSlice.reducer;

@@ -35,6 +35,7 @@ import {
   exitSponsorView,
   selectIsViewingSponsor,
 } from '@/features/workspace/store/sponsorViewSlice';
+import WorkspaceSwitcherModal from '@/features/auth/components/WorkspaceSwitcherModal';
 import styles from './WorkspaceHeader.module.css';
 
 const clx = (...a) => a.filter(Boolean).join(' ');
@@ -66,8 +67,9 @@ export default function WorkspaceHeader({
   const study       = useAppSelector(selectActiveStudy);
   const environment = useAppSelector(selectEnvironment);
 
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [avatarOpen, setAvatarOpen] = useState(false);
+  const [searchOpen,    setSearchOpen]    = useState(false);
+  const [avatarOpen,    setAvatarOpen]    = useState(false);
+  const [switcherOpen,  setSwitcherOpen]  = useState(false);
   const avatarRef  = useRef(null);
   const searchRef  = useRef(null);
   const searchInputRef = useRef(null);
@@ -277,6 +279,18 @@ export default function WorkspaceHeader({
               <button
                 type="button"
                 role="menuitem"
+                className={styles.dropdownItem}
+                onClick={() => { setSwitcherOpen(true); setAvatarOpen(false); }}
+              >
+                <ArrowLeftRight size={15} aria-hidden="true" />
+                Switch workspace
+              </button>
+
+              <div className={styles.dropdownDivider} />
+
+              <button
+                type="button"
+                role="menuitem"
                 className={clx(styles.dropdownItem, styles.dropdownItemDanger)}
                 onClick={handleLogout}
               >
@@ -287,6 +301,11 @@ export default function WorkspaceHeader({
           )}
         </div>
       </div>
+
+      <WorkspaceSwitcherModal
+        open={switcherOpen}
+        onClose={() => setSwitcherOpen(false)}
+      />
     </header>
   );
 }

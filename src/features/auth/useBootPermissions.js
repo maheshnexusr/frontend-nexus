@@ -18,13 +18,20 @@ import { selectCurrentUser } from '@/features/auth/authSlice';
 import { profileClient } from '@/api/profileClient';
 import { applyPermissions } from '@/features/auth/applyPermissions';
 
+/** A token must be a non-empty string of plausible length to attach as a
+ *  Bearer. Guarding against literal "null" / empty / suspiciously short
+ *  values means /profile/me/permissions can NEVER fire without auth. */
+function isUsableToken(t) {
+  return typeof t === 'string' && t.length > 10 && t !== 'null' && t !== 'undefined';
+}
+
 function hasAnyToken() {
   if (typeof window === 'undefined') return false;
-  return !!(
-       localStorage.getItem('accessToken')
-    || localStorage.getItem('sponsorAccessToken')
-    || localStorage.getItem('sponsorViewToken')
-    || localStorage.getItem('siteAccessToken')
+  return (
+       isUsableToken(localStorage.getItem('accessToken'))
+    || isUsableToken(localStorage.getItem('sponsorAccessToken'))
+    || isUsableToken(localStorage.getItem('sponsorViewToken'))
+    || isUsableToken(localStorage.getItem('siteAccessToken'))
   );
 }
 

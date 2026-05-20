@@ -60,6 +60,28 @@ export const siteWorkspaceClient = {
   async saveSubjectFormData(subjectId, formId, payload) {
     return siteAxiosClient.post(`${BASE}/subjects/${subjectId}/forms/${formId}/data`, payload);
   },
+
+  /**
+   * Phase 2 — Visit timeline. Returns the ordered list of visits configured
+   * for this study, plus the per-subject status of each form within each
+   * visit. Returns [] on 404 so the UI degrades to the legacy flat-forms
+   * view until the backend ships.
+   *
+   * Expected shape per visit:
+   *   {
+   *     visit_id, visit_name, visit_order, visit_window_days,
+   *     scheduled_date, completed_date, status,
+   *     forms: [{ form_id, form_name, status, last_updated }]
+   *   }
+   */
+  async listVisits(subjectId) {
+    try {
+      return await siteAxiosClient.get(`${BASE}/subjects/${subjectId}/visits`);
+    } catch (err) {
+      if (err?.response?.status === 404) return [];
+      throw err;
+    }
+  },
 };
 
 export default siteWorkspaceClient;

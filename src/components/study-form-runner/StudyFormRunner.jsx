@@ -18,12 +18,15 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
+import { selectFormStatus, READ_ONLY_STATUSES } from '@/features/cro/store/formRuntimeSlice';
 import {
   ChevronLeft, ChevronRight, ChevronDown, CheckCircle2,
   UploadCloud, PenLine, Star, Layers,
   Search, FileText, Type as TypeIcon, CornerDownRight, PanelLeftClose, PanelLeft,
 } from 'lucide-react';
 import RuntimeFieldRenderer from '@/features/cro/components/study-form/runtime/RuntimeFieldRenderer';
+import FormStatusToolbar    from './FormStatusToolbar';
 import s from '@/features/cro/components/study-form/SFBPreview.module.css';
 
 function escapeRegExp(str) { return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
@@ -66,6 +69,10 @@ export default function StudyFormRunner({
   const [submitted, setSubmitted] = useState(false);
   const [values,    setValues]    = useState(defaultValues);
   const [busy,      setBusy]      = useState(false);
+
+  // Phase 1 — form status from runtime slice; blocks Submit on read-only.
+  const formStatus = useSelector(selectFormStatus);
+  const statusReadOnly = READ_ONLY_STATUSES.has(formStatus);
 
   // Sidebar — collapsed (hide whole rail) + per-block expanded (show/hide
   // each block's page list).
@@ -390,6 +397,9 @@ export default function StudyFormRunner({
             )}
           </div>
 
+          {/* Phase 1 — form-status pill + transition buttons */}
+          <FormStatusToolbar />
+
           <div className={s.pageHeading}>
             <div>
               <h2 className={s.pageTitle}>{page.title}</h2>
@@ -463,7 +473,8 @@ export default function StudyFormRunner({
               <button
                 className={s.btnSubmit}
                 onClick={handleSubmit}
-                disabled={readOnly || busy}
+                disabled={readOnly || busy || statusReadOnly}
+                title={statusReadOnly ? `Form is ${formStatus} — submit is disabled.` : undefined}
               >
                 {busy ? 'Submitting…' : submitLabel} <CheckCircle2 size={14} />
               </button>

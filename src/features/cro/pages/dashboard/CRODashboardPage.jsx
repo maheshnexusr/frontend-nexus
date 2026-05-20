@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { selectCurrentUser } from '@/features/auth/authSlice';
+import {
+  selectCurrentUser,
+  selectPermissions,
+  selectPermissionsTree,
+} from '@/features/auth/authSlice';
 import { addToast } from '@/app/notificationSlice';
 import { dashboardService } from '@/services/dashboardService';
 import { sponsorViewTokenStore } from '@/features/workspace/sponsorViewTokenStore';
@@ -8,9 +13,21 @@ import styles from './CRODashboardPage.module.css';
 
 export default function CRODashboardPage() {
   const user     = useAppSelector(selectCurrentUser);
+  const permsArr = useAppSelector(selectPermissions);
+  const permTree = useAppSelector(selectPermissionsTree);
   const dispatch = useAppDispatch();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Permission check — gate on the single `dashboard` leaf, matching what
+  // the sidebar uses. Both dashboard sub-pages (Study Portfolio Overview +
+  // CRO Team Utilization) collapse into this one leaf on the consumer side.
+  // Wildcard ('*') from either source = super-admin = full access.
+  const isAdmin = (Array.isArray(permsArr) && permsArr.includes('*')) || permTree === '*';
+  const canViewDashboard =
+    isAdmin
+    || (Array.isArray(permsArr) && permsArr.includes('dashboard.view'))
+    || !!(permTree && typeof permTree === 'object' && permTree.dashboard?.view);
 
   // Surface any one-shot flash left over from a sponsor-view token expiry
   // (sponsorAxiosClient redirects here after a 401 in read-only viewer mode).
@@ -20,11 +37,71 @@ export default function CRODashboardPage() {
   }, [dispatch]);
 
   useEffect(() => {
+    // Skip the API call entirely when the user has no dashboard.view perm —
+    // otherwise the backend (correctly) returns 403 on every load. The page
+    // renders a friendly "no access" state below instead.
+    if (!canViewDashboard) { setLoading(false); return; }
     dashboardService.get()
       .then((res) => setStats(res))
       .catch(() => setStats(null))
       .finally(() => setLoading(false));
-  }, []);
+  }, [canViewDashboard]);
+
+  // ── No-access state ─────────────────────────────────────────────────────
+  // The user landed here either by typing the URL or via a stale link, but
+  // their role has dashboard.view=false. Show a helpful explanation + links
+  // to whatever they CAN access (assigned studies most commonly).
+  if (!canViewDashboard) {
+    const assigned = Array.isArray(user?.assignedStudies) ? user.assignedStudies : [];
+    return (
+      <div className={styles.page}>
+        <div className={styles.header}>
+          <div>
+            <h1 className={styles.title}>Welcome, {user?.fullName ?? 'User'}</h1>
+            <span className={styles.roleBadge}>{user?.roleName ?? user?.role ?? 'User'}</span>
+          </div>
+        </div>
+
+        <section className={styles.section}>
+          <div className={styles.chartCard} style={{ padding: 24, lineHeight: 1.55 }}>
+            <h2 style={{ marginTop: 0, marginBottom: 8, fontSize: 16, fontWeight: 600 }}>
+              You don't have access to the CRO Dashboard
+            </h2>
+            <p style={{ margin: 0, color: '#475569', fontSize: 14 }}>
+              Your role <strong>{user?.roleName || 'this user'}</strong> doesn't include the
+              "Dashboard → View" permission. Ask an admin to enable it under
+              <em> CRO Team Administration → Roles &amp; Permissions</em> if you need to see it.
+            </p>
+
+            {assigned.length > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <p style={{ margin: '0 0 8px', fontSize: 13, color: '#64748b', fontWeight: 600 }}>
+                  Studies you can work in:
+                </p>
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  {assigned.map((s) => (
+                    <li key={s.studyId} style={{ marginBottom: 4 }}>
+                      <Link
+                        to={`/sponsor/${s.studyId}/dashboard`}
+                        style={{ color: '#2563eb', textDecoration: 'none', fontWeight: 500 }}
+                      >
+                        {s.studyTitle || s.studyId}
+                      </Link>
+                      {s.sponsorName && (
+                        <span style={{ color: '#64748b', fontSize: 12, marginLeft: 6 }}>
+                          · {s.sponsorName}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   const p = stats?.portfolio ?? {};
   const t = stats?.team ?? {};

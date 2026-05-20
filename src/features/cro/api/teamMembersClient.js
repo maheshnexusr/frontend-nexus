@@ -17,7 +17,18 @@ function normalize(raw) {
     photograph:     raw.photograph_path ?? raw.photograph ?? null,
     contactNumber:  raw.contact_number  ?? raw.contactNumber ?? '',
     isActive:       raw.is_active       ?? true,
-    assignedStudies: raw.assigned_studies ?? raw.assignedStudies ?? [],
+    // Backend now returns `assigned_studies: [{ study_id, sponsor_permissions, ... }]`.
+    // Normalise to the UI shape that TeamMemberNewPage's `assignedStudies`
+    // expects: keep `id` as the DB PK (used in payload), `sponsorPermissions`
+    // as the matrix tree, and the optional human protocol number under `studyId`.
+    assignedStudies: (raw.assigned_studies ?? raw.assignedStudies ?? []).map((a) => ({
+      id:                 a.study_id           ?? a.studyId ?? a.id,
+      studyId:            a.protocol_number    ?? a.protocolNumber ?? a.studyId ?? '',
+      studyTitle:         a.study_title        ?? a.studyTitle ?? '',
+      sponsorId:          a.sponsor_id         ?? a.sponsorId ?? '',
+      sponsorName:        a.sponsor_name       ?? a.sponsorName ?? '',
+      sponsorPermissions: a.sponsor_permissions ?? a.sponsorPermissions ?? {},
+    })),
     studyIds:       raw.study_ids       ?? raw.studyIds ?? [],
     createdAt:      raw.created_at      ?? raw.createdAt,
     updatedAt:      raw.updated_at      ?? raw.updatedAt,
@@ -41,13 +52,32 @@ function toFormData(form) {
   add('role_id',        form.roleId);
   add('status',         form.status);
 
+  // Per study assignment: the backend now accepts a richer shape
+  //   assigned_studies: [{ study_id, sponsor_permissions }]
+  // which is the canonical `cro_studies.study_id` (DB primary key — NOT
+  // the human protocol_number). The legacy `study_ids: [...]` form is
+  // still sent in parallel for any older endpoints that only read that.
+  //
+  // IMPORTANT: `s.id` is the DB PK. `s.studyId` would be the protocol
+  // number — sending that returns "Unknown studyIds: PROTO-…".
+  const idOf = (s) => (s && (s.id ?? s.studyDbId ?? s));
+  const assignedStudies = Array.isArray(form.assignedStudies)
+    ? form.assignedStudies
+        .map((s) => ({
+          study_id:            idOf(s),
+          sponsor_permissions: s?.sponsorPermissions ?? {},
+        }))
+        .filter((x) => !!x.study_id)
+    : [];
+
+  // Legacy flat id list — kept for backwards compat.
   const studyIds = [
     ...(Array.isArray(form.studyIds) ? form.studyIds : []),
-    ...(Array.isArray(form.assignedStudies)
-      ? form.assignedStudies.map((s) => s.studyId ?? s)
-      : []),
+    ...assignedStudies.map((x) => x.study_id),
   ];
-  if (studyIds.length) fd.append('study_ids', JSON.stringify(studyIds));
+
+  if (assignedStudies.length) fd.append('assigned_studies', JSON.stringify(assignedStudies));
+  if (studyIds.length)        fd.append('study_ids',        JSON.stringify(studyIds));
 
   // photograph may be a File/Blob or a data URL from the avatar picker.
   if (form.photograph) {

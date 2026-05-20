@@ -103,15 +103,20 @@ export default function TeamMemberNewPage() {
 
   const toggleStudy = (study) => {
     setForm((prev) => {
-      const already = prev.assignedStudies.some((s) => s.studyId === study.studyId);
+      // IMPORTANT: backend FK expects cro_studies.study_id (`study.id`),
+      // NOT the protocol number (`study.studyId`). We keep both so the UI
+      // can still show the human-readable protocol while sending the
+      // correct id on save.
+      const already = prev.assignedStudies.some((s) => s.id === study.id);
       return {
         ...prev,
         assignedStudies: already
-          ? prev.assignedStudies.filter((s) => s.studyId !== study.studyId)
+          ? prev.assignedStudies.filter((s) => s.id !== study.id)
           : [
               ...prev.assignedStudies,
               {
-                studyId:            study.studyId,
+                id:                 study.id,           // DB PK — sent in payload
+                studyId:            study.studyId,      // protocol number — display only
                 studyTitle:         study.studyTitle,
                 sponsorId:          study.sponsorId,
                 sponsorName:        study.sponsorName,
@@ -120,13 +125,44 @@ export default function TeamMemberNewPage() {
             ],
       };
     });
+
+    // The /studies list endpoint may return lightweight study summaries
+    // without the Step-3 `configuration` object — leaving the matrix
+    // unable to gate leaves correctly. Pull the full study record (which
+    // does include `configuration`) and patch it back into studyOptions
+    // so SponsorPermissionsMatrix sees the authoritative toggles.
+    const alreadyHasConfig =
+      typeof study.config?.consentManager      === 'boolean' &&
+      typeof study.config?.queryManager        === 'boolean' &&
+      typeof study.config?.dataManager         === 'boolean' &&
+      typeof study.config?.verificationManager === 'boolean';
+
+    if (!alreadyHasConfig) {
+      studiesClient.getById(study.id).then((full) => {
+        if (!full) return;
+        setStudyOptions((prev) => prev.map((o) =>
+          o.id === study.id
+            ? {
+                ...o,
+                config: {
+                  consentManager:      full.consentManager,
+                  queryManager:        full.queryManager,
+                  dataManager:         full.dataManager,
+                  verificationManager: full.verificationManager,
+                  navigationBar:       full.navigationBar,
+                },
+              }
+            : o
+        ));
+      }).catch(() => { /* matrix will fall back to "all visible" */ });
+    }
   };
 
-  const setStudyPermissions = (studyId, nextPerms) => {
+  const setStudyPermissions = (id, nextPerms) => {
     setForm((prev) => ({
       ...prev,
       assignedStudies: prev.assignedStudies.map((s) =>
-        s.studyId === studyId ? { ...s, sponsorPermissions: nextPerms } : s,
+        s.id === id ? { ...s, sponsorPermissions: nextPerms } : s,
       ),
     }));
   };
@@ -339,7 +375,7 @@ export default function TeamMemberNewPage() {
               const groupKey = group.sponsorId || '__unassigned__';
               const groupOpen = openSponsorGroups[groupKey] !== false;
               const checkedCount = group.studies.filter((s) =>
-                form.assignedStudies.some((a) => a.studyId === s.studyId),
+                form.assignedStudies.some((a) => a.id === s.id),
               ).length;
 
               return (
@@ -360,12 +396,12 @@ export default function TeamMemberNewPage() {
                   {groupOpen && (
                     <div className={styles.studyList}>
                       {group.studies.map((study) => {
-                        const checked = form.assignedStudies.some((s) => s.studyId === study.studyId);
-                        const assigned = form.assignedStudies.find((s) => s.studyId === study.studyId);
-                        const permsOpen = !!openStudyPerms[study.studyId];
+                        const checked  = form.assignedStudies.some((s) => s.id === study.id);
+                        const assigned = form.assignedStudies.find((s) => s.id === study.id);
+                        const permsOpen = !!openStudyPerms[study.id];
 
                         return (
-                          <div key={study.studyId} className={styles.studyRowBlock}>
+                          <div key={study.id} className={styles.studyRowBlock}>
                             <div
                               className={`${styles.studyItem} ${checked ? styles.studyItemActive : ''}`}
                             >
@@ -393,7 +429,7 @@ export default function TeamMemberNewPage() {
                                 <button
                                   type="button"
                                   className={styles.studyExpandBtn}
-                                  onClick={() => toggleStudyPerms(study.studyId)}
+                                  onClick={() => toggleStudyPerms(study.id)}
                                   title={permsOpen ? 'Hide permissions' : 'Configure sponsor permissions'}
                                 >
                                   {permsOpen ? 'Hide permissions' : 'Configure permissions'}
@@ -405,7 +441,7 @@ export default function TeamMemberNewPage() {
                             {checked && permsOpen && (
                               <SponsorPermissionsMatrix
                                 value={assigned?.sponsorPermissions}
-                                onChange={(next) => setStudyPermissions(study.studyId, next)}
+                                onChange={(next) => setStudyPermissions(study.id, next)}
                                 studyConfig={study.config}
                               />
                             )}

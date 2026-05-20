@@ -19,6 +19,17 @@ const ACTION_LABELS = {
   'attachment.removed':      'Attachment removed',
   'verification.verified':   'Field verified',
   'verification.unverified': 'Verification removed',
+  // Phase 1 — form status workflow
+  'form.statusChanged':      'Form status changed',
+  'field.locked':            'Field locked',
+  'field.unlocked':          'Field unlocked',
+  'field.frozen':            'Field frozen',
+  'field.unfrozen':          'Field unfrozen',
+  // Phase 3 — signature + approval
+  'form.signed':             'Form signed',
+  'form.signatureRevoked':   'Signature revoked',
+  'form.approved':           'Form approved',
+  'form.approvalRevoked':    'Approval revoked',
 };
 
 function fmt(iso) {
@@ -41,6 +52,11 @@ function detailFor(entry) {
     case 'annotation.added':    return m.comment;
     case 'attachment.added':
     case 'attachment.removed':  return m.fileName;
+    case 'form.statusChanged':  return `${m.from} → ${m.to}${m.reason ? ` · "${m.reason}"` : ''}`;
+    case 'field.locked':
+    case 'field.unlocked':
+    case 'field.frozen':
+    case 'field.unfrozen':      return m.reason ?? null;
     default:                    return null;
   }
 }

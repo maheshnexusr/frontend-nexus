@@ -91,8 +91,11 @@ export default function SponsorLayout() {
   // Convenience: gates a leaf by BOTH study config AND role permissions.
   const allowed = (leafKey) => canViewLeaf(perms, leafKey);
 
-  /* ── Item 2 varies by study scope; gated by dataManager + data_capture ── */
-  const captureItem = cfg.dataManager && allowed('data_capture')
+  /* ── Item 2 varies by study scope; gated by data_capture leaf only.
+        The legacy `dataManager` step-3 toggle was removed in studyConfigGating
+        (EDC studies always need data capture), so `cfg.dataManager` is now
+        always undefined and would otherwise short-circuit this to null. ─── */
+  const captureItem = allowed('data_capture')
     ? (scope === 'EPRO'
         ? { key: 'diary',   label: 'My Diary',    icon: Notebook,      path: `${base}/capture` }
         : scope === 'SURVEY'
