@@ -25,6 +25,7 @@ import { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { selectPermissions, selectPermissionsTree } from '@/features/auth/authSlice';
 import { selectIsViewingSponsor } from '@/features/workspace/store/sponsorViewSlice';
+import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
 
 const ALLOW_ALL = true;
 const DENY      = false;
@@ -114,18 +115,23 @@ export function usePermissions() {
   const permissionsTree  = useSelector(selectPermissionsTree);
   const permissionsArr   = useSelector(selectPermissions);
   const viewingAsSponsor = useSelector(selectIsViewingSponsor);
+  // Per-study sponsor permission tree for a CRO team member who entered a
+  // sponsor workspace — resolved from their cro_team_member_study_permissions
+  // assignment (authUser.assignedStudies[studyId].sponsorPermissions).
+  // Returns null = unrestricted (system-role CRO admin / direct sponsor).
+  const sponsorRolePerms = useSiteRolePermissions();
 
   return useMemo(() => {
-    // ── Override: CRO user inside a sponsor workspace ─────────────────
-    // A CRO operator has full access of the sponsor role they're viewing.
-    // We treat their effective permissions as super-admin ('*') regardless
-    // of what the backend ships. This keeps the CRO-side experience write-
-    // capable inside the sponsor portal without requiring backend perm
-    // synchronisation. Direct sponsor logins (and site logins) keep using
-    // their own backend-supplied permissions.
+    // ── CRO user inside a sponsor workspace ───────────────────────────
+    // Gate by their PER-STUDY assigned permissions, not a blanket '*'. A
+    // scoped CRO team member sees/does only what was assigned to them in
+    // cro_team_member_study_permissions; a system-role CRO admin resolves to
+    // null here → hasPerm treats null as allow-all, so they keep full access.
+    // Mirrors the backend (buildSponsorView / authorizeSponsor). Direct
+    // sponsor + site logins are unaffected (viewingAsSponsor is false).
     const wildcardFromArr = Array.isArray(permissionsArr) && permissionsArr.includes('*');
     const base            = wildcardFromArr ? '*' : (permissionsTree ?? null);
-    const effective       = viewingAsSponsor ? '*' : base;
+    const effective       = viewingAsSponsor ? sponsorRolePerms : base;
 
     const flat = buildFlat(effective);
     return {
@@ -135,8 +141,8 @@ export function usePermissions() {
       // Raw backend payload — exposed so debug screens / inspectors can
       // show the full tree without piercing the abstraction.
       raw: permissionsTree,
-      // True when the CRO override is in effect (useful for UI hints).
+      // True when the CRO user is inside a sponsor workspace.
       isCROOverride: viewingAsSponsor,
     };
-  }, [permissionsTree, permissionsArr, viewingAsSponsor]);
+  }, [permissionsTree, permissionsArr, viewingAsSponsor, sponsorRolePerms]);
 }

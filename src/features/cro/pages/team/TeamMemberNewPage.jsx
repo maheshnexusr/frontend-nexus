@@ -59,6 +59,15 @@ export default function TeamMemberNewPage() {
     studiesClient.list().then((all) =>
       setStudyOptions(
         all
+          // Only PUBLISHED studies are assignable — an unpublished study
+          // (draft / configured) has no workspace database, so the assignment
+          // would be unusable. Mirrors the backend rule in
+          // teamService.assertStudiesAssignable; the backend still rejects
+          // anything that slips through.
+          .filter((s) => {
+            const st = (s.status ?? '').toLowerCase();
+            return st !== 'draft' && st !== 'configured';
+          })
           .sort((a, b) => (a.studyId ?? '').localeCompare(b.studyId ?? ''))
           .map((s) => ({
             id:          s.id,

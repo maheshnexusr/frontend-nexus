@@ -339,6 +339,61 @@ export const fetchIdentitiesAsync = createAsyncThunk(
  *
  * Args: { identityId, choiceToken }
  */
+/** Persist a minted-identity session (choose-identity / switch-identity) into
+ *  the right scope's storage and return the thunk payload. Both endpoints
+ *  return the same shape as a normal login. */
+async function persistMintedSession(loginRes, label, rejectWithValue) {
+  // Site personnel scope — persist to site storage, not CRO.
+  if (loginRes?.scope === 'site') {
+    setSiteSession(loginRes);
+    return { scope: 'site', user: loginRes.user };
+  }
+
+  const { accessToken, refreshToken } = extractAuthTokens(loginRes);
+
+  // If no token came back, the response is unusable. Reject so the UI shows
+  // an error rather than silently writing nothing and bouncing to /signin.
+  if (!accessToken) {
+    console.warn(`[auth] ${label}: no access token in response`, loginRes);
+    return rejectWithValue('No access token returned by the server. Please try again.');
+  }
+
+  localStorage.setItem('accessToken', accessToken);
+  if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+
+  const flatRes = { ...loginRes, accessToken, refreshToken };
+
+  if (loginResIsSponsor(flatRes)) {
+    sponsorTokenStore.saveTokens(flatRes);
+    if (flatRes.user) sponsorTokenStore.saveUser(flatRes.user);
+    return flatRes;
+  }
+
+  // The response usually already carries `permissions` + `assignedStudies`
+  // for the chosen identity (flatRes spreads them in). Only fall back to
+  // /profile/me/permissions when `permissions` is absent.
+  if (loginRes?.permissions != null) {
+    return flatRes;
+  }
+
+  try {
+    const permRes = await profileService.getPermissions();
+    const perms   = permRes?.permissions ?? permRes?.items ?? permRes ?? [];
+    const assigned =
+      permRes?.assignedStudies
+      ?? permRes?.assigned_studies
+      ?? permRes?.studies
+      ?? null;
+    return {
+      ...flatRes,
+      permissions: perms,
+      ...(assigned ? { assignedStudies: assigned } : {}),
+    };
+  } catch {
+    return flatRes;
+  }
+}
+
 export const chooseIdentityAsync = createAsyncThunk(
   'auth/chooseIdentity',
   async ({ identityId, choiceToken }, { rejectWithValue }) => {
@@ -347,60 +402,7 @@ export const chooseIdentityAsync = createAsyncThunk(
         choice_token: choiceToken,
         identity_id:  identityId,
       });
-
-      // Site personnel scope — persist to site storage, not CRO.
-      if (loginRes?.scope === 'site') {
-        setSiteSession(loginRes);
-        return { scope: 'site', user: loginRes.user };
-      }
-
-      const { accessToken, refreshToken } = extractAuthTokens(loginRes);
-
-      // If no token came back, the response is unusable. Reject so the UI
-      // shows an error rather than silently writing nothing to localStorage
-      // and bouncing through ProtectedRoute to /signin.
-      if (!accessToken) {
-        console.warn('[auth] choose-identity: no access token in response', loginRes);
-        return rejectWithValue('No access token returned by the server. Please try again.');
-      }
-
-      localStorage.setItem('accessToken',  accessToken);
-      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
-
-      const flatRes = { ...loginRes, accessToken, refreshToken };
-
-      if (loginResIsSponsor(flatRes)) {
-        sponsorTokenStore.saveTokens(flatRes);
-        if (flatRes.user) sponsorTokenStore.saveUser(flatRes.user);
-        return flatRes;
-      }
-
-      // The choose-identity response already includes `permissions` AND
-      // `assignedStudies` for the chosen identity (both at the top level
-      // of loginRes — flatRes spreads them in automatically). Prefer that.
-      // Only fall back to /profile/me/permissions if `permissions` is
-      // absent, and in that case also forward `assignedStudies` from the
-      // fallback response so the sponsor route guard can see them.
-      if (loginRes?.permissions != null) {
-        return flatRes;
-      }
-
-      try {
-        const permRes = await profileService.getPermissions();
-        const perms   = permRes?.permissions ?? permRes?.items ?? permRes ?? [];
-        const assigned =
-          permRes?.assignedStudies
-          ?? permRes?.assigned_studies
-          ?? permRes?.studies
-          ?? null;
-        return {
-          ...flatRes,
-          permissions: perms,
-          ...(assigned ? { assignedStudies: assigned } : {}),
-        };
-      } catch {
-        return flatRes;
-      }
+      return await persistMintedSession(loginRes, 'choose-identity', rejectWithValue);
     } catch (err) {
       // choice_token expired (401) or identity_id not in the token's
       // identity claim (403) — both mean the user must restart sign-in.
@@ -409,6 +411,35 @@ export const chooseIdentityAsync = createAsyncThunk(
         return rejectWithValue('Your sign-in selection expired. Please sign in again.');
       }
       return rejectWithValue(err.message ?? 'Failed to switch identity.');
+    }
+  },
+);
+
+/**
+ * In-app workspace switch — NO password.
+ *
+ * POST /api/v1/auth/switch-identity   body: { identity_id }
+ *
+ * The caller is already authenticated; the backend authorises the switch by
+ * matching the picked identity's email to the session's email, then mints the
+ * target identity's session. Same response shape as a normal login.
+ *
+ * Args: { identityId }
+ */
+export const switchIdentityAsync = createAsyncThunk(
+  'auth/switchIdentity',
+  async ({ identityId }, { rejectWithValue }) => {
+    try {
+      const loginRes = await authService.switchIdentity(identityId);
+      return await persistMintedSession(loginRes, 'switch-identity', rejectWithValue);
+    } catch (err) {
+      const status = err?.status ?? err?.response?.status;
+      if (status === 401) {
+        return rejectWithValue('Your session expired. Please sign in again.');
+      }
+      // 403 / 423 / etc. — surface the server's message; it is specific
+      // ("Account is not active…", "…has been suspended.", "…locked…").
+      return rejectWithValue(err?.message ?? 'Failed to switch workspace.');
     }
   },
 );
@@ -879,6 +910,19 @@ const authSlice = createSlice({
     },
 
     /**
+     * Refresh ONLY the per-study assignedStudies list (and persist it),
+     * without touching state.permissions. Used by applyPermissions when a
+     * sponsor-scope /profile/me/permissions response carries the CRO viewer's
+     * assignedStudies — so the sponsor sidebar/gates stay current on refresh,
+     * not just on switch.
+     */
+    setAssignedStudies(state, { payload }) {
+      if (!state.user) return;
+      state.user.assignedStudies = Array.isArray(payload) ? payload : [];
+      localStorage.setItem('authUser', JSON.stringify(state.user));
+    },
+
+    /**
      * Wipe the CRO permission array. Called by applyPermissions when the
      * dynamic /profile/me/permissions endpoint indicates the user is in
      * a different scope (site or sponsor) so the CRO sidebar shows nothing
@@ -975,6 +1019,17 @@ const authSlice = createSlice({
       })
       .addCase(chooseIdentityAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
 
+    // ── switchIdentityAsync ─────────────────────────────────────────────────
+    // In-app no-password workspace switch — applies state exactly like
+    // chooseIdentityAsync (a minted session for one of the user's identities).
+    builder
+      .addCase(switchIdentityAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
+      .addCase(switchIdentityAsync.fulfilled, (state, { payload }) => {
+        applyTokens(state, payload);
+        applyUser(state, payload);
+      })
+      .addCase(switchIdentityAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
+
     // ── sponsor login (password + OTP) ──────────────────────────────────────
     // Sponsor tokens live in localStorage under sponsor-scope keys (handled by
     // sponsorTokenStore inside the thunk). The sponsor user overwrites state.user
@@ -1036,6 +1091,7 @@ export const {
   clearError,
   updateUser,
   setRolePermissions,
+  setAssignedStudies,
   clearCroPermissions,
 } = authSlice.actions;
 

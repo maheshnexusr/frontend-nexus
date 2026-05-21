@@ -22,6 +22,14 @@ export const authService = {
       password,
     }),
 
+  /** POST /api/v1/auth/switch-identity — in-app workspace switch, no password.
+   *  The caller is already authenticated; the backend mints the target
+   *  identity's session after matching its email to the current session's. */
+  switchIdentity: (identityId) =>
+    axiosClient.post('/api/v1/auth/switch-identity', {
+      identity_id: identityId,
+    }),
+
   /** POST /api/v1/auth/login/otp/request */
   requestOtp: ({ emailAddress }) =>
     axiosClient.post('/api/v1/auth/login/otp/request', {

@@ -1,37 +1,65 @@
 /**
  * WorkspaceSwitcherModal — unified in-app workspace switcher.
  *
- * Two kinds of switches surface here:
+ * Two kinds of switches surface here, both single-click (no password):
  *
- *   1. Navigation switches (no re-auth)
+ *   1. Navigation switches
  *      The user is a CRO team-member with assigned studies. The CRO
  *      workspace and each `assignedStudies` entry are switchable contexts
  *      within the SAME session — just navigate the URL and the relevant
  *      layout picks up the per-study sponsorPermissions automatically.
  *
- *   2. Identity switches (re-auth required)
+ *   2. Identity switches (no password)
  *      The same email maps to more than one identity on the backend (CRO +
- *      Site, multiple sponsors, etc.). Switching needs a fresh
- *      choice_token, which means re-entering the password. We only fetch
- *      and render this section if the backend lists alternate identities.
+ *      Site, multiple sponsors, etc.). The user is already authenticated, so
+ *      switching just calls POST /auth/switch-identity with the picked
+ *      identity_id — the backend mints that identity's session after
+ *      confirming it shares the signed-in user's email. We only fetch and
+ *      render this section if the backend lists alternate identities.
  *
- * The modal shows both sections when both apply, but for the common case
- * (a CRO team-member with one assigned study and no alternate identities)
- * it's just a quick list of clickable workspaces with no password prompt.
+ * Either way the user just clicks a workspace — there is no password prompt.
  */
 
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Building2, MapPin, Beaker, X, Loader2, ArrowLeft, FlaskConical } from 'lucide-react';
+import { Building2, MapPin, Beaker, X, Loader2, FlaskConical } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import {
   fetchIdentitiesAsync,
-  chooseIdentityAsync,
-  loginAsync,
+  switchIdentityAsync,
   selectCurrentUser,
 } from '@/features/auth/authSlice';
+import { enterSponsorWorkspaceAsync, exitSponsorView } from '@/features/workspace/store/sponsorViewSlice';
+import { profileService } from '@/services/profileService';
+import { sponsorStudyContextStore } from '@/services/sponsorAuthService';
+import { normalizePermissionsResponse } from '@/api/profileClient';
+import { applyPermissions } from '@/features/auth/applyPermissions';
 import { getRoleRedirect } from '@/utils/roleRedirect';
+
+// localStorage keys owned by each auth scope. The shared `authUser` /
+// `authPermissions*` display keys are intentionally absent — the switch thunk
+// rewrites those for whichever scope we just entered.
+const SCOPE_KEYS = {
+  cro: ['accessToken', 'refreshToken', 'authPermissions', 'authPermissionsTree'],
+  sponsor: [
+    'sponsorAccessToken', 'sponsorRefreshToken', 'sponsorAuthUser',
+    'sponsorStudyContext', 'sponsorViewToken', 'sponsorViewMeta', 'sponsorViewFlash',
+  ],
+  site: [
+    'siteAccessToken', 'siteRefreshToken', 'siteWorkspaceToken',
+    'siteAuthUser', 'siteStudies', 'siteStudyContext',
+  ],
+};
+
+/** Drop tokens for every scope except `keep`, so a stale token from the
+ *  workspace we just left can't shadow the one we switched into. */
+function clearOtherScopes(keep) {
+  for (const [scope, keys] of Object.entries(SCOPE_KEYS)) {
+    if (scope === keep) continue;
+    keys.forEach((k) => { try { localStorage.removeItem(k); } catch { /* ignore */ } });
+  }
+}
 
 const TYPE_ICON = {
   cro:     Building2,
@@ -61,19 +89,16 @@ export default function WorkspaceSwitcherModal({ open, onClose }) {
   const [loading,    setLoading]    = useState(false);
   const [identities, setIdentities] = useState([]);
   const [error,      setError]      = useState(null);
-
-  // Two-step UX for identity switches: list → confirm password
-  const [pendingIdentity, setPendingIdentity] = useState(null);
-  const [password,        setPassword]        = useState('');
-  const [switching,       setSwitching]       = useState(false);
+  // identity_id currently being switched into (null = idle). Drives the
+  // per-card spinner and disables every other card during the round-trip.
+  const [switchingId, setSwitchingId] = useState(null);
 
   useEffect(() => {
     if (!open) return;
     let alive = true;
     setLoading(true);
     setError(null);
-    setPendingIdentity(null);
-    setPassword('');
+    setSwitchingId(null);
     dispatch(fetchIdentitiesAsync())
       .unwrap()
       .then((list) => { if (alive) setIdentities(list); })
@@ -85,8 +110,7 @@ export default function WorkspaceSwitcherModal({ open, onClose }) {
   // ── Build the unified workspace list ─────────────────────────────────────
   // Always includes a "CRO Workspace" anchor (the always-available home).
   // Each assignedStudies entry becomes a study workspace card. Identities
-  // that aren't the current CRO user surface in their own section below
-  // (they need re-auth).
+  // that aren't the current CRO user surface in their own section below.
   const assignedStudies = Array.isArray(currentUser?.assignedStudies)
     ? currentUser.assignedStudies
     : [];
@@ -107,13 +131,15 @@ export default function WorkspaceSwitcherModal({ open, onClose }) {
     });
     for (const s of assignedStudies) {
       out.push({
-        key:    `study-${s.studyId}`,
-        kind:   'nav',
-        type:   'study',
-        label:  s.studyTitle || `Study ${s.studyId}`,
-        sub:    s.sponsorName || 'Assigned study workspace',
-        path:   `/sponsor/${s.studyId}/dashboard`,
-        active: onPath.includes(`/sponsor/${s.studyId}`),
+        key:       `study-${s.studyId}`,
+        kind:      'nav',
+        type:      'study',
+        label:     s.studyTitle || `Study ${s.studyId}`,
+        sub:       s.sponsorName || 'Assigned study workspace',
+        path:      `/sponsor/${s.studyId}/dashboard`,
+        studyId:   s.studyId,
+        sponsorId: s.sponsorId,
+        active:    onPath.includes(`/sponsor/${s.studyId}`),
       });
     }
     return out;
@@ -127,46 +153,89 @@ export default function WorkspaceSwitcherModal({ open, onClose }) {
 
   if (!open) return null;
 
-  const onNavSwitch = (item) => {
-    onClose?.();
-    navigate(item.path);
-  };
+  const busy = !!switchingId;
 
-  const onPickIdentity = (identity) => {
-    setError(null);
-    setPassword('');
-    setPendingIdentity(identity);
-  };
+  const onNavSwitch = async (item) => {
+    if (busy) return;
 
-  const onConfirmSwitch = async (e) => {
-    e?.preventDefault?.();
-    if (!pendingIdentity || !password) return;
-    setSwitching(true);
+    // CRO workspace — leave any active sponsor view and re-sync CRO
+    // permissions, then navigate. (Entering a sponsor workspace can leave the
+    // CRO permission array emptied; this restores it on the way back.)
+    if (item.type !== 'study') {
+      setError(null);
+      setSwitchingId(item.key);
+      dispatch(exitSponsorView());
+      try {
+        const perms = await profileService.getPermissions();
+        applyPermissions(normalizePermissionsResponse(perms));
+      } catch { /* non-fatal — keep cached CRO permissions */ }
+      onClose?.();
+      navigate(item.path);
+      return;
+    }
+
+    // Assigned sponsor study — the sponsor workspace's API calls need a
+    // sponsor-scope token. Mint one via /workspace/sponsors/:id/enter before
+    // navigating, otherwise every /api/v1/sponsor/* request 401s.
+    if (!item.sponsorId) {
+      setError('This study has no linked sponsor — cannot open its workspace.');
+      return;
+    }
     setError(null);
+    setSwitchingId(item.key);
     try {
-      const step1 = await dispatch(loginAsync({
-        emailAddress: currentUser?.email,
-        password,
+      // Re-sync the per-study permission trees with the CRO token first, so
+      // the sponsor sidebar reflects the LATEST assignment. authUser
+      // .assignedStudies otherwise only refreshes while in the CRO workspace,
+      // so a permission change made after this user logged in would be missed.
+      try {
+        const perms = await profileService.getPermissions();
+        applyPermissions(normalizePermissionsResponse(perms));
+      } catch { /* non-fatal — fall back to cached assignedStudies */ }
+
+      const entered = await dispatch(enterSponsorWorkspaceAsync(item.sponsorId)).unwrap();
+
+      // Persist the study context (studyId + environment) BEFORE navigating.
+      // The sponsor dashboard and every /sponsor/workspace/* call need
+      // `environment`, which they read from this context — the CRO switcher
+      // skips the study picker that would normally set it. The /enter
+      // response carries each assigned study's environment.
+      const enteredStudy = (entered?.studies ?? []).find((s) => s.id === item.studyId);
+      sponsorStudyContextStore.set({
+        studyId:     item.studyId,
+        environment: enteredStudy?.environment || 'UAT',
+      });
+
+      onClose?.();
+      navigate(item.path);
+    } catch (e2) {
+      setError(typeof e2 === 'string' ? e2 : 'Failed to open that study workspace.');
+      setSwitchingId(null);
+    }
+  };
+
+  /** Identity switch — no password. The backend mints the picked identity's
+   *  session from the current login; we then drop the old scope's tokens and
+   *  reload into the new workspace. */
+  const onPickIdentity = async (identity) => {
+    if (busy) return;
+    setError(null);
+    setSwitchingId(identity.identity_id);
+    try {
+      const result = await dispatch(switchIdentityAsync({
+        identityId: identity.identity_id,
       })).unwrap();
 
-      if (!step1?.requiresChoice) {
-        onClose?.();
-        navigate(getRoleRedirect(step1?.user), { replace: true });
-        window.location.reload();
-        return;
-      }
-
-      const result = await dispatch(chooseIdentityAsync({
-        identityId:  pendingIdentity.identity_id,
-        choiceToken: step1.choiceToken,
-      })).unwrap();
+      // Drop the previous scope's tokens BEFORE resolving the destination, so
+      // getRoleRedirect can't match a stale token and route us back.
+      clearOtherScopes((identity.user_type ?? '').toLowerCase());
 
       onClose?.();
       navigate(getRoleRedirect(result?.user ?? result?.session ?? result), { replace: true });
       window.location.reload();
     } catch (e2) {
       setError(typeof e2 === 'string' ? e2 : 'Failed to switch workspace.');
-      setSwitching(false);
+      setSwitchingId(null);
     }
   };
 
@@ -180,7 +249,7 @@ export default function WorkspaceSwitcherModal({ open, onClose }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 1200, padding: 16,
       }}
-      onClick={onClose}
+      onClick={busy ? undefined : onClose}
     >
       <div
         style={{
@@ -191,39 +260,22 @@ export default function WorkspaceSwitcherModal({ open, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <header style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 20px', borderBottom: '1px solid #f1f5f9' }}>
-          {pendingIdentity && (
-            <button
-              type="button"
-              onClick={() => { setPendingIdentity(null); setPassword(''); setError(null); }}
-              disabled={switching}
-              style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                width: 28, height: 28, border: 0, background: 'transparent',
-                color: '#64748b', cursor: switching ? 'not-allowed' : 'pointer', borderRadius: 6,
-              }}
-              aria-label="Back"
-            >
-              <ArrowLeft size={16} />
-            </button>
-          )}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>
-              {pendingIdentity ? 'Confirm password' : 'Switch workspace'}
+              Switch workspace
             </div>
             <div style={{ fontSize: 11.5, color: '#64748b' }}>
-              {pendingIdentity
-                ? 'Re-enter your password to switch identities securely.'
-                : 'Pick a workspace to continue working in.'}
+              Pick a workspace to continue working in.
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            disabled={switching}
+            disabled={busy}
             style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, border: 0, background: 'transparent',
-              color: '#64748b', cursor: switching ? 'not-allowed' : 'pointer', borderRadius: 6,
+              color: '#64748b', cursor: busy ? 'not-allowed' : 'pointer', borderRadius: 6,
             }}
             aria-label="Close"
           >
@@ -231,195 +283,128 @@ export default function WorkspaceSwitcherModal({ open, onClose }) {
           </button>
         </header>
 
-        {/* ── List view ──────────────────────────────────────────────────── */}
-        {!pendingIdentity && (
-          <div style={{ padding: '14px 20px', overflowY: 'auto', flex: 1 }}>
-            {/* Section 1: navigation workspaces (no re-auth) */}
-            <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
-              Your workspaces
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {navWorkspaces.map((w) => {
-                const color = COLOR_BY_TYPE[w.type] ?? COLOR_BY_TYPE.cro;
-                return (
-                  <button
-                    key={w.key}
-                    type="button"
-                    onClick={() => onNavSwitch(w)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      textAlign: 'left', padding: 12,
-                      background: w.active ? '#f1f5f9' : '#fff',
-                      border: w.active ? '1px solid #cbd5e1' : '1px solid #e2e8f0',
-                      borderRadius: 10, cursor: 'pointer',
-                      transition: 'border-color 0.15s, box-shadow 0.15s',
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.boxShadow = '0 1px 6px rgba(37,99,235,.12)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = w.active ? '#cbd5e1' : '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}
-                  >
-                    <span
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        width: 36, height: 36, borderRadius: 8,
-                        background: color.bg, color: color.fg, flex: '0 0 auto',
-                      }}
-                    >
-                      <IdentityIcon type={w.type} />
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {w.label}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#64748b' }}>{w.sub}</div>
-                    </div>
-                    {w.active && (
-                      <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>Active</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Section 2: alternate identities (re-auth required) */}
-            {(altIdentities.length > 0 || loading) && (
-              <>
-                <div style={{
-                  fontSize: 11, color: '#64748b', fontWeight: 600,
-                  textTransform: 'uppercase', letterSpacing: 0.4,
-                  marginTop: 18, marginBottom: 8,
-                }}>
-                  Switch to another identity
-                </div>
-                {loading ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748b', fontSize: 13 }}>
-                    <Loader2 size={14} style={{ animation: 'rt-spin 700ms linear infinite' }} />
-                    Loading…
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {altIdentities.map((id) => {
-                      const type  = (id.user_type ?? '').toLowerCase();
-                      const color = COLOR_BY_TYPE[type] ?? COLOR_BY_TYPE.cro;
-                      return (
-                        <button
-                          key={id.identity_id}
-                          type="button"
-                          onClick={() => onPickIdentity(id)}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 12,
-                            textAlign: 'left', padding: 12,
-                            background: '#fff', border: '1px solid #e2e8f0',
-                            borderRadius: 10, cursor: 'pointer',
-                            transition: 'border-color 0.15s, box-shadow 0.15s',
-                          }}
-                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.boxShadow = '0 1px 6px rgba(37,99,235,.12)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}
-                        >
-                          <span
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                              width: 36, height: 36, borderRadius: 8,
-                              background: color.bg, color: color.fg, flex: '0 0 auto',
-                            }}
-                          >
-                            <IdentityIcon type={type} />
-                          </span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {id.display_label || `${type.toUpperCase()} workspace`}
-                            </div>
-                            <div style={{ fontSize: 11, color: '#64748b' }}>
-                              {type.toUpperCase()}
-                              {id.environment ? ` · ${id.environment}` : ''}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
-
-            {error && (
-              <p style={{ marginTop: 12, fontSize: 12.5, color: '#dc2626' }}>{error}</p>
-            )}
+        <div style={{ padding: '14px 20px', overflowY: 'auto', flex: 1 }}>
+          {/* Section 1: navigation workspaces */}
+          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
+            Your workspaces
           </div>
-        )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {navWorkspaces.map((w) => {
+              const color = COLOR_BY_TYPE[w.type] ?? COLOR_BY_TYPE.cro;
+              return (
+                <button
+                  key={w.key}
+                  type="button"
+                  onClick={() => onNavSwitch(w)}
+                  disabled={busy}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    textAlign: 'left', padding: 12,
+                    background: w.active ? '#f1f5f9' : '#fff',
+                    border: w.active ? '1px solid #cbd5e1' : '1px solid #e2e8f0',
+                    borderRadius: 10, cursor: busy ? 'not-allowed' : 'pointer',
+                    opacity: busy && switchingId !== w.key ? 0.6 : 1,
+                    transition: 'border-color 0.15s, box-shadow 0.15s',
+                  }}
+                  onMouseEnter={(e) => { if (!busy) { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.boxShadow = '0 1px 6px rgba(37,99,235,.12)'; } }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = w.active ? '#cbd5e1' : '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}
+                >
+                  <span
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 36, height: 36, borderRadius: 8,
+                      background: color.bg, color: color.fg, flex: '0 0 auto',
+                    }}
+                  >
+                    <IdentityIcon type={w.type} />
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {w.label}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>{w.sub}</div>
+                  </div>
+                  {switchingId === w.key ? (
+                    <Loader2 size={15} style={{ color: '#2563eb', animation: 'rt-spin 700ms linear infinite', flex: '0 0 auto' }} />
+                  ) : w.active ? (
+                    <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}>Active</span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
 
-        {/* ── Password confirm view ──────────────────────────────────────── */}
-        {pendingIdentity && (
-          <form onSubmit={onConfirmSwitch} style={{ padding: '14px 20px', overflowY: 'auto', flex: 1 }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: 12, marginBottom: 14,
-              background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10,
-            }}>
-              <span
-                style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: 36, height: 36, borderRadius: 8,
-                  background: (COLOR_BY_TYPE[(pendingIdentity.user_type ?? '').toLowerCase()] ?? COLOR_BY_TYPE.cro).bg,
-                  color:      (COLOR_BY_TYPE[(pendingIdentity.user_type ?? '').toLowerCase()] ?? COLOR_BY_TYPE.cro).fg,
-                  flex: '0 0 auto',
-                }}
-              >
-                <IdentityIcon type={(pendingIdentity.user_type ?? '').toLowerCase()} />
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a' }}>
-                  {pendingIdentity.display_label || `${(pendingIdentity.user_type ?? '').toUpperCase()} workspace`}
-                </div>
-                <div style={{ fontSize: 11, color: '#64748b' }}>
-                  {(pendingIdentity.user_type ?? '').toUpperCase()}
-                  {pendingIdentity.environment ? ` · ${pendingIdentity.environment}` : ''}
-                </div>
+          {/* Section 2: alternate identities — single-click, no password */}
+          {(altIdentities.length > 0 || loading) && (
+            <>
+              <div style={{
+                fontSize: 11, color: '#64748b', fontWeight: 600,
+                textTransform: 'uppercase', letterSpacing: 0.4,
+                marginTop: 18, marginBottom: 8,
+              }}>
+                Switch to another workspace
               </div>
-            </div>
+              {loading ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#64748b', fontSize: 13 }}>
+                  <Loader2 size={14} style={{ animation: 'rt-spin 700ms linear infinite' }} />
+                  Loading…
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {altIdentities.map((id) => {
+                    const type  = (id.user_type ?? '').toLowerCase();
+                    const color = COLOR_BY_TYPE[type] ?? COLOR_BY_TYPE.cro;
+                    const isThisSwitching = switchingId === id.identity_id;
+                    return (
+                      <button
+                        key={id.identity_id}
+                        type="button"
+                        onClick={() => onPickIdentity(id)}
+                        disabled={busy}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12,
+                          textAlign: 'left', padding: 12,
+                          background: '#fff', border: '1px solid #e2e8f0',
+                          borderRadius: 10, cursor: busy ? 'not-allowed' : 'pointer',
+                          opacity: busy && !isThisSwitching ? 0.6 : 1,
+                          transition: 'border-color 0.15s, box-shadow 0.15s',
+                        }}
+                        onMouseEnter={(e) => { if (!busy) { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.boxShadow = '0 1px 6px rgba(37,99,235,.12)'; } }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}
+                      >
+                        <span
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: 36, height: 36, borderRadius: 8,
+                            background: color.bg, color: color.fg, flex: '0 0 auto',
+                          }}
+                        >
+                          <IdentityIcon type={type} />
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {id.display_label || `${type.toUpperCase()} workspace`}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#64748b' }}>
+                            {type.toUpperCase()}
+                            {id.environment ? ` · ${id.environment}` : ''}
+                          </div>
+                        </div>
+                        {isThisSwitching && (
+                          <Loader2 size={15} style={{ color: '#2563eb', animation: 'rt-spin 700ms linear infinite', flex: '0 0 auto' }} />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
 
-            <label style={{ display: 'block', fontSize: 12, color: '#475569', marginBottom: 6 }}>
-              Password for <strong style={{ color: '#0f172a' }}>{currentUser?.email}</strong>
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoFocus
-              autoComplete="current-password"
-              disabled={switching}
-              placeholder="Enter your password"
-              style={{
-                width: '100%', padding: '10px 12px',
-                border: '1px solid #cbd5e1', borderRadius: 8,
-                fontSize: 14, outline: 'none',
-                background: switching ? '#f1f5f9' : '#fff',
-              }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = '#2563eb'; }}
-              onBlur={(e)  => { e.currentTarget.style.borderColor = '#cbd5e1'; }}
-            />
-
-            {error && (
-              <p style={{ marginTop: 10, fontSize: 12.5, color: '#dc2626' }}>{error}</p>
-            )}
-
-            <button
-              type="submit"
-              disabled={switching || !password}
-              style={{
-                marginTop: 14, width: '100%',
-                padding: '10px 14px',
-                background: switching || !password ? '#94a3b8' : '#2563eb',
-                color: '#fff', border: 0, borderRadius: 8,
-                fontSize: 14, fontWeight: 600,
-                cursor: switching || !password ? 'not-allowed' : 'pointer',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              }}
-            >
-              {switching && <Loader2 size={14} style={{ animation: 'rt-spin 700ms linear infinite' }} />}
-              {switching ? 'Switching…' : 'Switch workspace'}
-            </button>
-          </form>
-        )}
+          {error && (
+            <p style={{ marginTop: 12, fontSize: 12.5, color: '#dc2626' }}>{error}</p>
+          )}
+        </div>
       </div>
     </div>,
     document.body,
