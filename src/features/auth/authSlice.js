@@ -254,7 +254,27 @@ export const loginAsync = createAsyncThunk(
       if (loginResIsSponsor(flatRes)) {
         sponsorTokenStore.saveTokens(flatRes);
         if (flatRes.user) sponsorTokenStore.saveUser(flatRes.user);
-        return flatRes;
+
+        // Fetch the sponsor user's permission tree the same way CRO does.
+        // Without this, the sponsor menu has no per-user gating to apply —
+        // useSiteRolePermissions returns null (= unrestricted) and every
+        // route's authorization middleware rejects the request because
+        // it sees an empty permission set on the user.
+        //
+        // The token saved at the top of this thunk is picked up by the
+        // request interceptor. If the endpoint doesn't accept the sponsor
+        // token shape, we degrade cleanly (sponsor menu stays unrestricted).
+        try {
+          const permRes = await profileService.getPermissions();
+          const perms   = permRes?.permissions ?? permRes?.items ?? permRes ?? [];
+          return {
+            ...flatRes,
+            permissions: perms,
+            ...(permRes?.user ? { user: { ...(flatRes.user ?? {}), ...permRes.user } } : {}),
+          };
+        } catch {
+          return flatRes;
+        }
       }
 
       // Fire /profile/me/permissions immediately after login. The token
@@ -366,7 +386,20 @@ async function persistMintedSession(loginRes, label, rejectWithValue) {
   if (loginResIsSponsor(flatRes)) {
     sponsorTokenStore.saveTokens(flatRes);
     if (flatRes.user) sponsorTokenStore.saveUser(flatRes.user);
-    return flatRes;
+
+    // If the choose-identity response already includes the sponsor's
+    // permission tree, use it. Otherwise fetch via /profile/me/permissions
+    // so the sponsor menu has actual gating data (without this, the menu
+    // falls back to "unrestricted" and the backend's per-route guards
+    // reject everything).
+    if (loginRes?.permissions != null) return flatRes;
+    try {
+      const permRes = await profileService.getPermissions();
+      const perms   = permRes?.permissions ?? permRes?.items ?? permRes ?? [];
+      return { ...flatRes, permissions: perms };
+    } catch {
+      return flatRes;
+    }
   }
 
   // The response usually already carries `permissions` + `assignedStudies`
@@ -479,7 +512,13 @@ export const loginWithOtpAsync = createAsyncThunk(
       if (loginResIsSponsor(flatRes)) {
         sponsorTokenStore.saveTokens(flatRes);
         if (flatRes.user) sponsorTokenStore.saveUser(flatRes.user);
-        return flatRes;
+        try {
+          const permRes = await profileService.getPermissions();
+          const perms   = permRes?.permissions ?? permRes?.items ?? permRes ?? [];
+          return { ...flatRes, permissions: perms };
+        } catch {
+          return flatRes;
+        }
       }
 
       try {
