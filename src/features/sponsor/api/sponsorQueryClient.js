@@ -49,6 +49,7 @@ function normalizeQuery(raw) {
     siteId:       raw.site_id      ?? raw.siteId      ?? raw.site_code ?? raw.siteCode ?? '',
     subjectId:    raw.subject_id   ?? raw.subjectId   ?? '',
     subjectInitials: raw.subject_initials ?? raw.subjectInitials ?? '',
+    formId:       raw.form_id      ?? raw.formId      ?? '',
     blockName:    raw.block_name   ?? raw.blockName   ?? '',
     pageName:     raw.page_name    ?? raw.pageName    ?? raw.form_name ?? raw.formName ?? '',
     formName:     raw.form_name    ?? raw.formName    ?? '',

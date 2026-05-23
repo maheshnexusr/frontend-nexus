@@ -50,7 +50,7 @@ function normalizeConfig(raw) {
 export const sponsorConsentClient = {
   /** Fetch site roles for the study (spec §13.2). */
   async getRoles(_studyId) {
-    const res = await sponsorAxiosClient.get(`${WORKSPACE}/site-roles`);
+    const res = await sponsorAxiosClient.get(`${WORKSPACE}/lookups/site-roles`);
     const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
     return arr.map((r) => ({
       id:   r.id        ?? r.role_id  ?? r.roleId,

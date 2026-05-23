@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Eye, MessageSquare, CheckCircle, AlertTriangle,
   RotateCcw, Download, Filter, Search, X as XIcon,
   RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown,
-  MessageSquareWarning,
+  MessageSquareWarning, FileText,
 } from 'lucide-react';
 import { sponsorQueryClient }   from '@/features/sponsor/api/sponsorQueryClient';
+import sponsorAxiosClient       from '@/api/sponsorAxiosClient';
 import { addToast }             from '@/app/notificationSlice';
 import { selectCurrentUser }    from '@/features/auth/authSlice';
 import SearchableDropdown       from '@/components/form/SearchableDropdown';
@@ -71,6 +72,7 @@ function SortIcon({ col, sortKey, sortDir }) {
 
 export default function QueriesPage() {
   const { studyId } = useParams();
+  const navigate    = useNavigate();
   const dispatch    = useDispatch();
   const ro          = useReadOnlyView();
   const currentUser = useSelector(selectCurrentUser);
@@ -81,6 +83,9 @@ export default function QueriesPage() {
   const [queries,   setQueries]   = useState([]);
   const [siteOpts,  setSiteOpts]  = useState([]);
   const [loading,   setLoading]   = useState(true);
+  // Study's form id — fallback for opening the form from a query whose row
+  // doesn't carry one (single-form studies).
+  const [studyFormId, setStudyFormId] = useState(null);
 
   // ── Filters ──────────────────────────────────────────────────────────────
   const [statusFilter,   setStatusFilter]   = useState('Open');
@@ -136,6 +141,32 @@ export default function QueriesPage() {
   }, [studyId, statusFilter, priorityFilter, siteFilter, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Resolve the study's form id once, so the "Open Form" action works even
+  // for query rows that don't carry a form id.
+  useEffect(() => {
+    if (!studyId) return undefined;
+    let cancelled = false;
+    sponsorAxiosClient.get('/api/v1/sponsor/workspace/forms')
+      .then((res) => {
+        if (cancelled) return;
+        const items = res?.items ?? res ?? [];
+        if (items.length) setStudyFormId(items[0].formId ?? items[0].form_id ?? null);
+      })
+      .catch(() => { /* leave null — the action falls back to a toast */ });
+    return () => { cancelled = true; };
+  }, [studyId]);
+
+  // Open the study form for a query's subject, so the Query Manager can review
+  // the data the query was raised against.
+  const openStudyForm = (q) => {
+    const formId = q.formId || studyFormId;
+    if (!formId || !q.subjectId) {
+      dispatch(addToast({ type: 'error', message: 'Cannot open the form — no form or subject for this query.' }));
+      return;
+    }
+    navigate(`/sponsor/${studyId}/capture/form?formId=${formId}&subjectId=${q.subjectId}`);
+  };
   useEffect(() => { setPage(1); setSelected(new Set()); }, [statusFilter, priorityFilter, siteFilter, query, dateFrom, dateTo, onlyMine]);
 
   // ── Local filter & sort ───────────────────────────────────────────────────
@@ -641,6 +672,9 @@ export default function QueriesPage() {
                   <td className={styles.tdActions}>
                     <button className={styles.actionBtn} title="View Details" onClick={() => setDetails(q)}>
                       <Eye size={12} />
+                    </button>
+                    <button className={styles.actionBtn} title="Open Study Form" onClick={() => openStudyForm(q)}>
+                      <FileText size={12} />
                     </button>
                     {isActive && (
                       <>

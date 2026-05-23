@@ -107,7 +107,12 @@ function PropertiesPanel({ el, elements, onClose, onDelete, onDuplicate, onUpdat
 
   const TABS = isStatic
     ? [{ id: 'general', label: 'General' }]
-    : [{ id: 'general', label: 'General' }, { id: 'validation', label: 'Validation' }, { id: 'logic', label: 'Logic' }];
+    : [
+        { id: 'general', label: 'General' },
+        { id: 'validation', label: 'Validation' },
+        { id: 'logic', label: 'Logic' },
+        { id: 'clinical', label: 'Clinical' },
+      ];
 
   const upV = (k, v) => onUpdate({ validation: { ...el.validation, [k]: v } });
   const upC = (k, v) => onUpdate({ conditions: { ...el.conditions, [k]: v } });
@@ -142,6 +147,7 @@ function PropertiesPanel({ el, elements, onClose, onDelete, onDuplicate, onUpdat
         {tab === 'general'    && <GeneralTab    el={el} onUpdate={onUpdate} upA={upA} isInput={isInput} hasOptions={hasOptions} isStatic={isStatic} />}
         {tab === 'validation' && <ValidationTab el={el} upV={upV} />}
         {tab === 'logic'      && <LogicTab      el={el} upC={upC} elements={elements} />}
+        {tab === 'clinical'   && <ClinicalTab   el={el} onUpdate={onUpdate} />}
       </div>
     </div>
   );
@@ -300,6 +306,48 @@ function LogicTab({ el, upC, elements }) {
         </>
       )}
     </Section>
+  );
+}
+
+/* ── Clinical Tab ────────────────────────────────────────── */
+// Per-field EDC metadata: which roles may view / edit the field, and whether
+// the field participates in SDV / review / queries. Roles are entered by name
+// (CRC, CRA, PI, DM…); empty = no restriction. The form runner + backend save
+// path enforce these.
+function ClinicalTab({ el, onUpdate }) {
+  const clinical = el.clinical || {
+    viewRoles: [], editRoles: [], sdvEnabled: false, reviewRequired: false, queryEnabled: false,
+  };
+  const upClin = (k, v) => onUpdate({ clinical: { ...clinical, [k]: v } });
+  const toText  = (arr) => (Array.isArray(arr) ? arr.join(', ') : '');
+  const toRoles = (txt) => txt.split(',').map((r) => r.trim()).filter(Boolean);
+
+  return (
+    <>
+      <Section title="Role Access" defaultOpen>
+        <Row label="View roles" top>
+          <input
+            className={s.input}
+            value={toText(clinical.viewRoles)}
+            onChange={(e) => upClin('viewRoles', toRoles(e.target.value))}
+            placeholder="e.g. CRA, DM, PI — empty = all roles"
+          />
+        </Row>
+        <Row label="Edit roles" top>
+          <input
+            className={s.input}
+            value={toText(clinical.editRoles)}
+            onChange={(e) => upClin('editRoles', toRoles(e.target.value))}
+            placeholder="e.g. CRC — empty = all roles"
+          />
+        </Row>
+      </Section>
+      <Section title="Data Management" defaultOpen>
+        <Row label="SDV enabled"><Toggle value={clinical.sdvEnabled || false} onChange={(v) => upClin('sdvEnabled', v)} /></Row>
+        <Row label="Review required"><Toggle value={clinical.reviewRequired || false} onChange={(v) => upClin('reviewRequired', v)} /></Row>
+        <Row label="Query enabled"><Toggle value={clinical.queryEnabled || false} onChange={(v) => upClin('queryEnabled', v)} /></Row>
+      </Section>
+    </>
   );
 }
 

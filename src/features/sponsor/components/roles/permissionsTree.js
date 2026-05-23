@@ -12,7 +12,10 @@
 
 // ── Column definitions ────────────────────────────────────────────────────────
 
-export const ALL_PERMS = ['view', 'create', 'edit', 'delete', 'import', 'export', 'screenshot'];
+export const ALL_PERMS = [
+  'view', 'create', 'edit', 'delete', 'import', 'export', 'screenshot',
+  'verify', 'sign', 'freeze', 'lock',
+];
 
 export const PERM_LABELS = {
   view:       'View',
@@ -22,6 +25,10 @@ export const PERM_LABELS = {
   import:     'Import',
   export:     'Export',
   screenshot: 'Screenshot',
+  verify:     'Verify',
+  sign:       'Sign',
+  freeze:     'Freeze',
+  lock:       'Lock',
 };
 
 // ── Feature tree ──────────────────────────────────────────────────────────────
@@ -37,7 +44,8 @@ export const FEATURE_TREE = [
   {
     key:      'data_capture',
     label:    'Data Capture',
-    perms:    ['view', 'create', 'edit', 'delete', 'export', 'screenshot'],
+    perms:    ['view', 'create', 'edit', 'delete', 'export', 'screenshot',
+               'verify', 'sign', 'freeze', 'lock'],
   },
   {
     key:      'consent_management',

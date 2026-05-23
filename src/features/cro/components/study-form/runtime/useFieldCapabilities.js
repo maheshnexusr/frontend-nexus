@@ -46,6 +46,10 @@ const ALLOW_ALL = Object.freeze({
   canVerify:           true,
   canEditField:        true,
   canSubmitForm:       true,
+  // Data-capture form-lifecycle actions.
+  canSign:             true,
+  canFreeze:           true,
+  canLock:             true,
   // Debug helpers — useful for "Why can't I see X?" inspection.
   _hasWorkspace: false,
   _hasPermissions: false,
@@ -81,6 +85,11 @@ export function useFieldCapabilities() {
       canVerify:          p.canVerifyField,
       canEditField:       p.canEditForm,
       canSubmitForm:      p.canSubmitForm,
+
+      // ─ Data-capture form-lifecycle actions (migration 021) ─
+      canSign:            p.canSignForm,
+      canFreeze:          p.canFreezeForm,
+      canLock:            p.canLockForm,
 
       // ─ Phase 1/3 form-status gates (re-exposed for useFormGate) ─
       canApproveForm:     p.canApproveForm,

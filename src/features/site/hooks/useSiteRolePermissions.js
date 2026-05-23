@@ -59,10 +59,13 @@ function readJSON(key) {
 
 /** Pure resolver — same logic without React, for non-component callers.
  *
- *  Direct sponsor users are intentionally NOT gated by their role's
- *  permission tree — they always see every menu leaf (filtered only by
- *  study.config). Their sponsorAuthUser.permissions is skipped here on
- *  purpose. Site users and per-study-assigned CRO viewers are still gated.
+ *  Resolution order: site auth → direct sponsor (per-study grant) → CRO
+ *  viewer (per-study assignment) → unrestricted.
+ *
+ *  Direct sponsor users ARE gated by the per-study permission tree the CRO
+ *  assigned in Study Wizard Step 1 — POST /sponsor/studies/choose returns it
+ *  and it is persisted in `sponsorStudyContext`. A study with no per-study
+ *  grant (legacy) resolves to unrestricted (null).
  */
 export function resolveRolePermissions(studyId) {
   // 1. Direct site auth scope wins — but ONLY when a site token is actually
@@ -73,6 +76,24 @@ export function resolveRolePermissions(studyId) {
   if (typeof window !== 'undefined' && localStorage.getItem('siteAccessToken')) {
     const ctx = readJSON('siteStudyContext');
     if (ctx?.permissions && Object.keys(ctx.permissions).length) return ctx.permissions;
+  }
+
+  // 1b. Sponsor workspace session — gate by the per-study permission tree
+  //     returned by POST /sponsor/studies/choose (buildSponsorView projects
+  //     the study's Step-1 grant). Stored in `sponsorStudyContext`, keyed by
+  //     studyId. Applies to BOTH a direct sponsor login (`sponsorAccessToken`)
+  //     and a CRO operator viewing the sponsor workspace (`sponsorViewToken`).
+  //     `'*'` (system admin on a study with no grant) → null = unrestricted.
+  if (
+    typeof window !== 'undefined' &&
+    (localStorage.getItem('sponsorAccessToken') || localStorage.getItem('sponsorViewToken'))
+  ) {
+    const ctx = readJSON('sponsorStudyContext');
+    const perms = ctx?.permissions;
+    if (ctx?.studyId && (!studyId || ctx.studyId === studyId)) {
+      if (perms === '*' || perms === true) return null;
+      if (perms && typeof perms === 'object' && Object.keys(perms).length) return perms;
+    }
   }
 
   // 2. CRO team member viewing a sponsor workspace — find the assigned

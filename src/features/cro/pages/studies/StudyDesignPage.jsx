@@ -21,9 +21,10 @@ import {
 } from 'lucide-react';
 import { studiesClient }         from '@/features/cro/api/studiesClient';
 import { addToast }              from '@/app/notificationSlice';
-import { resetWizard, setStep1 } from '@/features/cro/store/studyWizardSlice';
+import { resetWizard, setStep1, setStep3 } from '@/features/cro/store/studyWizardSlice';
 import { useAppSelector }        from '@/app/hooks';
 import { selectCurrentUser }     from '@/features/auth/authSlice';
+import { usePermissions }        from '@/features/auth/usePermissions';
 import StudyFormBuilder          from '@/features/cro/components/study-form/StudyFormBuilder';
 import StudyDesignSearch         from './StudyDesignSearch';
 import styles from './StudyDesignPage.module.css';
@@ -39,6 +40,11 @@ export default function StudyDesignPage() {
   const navigate    = useNavigate();
   const dispatch    = useDispatch();
   const user        = useAppSelector(selectCurrentUser);
+
+  // Publishing is gated separately from designing — a role may configure the
+  // form but not push a release. Mirrors authorize("…Studies", "publish").
+  const { has }     = usePermissions();
+  const canPublish  = has('studies', 'publish');
 
   const [loading,  setLoading]  = useState(true);
   const [study,    setStudy]    = useState(null);
@@ -63,6 +69,16 @@ export default function StudyDesignPage() {
         studyDescription: s.studyDescription ?? '',
         sponsorId:        s.sponsorId       ?? '',
         sponsorName:      s.sponsorName     ?? '',
+      }));
+      // Hydrate Step 3 too — the form builder's Collaboration & Tools gates
+      // the per-field "Queries" toggle on step3.queryManager. Without this the
+      // designer always sees Query Manager as OFF and can't enable queries.
+      dispatch(setStep3({
+        consentManager:      s.consentManager      ?? false,
+        queryManager:        s.queryManager        ?? false,
+        dataManager:         s.dataManager         ?? false,
+        verificationManager: s.verificationManager ?? false,
+        navigationBar:       s.navigationBar       ?? false,
       }));
       setStudy(s);
       setLoading(false);
@@ -156,13 +172,15 @@ export default function StudyDesignPage() {
 
         {/* Actions */}
         <div className={styles.headerActions}>
-          <button
-            type="button"
-            className={styles.publishBtn}
-            onClick={() => setPublishOpen(true)}
-          >
-            <Send size={13} /> Publish
-          </button>
+          {canPublish && (
+            <button
+              type="button"
+              className={styles.publishBtn}
+              onClick={() => setPublishOpen(true)}
+            >
+              <Send size={13} /> Publish
+            </button>
+          )}
 
           <div className={styles.user}>
             <div className={styles.userAvatar}>{initials(fullName)}</div>

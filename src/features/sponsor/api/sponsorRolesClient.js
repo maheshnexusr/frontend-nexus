@@ -12,6 +12,22 @@ import sponsorAxiosClient from '@/api/sponsorAxiosClient';
 import { buildEmptyPermissions } from '../components/roles/permissionsTree';
 
 const BASE = '/api/v1/sponsor/workspace/site-roles';
+// Auth-only reference list for form dropdowns — no `site_roles` permission needed.
+const LOOKUP = '/api/v1/sponsor/workspace/lookups/site-roles';
+
+function extractRoleList(res) {
+  let arr =
+       (Array.isArray(res)              ? res
+      : Array.isArray(res?.items)       ? res.items
+      : Array.isArray(res?.data)        ? res.data
+      : Array.isArray(res?.roles)       ? res.roles
+      : Array.isArray(res?.site_roles)  ? res.site_roles
+      : Array.isArray(res?.data?.items) ? res.data.items
+      : Array.isArray(res?.data?.roles) ? res.data.roles
+      : []);
+  if (!Array.isArray(arr)) arr = [];
+  return arr.map(normalizeRole);
+}
 
 // ── Normalizers ────────────────────────────────────────────────────────────────
 
@@ -36,23 +52,17 @@ export const sponsorRolesClient = {
   async list(_studyId, filters = {}) {
     const params = {};
     if (filters.status && filters.status !== 'All') params.status = filters.status;
-
     const res = await sponsorAxiosClient.get(BASE, { params });
-    let arr =
-         (Array.isArray(res)              ? res
-        : Array.isArray(res?.items)       ? res.items
-        : Array.isArray(res?.data)        ? res.data
-        : Array.isArray(res?.roles)       ? res.roles
-        : Array.isArray(res?.site_roles)  ? res.site_roles
-        : Array.isArray(res?.data?.items) ? res.data.items
-        : Array.isArray(res?.data?.roles) ? res.data.roles
-        : []);
-    if (!Array.isArray(arr)) arr = [];
-    if (arr.length === 0 && res && typeof res === 'object' && Object.keys(res).length > 0) {
-      // eslint-disable-next-line no-console
-      console.warn('[sponsorRolesClient] empty extractList from response:', res);
-    }
-    return arr.map(normalizeRole);
+    return extractRoleList(res);
+  },
+
+  /** GET /lookups/site-roles — auth-only reference list for form dropdowns
+   *  (role picker on the personnel/consent forms). */
+  async lookup(_studyId, filters = {}) {
+    const params = {};
+    if (filters.status && filters.status !== 'All') params.status = filters.status;
+    const res = await sponsorAxiosClient.get(LOOKUP, { params });
+    return extractRoleList(res);
   },
 
   async getById(_studyId, roleId) {

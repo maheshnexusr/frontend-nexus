@@ -25,7 +25,27 @@ import { addToast }            from '@/app/notificationSlice';
 import FormField               from '@/components/form/FormField';
 import TextArea                from '@/components/form/TextArea';
 import SearchableDropdown      from '@/components/form/SearchableDropdown';
+import SponsorPermissionMatrix from '@/features/cro/components/sponsors/SponsorPermissionMatrix';
+import {
+  buildPermissions,
+  hasAnyPermission,
+  buildTemplatePermissions,
+  SPONSOR_ROLE_TEMPLATES,
+} from '@/features/cro/constants/sponsorPermissionsSchema';
 import styles from './StudyWizardStep1.module.css';
+
+// Site Management features only exist for EDC studies (see SponsorLayout) —
+// hide + clear them for Survey / ePRO scopes.
+const EDC_ONLY_FEATURES = ['sites', 'site_personnel', 'site_roles'];
+const hiddenForScope = (scope) =>
+  (scope === 'Survey' || scope === 'ePRO') ? EDC_ONLY_FEATURES : [];
+
+// Zero out the site-management group when the scope can't support it, so a
+// scope switch never leaves a stale, hidden grant behind.
+function clearOutOfScope(perms, scope) {
+  if (!hiddenForScope(scope).length) return perms;
+  return { ...perms, sitesGroup: buildPermissions(false).sitesGroup };
+}
 
 const SCOPE_OPTIONS = [
   {
@@ -75,6 +95,8 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
     sponsorId:        saved.sponsorId        ?? '',
     sponsorName:      saved.sponsorName      ?? '',
     sponsorFullName:  saved.sponsorFullName  ?? '',
+    // Per-study sponsor workspace permissions (nested matrix shape).
+    sponsorPermissions: saved.sponsorPermissions ?? buildPermissions(false),
   });
 
   const [errors,          setErrors]          = useState({});
@@ -164,8 +186,26 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
   };
 
   const selectScope = (val) => {
-    setForm((prev) => ({ ...prev, scope: val }));
+    setForm((prev) => ({
+      ...prev,
+      scope: val,
+      // Drop site-management grants the new scope can't support.
+      sponsorPermissions: clearOutOfScope(prev.sponsorPermissions, val),
+    }));
     setErrors((prev) => ({ ...prev, scope: undefined }));
+  };
+
+  const setPermissions = (next) => {
+    setForm((prev) => ({ ...prev, sponsorPermissions: next }));
+    setErrors((prev) => ({ ...prev, sponsorPermissions: undefined }));
+  };
+
+  const applyTemplate = (templateKey) => {
+    setForm((prev) => ({
+      ...prev,
+      sponsorPermissions: clearOutOfScope(buildTemplatePermissions(templateKey), prev.scope),
+    }));
+    setErrors((prev) => ({ ...prev, sponsorPermissions: undefined }));
   };
 
   // Save current form state to Redux then navigate to Add Sponsor
@@ -181,6 +221,7 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
       sponsorId:        form.sponsorId,
       sponsorName:      form.sponsorName,
       sponsorFullName:  form.sponsorFullName,
+      sponsorPermissions: form.sponsorPermissions,
     }));
     navigate('/cro/sponsors/new');
   };
@@ -193,6 +234,8 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
     if (!form.studyPhaseId)      errs.studyPhaseId = 'Please select a Study Phase.';
     if (!form.scope)             errs.scope       = 'Please select a Scope of Study.';
     if (!form.sponsorId)         errs.sponsorId   = 'Please select a Sponsor.';
+    if (!hasAnyPermission(form.sponsorPermissions))
+      errs.sponsorPermissions = 'Assign at least one sponsor workspace permission for this study.';
 
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
 
@@ -207,6 +250,7 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
       sponsorId:        form.sponsorId,
       sponsorName:      form.sponsorName,
       sponsorFullName:  form.sponsorFullName,
+      sponsorPermissions: form.sponsorPermissions,
     };
 
     setSaving(true);
@@ -365,6 +409,38 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
           </p>
         )}
       </FormField>
+
+      {/* Sponsor Workspace Permissions — per-study grant for the assigned sponsor */}
+      <div className={styles.permSection}>
+        <h3 className={styles.permSectionTitle}>Sponsor Workspace Permissions</h3>
+        <p className={styles.permIntro}>
+          Choose what the assigned sponsor can do inside this study&apos;s workspace.
+          The sponsor can never exceed this grant — options are limited to the
+          selected scope{form.scope ? ` (${form.scope})` : ''}.
+        </p>
+        <div className={styles.templateRow}>
+          <span className={styles.templateLabel}>Quick start:</span>
+          {SPONSOR_ROLE_TEMPLATES.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              className={styles.templateBtn}
+              onClick={() => applyTemplate(t.key)}
+              title={t.description}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <SponsorPermissionMatrix
+          value={form.sponsorPermissions}
+          onChange={setPermissions}
+          error={errors.sponsorPermissions}
+          title="Workspace Access"
+          subtitle="Unselected actions are denied. Apply a quick-start template above, then fine-tune."
+          hiddenFeatures={hiddenForScope(form.scope)}
+        />
+      </div>
 
       {/* Footer */}
       <div className={styles.footer}>

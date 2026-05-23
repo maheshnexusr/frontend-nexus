@@ -106,8 +106,10 @@ export default function PersonnelFormPage() {
   const [tmplLoading, setTmplLoading] = useState(false);
 
   // ── Load active sites + Site Roles master ─────────────────────────────────
+  // Both use the auth-only lookup endpoints — populating these dropdowns must
+  // not require the `sites` / `site_roles` permissions.
   useEffect(() => {
-    sponsorSitesClient.list(studyId)
+    sponsorSitesClient.lookup(studyId)
       .then((all) => {
         const active = all.filter((s) => s.status !== 'Inactive');
         setSiteOpts(active.map((s) => ({ value: s.id, label: s.siteName || s.siteCode || '(unnamed site)' })));
@@ -115,7 +117,7 @@ export default function PersonnelFormPage() {
       .catch(() => setSiteOpts([]));
 
     // Role dropdown comes ONLY from the Site Roles master — no hardcoded list.
-    sponsorRolesClient.list(studyId, { status: 'Active' })
+    sponsorRolesClient.lookup(studyId, { status: 'Active' })
       .then((all) => {
         setRoleOpts(
           all

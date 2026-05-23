@@ -1,19 +1,21 @@
 import { ArrowDown, ArrowUp, X } from 'lucide-react';
-import { CATEGORY_ORDER, WIDGETS } from './widgetRegistry';
+import { CATEGORY_ORDER, WIDGETS, isWidgetPermitted } from './widgetRegistry';
 import styles from './dashboard.module.css';
 
 export default function ConfigureWidgetsModal({
   open, onClose,
   widgets, orderedWidgetIds, toggleWidget, moveWidget, resetWidgets,
-  study, studyConfig,
+  study, studyConfig, perms,
 }) {
   if (!open) return null;
 
   // Order widgets within each category, preserving user-chosen sequence.
+  // Widgets the user's permissions don't allow are omitted entirely — they
+  // can't be enabled for a role that wouldn't be allowed to see them.
   const idsByCategory = CATEGORY_ORDER.reduce((acc, cat) => { acc[cat] = []; return acc; }, {});
   for (const id of orderedWidgetIds) {
     const meta = WIDGETS.find((w) => w.id === id);
-    if (meta) idsByCategory[meta.category]?.push(id);
+    if (meta && isWidgetPermitted(meta, perms)) idsByCategory[meta.category]?.push(id);
   }
 
   return (

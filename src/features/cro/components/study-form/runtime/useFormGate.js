@@ -58,14 +58,20 @@ export function useFormGate(fieldId) {
     // which action buttons to show. `canEditField` already collapses to
     // false in read-only statuses; these decide the next legal transition.
     canMarkCompleted:  formStatus === 'In Progress' && caps.canEditField,
-    canMarkReviewed:   formStatus === 'Completed'   && caps.canEditQuery,    // DM / CRA can review
+    // Marking the form Reviewed is a data-capture workflow transition — gate it
+    // on data_capture.edit, consistent with the other toolbar transitions, so a
+    // view-only role (e.g. Query Manager with no data_capture.edit) can't move
+    // the form's status.
+    canMarkReviewed:   formStatus === 'Completed'   && caps.canEditField,
     canMarkVerified:   formStatus === 'Reviewed'    && caps.canVerify,
-    canFreezeForm:     !['Frozen', 'Locked', 'Signed'].includes(formStatus) && caps.canVerify,
-    canUnfreezeForm:   formStatus === 'Frozen'      && caps.canVerify,
-    canLockForm:       !['Locked', 'Signed'].includes(formStatus) && caps.canEditQuery,
-    canUnlockForm:     formStatus === 'Locked'      && caps.canEditQuery,
-    canSignForm:       ['Verified', 'Reviewed', 'Completed', 'Approved'].includes(formStatus) && caps.canEditField,
-    canRevokeSignature: formStatus === 'Signed'     && caps.canEditField,
+    // Freeze / lock / sign — each gated by its own data_capture permission
+    // (migration 021), combined with the workflow-state rule.
+    canFreezeForm:     !['Frozen', 'Locked', 'Signed'].includes(formStatus) && caps.canFreeze,
+    canUnfreezeForm:   formStatus === 'Frozen'      && caps.canFreeze,
+    canLockForm:       !['Locked', 'Signed'].includes(formStatus) && caps.canLock,
+    canUnlockForm:     formStatus === 'Locked'      && caps.canLock,
+    canSignForm:       ['Verified', 'Reviewed', 'Completed', 'Approved'].includes(formStatus) && caps.canSign,
+    canRevokeSignature: formStatus === 'Signed'     && caps.canSign,
 
     // Phase 3 — Medical Reviewer approval
     canApproveForm:    ['Verified', 'Reviewed', 'Completed'].includes(formStatus) && caps.canVerify,

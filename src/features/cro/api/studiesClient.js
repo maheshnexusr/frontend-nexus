@@ -4,6 +4,7 @@
  */
 
 import axiosClient from '@/api/axiosClient';
+import { nestedPermsToApi, apiPermsToNested } from '@/features/cro/api/sponsorRolesClient';
 
 /* ── snake_case → camelCase (used when hydrating persisted form structure) ── */
 const toCamel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
@@ -68,6 +69,9 @@ function normalize(raw) {
     studyDescription:    raw.study_description  ?? raw.studyDescription ?? '',
     sponsorId:           raw.sponsor_id         ?? raw.sponsorId ?? '',
     sponsorName:         raw.sponsor_name       ?? raw.sponsorName ?? '',
+    // Per-study sponsor workspace permissions (Study Wizard Step 1) — nested
+    // matrix shape for the FE. Empty array → all-false matrix.
+    sponsorPermissions:  apiPermsToNested(raw.sponsor_permissions ?? raw.sponsorPermissions ?? []),
     startDate:           raw.start_date         ?? raw.startDate ?? '',
     expectedEndDate:     raw.expected_end_date  ?? raw.expectedEndDate ?? '',
     maxSites:            raw.max_sites          ?? raw.maxSites ?? null,
@@ -204,6 +208,9 @@ export const studiesClient = {
       scopes:            toScopes(data),
       therapeutic_area:  data.therapeuticArea  || undefined,
       study_description: data.studyDescription || undefined,
+      sponsor_permissions: data.sponsorPermissions
+        ? nestedPermsToApi(data.sponsorPermissions)
+        : undefined,
     });
     return normalize(res?.item ?? res);
   },
@@ -218,6 +225,9 @@ export const studiesClient = {
       scopes:            toScopes(data),
       therapeutic_area:  data.therapeuticArea  || undefined,
       study_description: data.studyDescription || undefined,
+      sponsor_permissions: data.sponsorPermissions
+        ? nestedPermsToApi(data.sponsorPermissions)
+        : undefined,
     });
     return normalize(res?.item ?? res);
   },

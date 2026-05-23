@@ -1,14 +1,15 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams }    from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch }  from 'react-redux';
 import {
   CheckCircle, Clock, AlertTriangle, XCircle, BarChart2,
   Search, X, RefreshCw, Download, Filter, ChevronUp, ChevronDown,
-  ChevronsUpDown, Eye, Shield, ThumbsUp, ThumbsDown,
+  ChevronsUpDown, Eye, Shield, ThumbsUp, ThumbsDown, FileText,
 } from 'lucide-react';
 
 import { addToast }                   from '@/app/notificationSlice';
 import { sponsorVerificationClient }  from '../api/sponsorVerificationClient';
+import sponsorAxiosClient             from '@/api/sponsorAxiosClient';
 import SubjectVerificationModal       from '../components/verification/SubjectVerificationModal';
 import VerifyActionModal              from '../components/verification/VerifyActionModal';
 import { useReadOnlyView }            from '@/features/workspace/hooks/useReadOnlyView';
@@ -64,6 +65,7 @@ function SortIcon({ colKey, sort }) {
 
 export default function VerificationPage() {
   const { studyId } = useParams();
+  const navigate    = useNavigate();
   const dispatch    = useDispatch();
   const ro          = useReadOnlyView();
 
@@ -73,6 +75,8 @@ export default function VerificationPage() {
   const [sites,     setSites]     = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [refreshing,setRefreshing]= useState(false);
+  // Study's form id — used to open the study form from a subject row.
+  const [studyFormId, setStudyFormId] = useState(null);
 
   // Filters
   const [activeStatuses, setActiveStatuses] = useState(['Pending', 'In Review']);
@@ -127,6 +131,29 @@ export default function VerificationPage() {
   }, [studyId, activeStatuses, siteFilter, dateFrom, dateTo, minComplete]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Resolve the study's form id once so a subject row can open the study form.
+  useEffect(() => {
+    if (!studyId) return undefined;
+    let cancelled = false;
+    sponsorAxiosClient.get('/api/v1/sponsor/workspace/forms')
+      .then((res) => {
+        if (cancelled) return;
+        const items = res?.items ?? res ?? [];
+        if (items.length) setStudyFormId(items[0].formId ?? items[0].form_id ?? null);
+      })
+      .catch(() => { /* leave null — the action falls back to a toast */ });
+    return () => { cancelled = true; };
+  }, [studyId]);
+
+  // Open the study form for a subject so the verifier can review its data.
+  const openStudyForm = (subject) => {
+    if (!studyFormId || !subject?.id) {
+      dispatch(addToast({ type: 'error', message: 'Cannot open the form — no study form found.' }));
+      return;
+    }
+    navigate(`/sponsor/${studyId}/capture/form?formId=${studyFormId}&subjectId=${subject.id}`);
+  };
 
   // ── Filter + Sort + Search (client-side) ─────────────────────────────────
 
@@ -560,6 +587,14 @@ export default function VerificationPage() {
                         onClick={() => setDetailSubject(s)}
                       >
                         <Eye size={13} />
+                      </button>
+                      {/* Open the study form for this subject */}
+                      <button
+                        className={css.actionBtn}
+                        title="Open Study Form"
+                        onClick={() => openStudyForm(s)}
+                      >
+                        <FileText size={13} />
                       </button>
                       {/* Approve */}
                       {['Verified', 'In Review', 'Pending'].includes(s.status) && (

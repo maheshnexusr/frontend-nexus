@@ -51,6 +51,7 @@ import {
 import Sidebar              from '@/components/layout/Sidebar';
 import WorkspaceHeader      from './WorkspaceHeader';
 import ReadOnlySponsorBanner from '@/features/workspace/components/ReadOnlySponsorBanner';
+import { sponsorStudiesService } from '@/services/sponsorAuthService';
 import { resolveStudyConfig, canViewLeaf } from '@/features/cro/utils/studyConfigGating';
 import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
 import styles               from './SponsorLayout.module.css';
@@ -66,6 +67,20 @@ export default function SponsorLayout() {
   const study      = useAppSelector(selectActiveStudy);
 
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // The "switch study" control is only meaningful with more than one assigned
+  // study — with a single study there is nothing to switch to. studyCount is
+  // null while loading / on error, in which case the control stays visible.
+  const [studyCount, setStudyCount] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    sponsorStudiesService.list()
+      .then((list) => {
+        if (!cancelled) setStudyCount(Array.isArray(list) ? list.length : 0);
+      })
+      .catch(() => { /* leave null — keep the switcher visible */ });
+    return () => { cancelled = true; };
+  }, []);
 
   /* Hydrate activeStudy from :studyId on direct navigation / refresh so the
      sidebar filter below has real scope/config instead of falling back to
@@ -244,7 +259,7 @@ export default function SponsorLayout() {
           onToggleSidebar={handleToggleSidebar}
           showBreadcrumb
           showEnvironmentBadge
-          showStudySwitcher
+          showStudySwitcher={studyCount === null || studyCount > 1}
           showGlobalSearch
           onSwitchStudy={() => navigate('/sponsor/select-study')}
         />

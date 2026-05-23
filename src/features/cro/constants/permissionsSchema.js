@@ -38,7 +38,9 @@ export const PERMISSION_GROUPS = [
       {
         label: 'Studies',
         key:   'studies',
-        perms: ['view', 'create', 'delete', 'edit', 'duplicate', 'locked', 'import', 'export', 'configuration', 'publish']
+        // No `duplicate` / `import` here — no study route consumes those
+        // actions. Re-add alongside the feature if/when it is built.
+        perms: ['view', 'create', 'delete', 'edit', 'locked', 'export', 'configuration', 'publish']
           .map((k) => ({ key: k, label: cap(k) })),
       },
     ],

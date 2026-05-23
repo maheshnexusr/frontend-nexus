@@ -82,8 +82,9 @@ const NAV_ITEMS = [
     label: 'CRO Team Administration',
     icon:  Users,
     children: [
-      { key: 'team-members', label: 'Team Members',        path: '/cro/team/members', permission: 'team_members.view' },
-      { key: 'team-roles',   label: 'Roles & Permissions', path: '/cro/team/roles',   permission: 'roles.view'        },
+      { key: 'team-members',  label: 'Team Members',        path: '/cro/team/members',  permission: 'team_members.view' },
+      { key: 'team-roles',    label: 'Roles & Permissions', path: '/cro/team/roles',    permission: 'roles.view'        },
+      { key: 'sponsor-roles', label: 'Sponsor Roles',       path: '/cro/sponsor-roles', permission: 'roles.view'        },
     ],
   },
   {

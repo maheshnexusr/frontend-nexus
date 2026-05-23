@@ -58,11 +58,13 @@ function buildFlat(permissions) {
     canEditForm:        can('data_capture', 'edit'),
     canSaveForm:        can('data_capture', 'edit'),
     canSubmitForm:      can('data_capture', 'create') || can('data_capture', 'edit'),
-    canFreezeForm:      can('data_verification', 'edit'),    // freezing is a quality control
-    canLockForm:        can('query_manager', 'edit'),         // locking after queries closed
-    canUnlockForm:      can('query_manager', 'edit'),
-    canSignForm:        can('data_capture', 'edit'),          // Investigator/Site signer
-    canApproveForm:     can('data_verification', 'create') || can('data_verification', 'edit'),
+    // Data-capture form-lifecycle actions — granular toggles on the
+    // `data_capture` leaf (migration 021). Each maps to its own permission.
+    canFreezeForm:      can('data_capture', 'freeze'),
+    canLockForm:        can('data_capture', 'lock'),
+    canUnlockForm:      can('data_capture', 'lock'),
+    canSignForm:        can('data_capture', 'sign'),
+    canApproveForm:     can('data_capture', 'verify'),
 
     // ── Query Management ─────────────────────────────────────────────────
     canViewQueries:     can('query_manager', 'view'),
@@ -76,9 +78,12 @@ function buildFlat(permissions) {
     canAccessQueryManager: can('query_manager', 'view'),
 
     // ── Verification / SDV ───────────────────────────────────────────────
-    canVerifyField:               can('data_verification', 'create') || can('data_verification', 'edit'),
-    canUnverifyField:             can('data_verification', 'edit')   || can('data_verification', 'delete'),
-    canViewVerificationStatus:    can('data_verification', 'view'),
+    // Field/form verification is the `verify` action on the data_capture leaf
+    // (migration 021). The data_verification leaf still gates the standalone
+    // Verification Manager screen.
+    canVerifyField:               can('data_capture', 'verify'),
+    canUnverifyField:             can('data_capture', 'verify'),
+    canViewVerificationStatus:    can('data_verification', 'view') || can('data_capture', 'verify'),
     canAccessVerificationManager: can('data_verification', 'view'),
 
     // ── Audit Trail ──────────────────────────────────────────────────────

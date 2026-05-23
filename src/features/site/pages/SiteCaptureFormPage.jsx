@@ -13,6 +13,7 @@ import { useDispatch } from 'react-redux';
 import { Loader2, AlertCircle, ArrowLeft, FileText } from 'lucide-react';
 import StudyFormRunner from '@/components/study-form-runner/StudyFormRunner';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
+import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
 import { addToast } from '@/app/notificationSlice';
 import s from '@/features/sponsor/pages/CaptureFormPage.module.css';
 import picker from './SiteCaptureFormPage.module.css';
@@ -23,6 +24,11 @@ export default function SiteCaptureFormPage() {
   const dispatch  = useDispatch();
   const subjectId = params.get('subjectId') ?? '';
   const formId    = params.get('formId') ?? '';
+
+  // Per-study permission tree (null = unrestricted). A role without
+  // data_capture.edit gets the form view-only.
+  const perms      = useSiteRolePermissions();
+  const canEdit    = !perms || perms?.data_capture?.edit === true;
 
   const [blocks,      setBlocks]      = useState([]);
   const [formTitle,   setFormTitle]   = useState('Form');
@@ -89,6 +95,10 @@ export default function SiteCaptureFormPage() {
   }, [formId, subjectId]);
 
   const handleSubmit = useCallback(async (formData) => {
+    if (!canEdit) {
+      dispatch(addToast({ type: 'info', message: 'Your role has view-only access to this form.' }));
+      throw new Error('view-only');
+    }
     if (!subjectId) {
       dispatch(addToast({ type: 'error', message: 'Cannot save: no subject selected.' }));
       throw new Error('missing-subject');
@@ -103,7 +113,7 @@ export default function SiteCaptureFormPage() {
       dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to save form.' }));
       throw e;
     }
-  }, [subjectId, formId, dispatch]);
+  }, [subjectId, formId, canEdit, dispatch]);
 
   // ── States ─────────────────────────────────────────────────────────────
   if (loading) {
@@ -155,7 +165,8 @@ export default function SiteCaptureFormPage() {
         formTitle={formTitle}
         defaultValues={defaults}
         onSubmit={handleSubmit}
-        submitLabel="Submit eCRF"
+        submitLabel={canEdit ? 'Submit eCRF' : 'Read-only view'}
+        readOnly={!canEdit}
       />
     </div>
   );

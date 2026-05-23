@@ -7,6 +7,17 @@
 import axiosClient from '@/api/axiosClient';
 
 export const authService = {
+  /** POST /api/v1/auth/register — CRO self-service sign-up.
+   *  Creates a pending CRO account and emails an activation link. */
+  register: ({ fullName, emailAddress, organizationName, contactNumber, jobTitle }) =>
+    axiosClient.post('/api/v1/auth/register', {
+      full_name:         fullName,
+      email_address:     emailAddress,
+      organization_name: organizationName || undefined,
+      contact_number:    contactNumber || undefined,
+      job_title:         jobTitle || undefined,
+    }),
+
   /** POST /api/v1/auth/activate */
   activate: ({ token, password, confirmPassword }) =>
     axiosClient.post('/api/v1/auth/activate', {

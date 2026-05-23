@@ -81,8 +81,10 @@ export default function SiteFormPage() {
   const [dialingCodes, setDialingCodes] = useState([]);
 
   // ── Load active countries for both Country dropdown and Country Code list ──
+  // Uses the auth-only lookup endpoint — populating this dropdown must not
+  // require the `masters` permission.
   useEffect(() => {
-    sponsorCountriesClient.list(studyId)
+    sponsorCountriesClient.lookup()
       .then((all) => {
         const active = all.filter((c) => c.status === 'Active');
         setCountryOpts(
@@ -159,7 +161,7 @@ export default function SiteFormPage() {
             // Find a Principal Investigator role from the active Site Roles
             // master; if none exists, fall back to the first active role so
             // the invite still goes through.
-            const roles  = await sponsorRolesClient.list(studyId, { status: 'Active' });
+            const roles  = await sponsorRolesClient.lookup(studyId, { status: 'Active' });
             const active = roles.filter((r) => r.status === 'Active');
             const piRole = active.find((r) =>
                               /principal.*investigator|^pi$/i.test(r.roleName ?? ''),

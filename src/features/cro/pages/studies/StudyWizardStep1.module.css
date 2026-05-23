@@ -226,3 +226,51 @@
   text-underline-offset: 2px;
 }
 .sponsorLink:hover { color: var(--color-primary-dark, #4f46e5); }
+
+/* ── Sponsor Workspace Permissions (per-study grant) ───────────────────── */
+.permSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--border-default, #e2e8f0);
+}
+.permSectionTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+.permIntro {
+  font-size: 12.5px;
+  color: var(--text-muted, #64748b);
+  line-height: 1.55;
+  margin: -4px 0 0;
+}
+.templateRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.templateLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  margin-right: 2px;
+}
+.templateBtn {
+  padding: 7px 13px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary, #374151);
+  cursor: pointer;
+}
+.templateBtn:hover {
+  border-color: var(--color-primary, #2563eb);
+  color: var(--color-primary, #2563eb);
+  background: var(--bg-subtle, #f8fafc);
+}

@@ -16,6 +16,10 @@ const PERM_LABELS = {
   import:     'Import',
   export:     'Export',
   screenshot: 'Screenshot',
+  verify:     'Verify',
+  sign:       'Sign',
+  freeze:     'Freeze',
+  lock:       'Lock',
 };
 
 // ── State helpers ─────────────────────────────────────────────────────────────

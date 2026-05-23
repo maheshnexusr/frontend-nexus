@@ -17,6 +17,7 @@ import { Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import StudyFormRunner from '@/components/study-form-runner/StudyFormRunner';
 import sponsorAxiosClient from '@/api/sponsorAxiosClient';
 import { useReadOnlyView } from '@/features/workspace/hooks/useReadOnlyView';
+import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
 import { addToast } from '@/app/notificationSlice';
 import s from './CaptureFormPage.module.css';
 
@@ -29,6 +30,12 @@ export default function CaptureFormPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const ro       = useReadOnlyView();
+  // Per-study permission tree (null = unrestricted). A role without
+  // data_capture.edit gets the form view-only — it can see the data but not
+  // change fields or move the form's status.
+  const perms      = useSiteRolePermissions(studyId);
+  const canEdit    = !perms || perms?.data_capture?.edit === true;
+  const isReadOnly = ro.isReadOnly || !canEdit;
 
   const [blocks,    setBlocks]    = useState([]);
   const [formTitle, setFormTitle] = useState('Study Form');
@@ -86,6 +93,10 @@ export default function CaptureFormPage() {
       dispatch(addToast({ type: 'info', message: ro.readOnlyMessage }));
       throw new Error('read-only');
     }
+    if (!canEdit) {
+      dispatch(addToast({ type: 'info', message: 'Your role has view-only access to this form.' }));
+      throw new Error('view-only');
+    }
     if (!subjectId) {
       dispatch(addToast({
         type: 'error',
@@ -98,7 +109,7 @@ export default function CaptureFormPage() {
       { form_data: formData, status: 'Submitted' },
     );
     dispatch(addToast({ type: 'success', message: 'Form saved.' }));
-  }, [formId, subjectId, ro.isReadOnly, ro.readOnlyMessage, dispatch]);
+  }, [formId, subjectId, ro.isReadOnly, ro.readOnlyMessage, canEdit, dispatch]);
 
   if (loading) {
     return (
@@ -135,8 +146,8 @@ export default function CaptureFormPage() {
         formTitle={formTitle}
         defaultValues={defaults}
         onSubmit={handleSubmit}
-        submitLabel={ro.isReadOnly ? 'Read-only view' : 'Submit eCRF'}
-        readOnly={ro.isReadOnly}
+        submitLabel={isReadOnly ? 'Read-only view' : 'Submit eCRF'}
+        readOnly={isReadOnly}
       />
     </div>
   );

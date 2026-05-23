@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { selectFormStatus, READ_ONLY_STATUSES } from '@/features/cro/store/formRuntimeSlice';
+import { selectCurrentUser } from '@/features/auth/authSlice';
 import {
   ChevronLeft, ChevronRight, ChevronDown, CheckCircle2,
   UploadCloud, PenLine, Star, Layers,
@@ -63,6 +64,10 @@ export default function StudyFormRunner({
   onSubmit,
   submitLabel = 'Submit Form',
   readOnly = false,
+  // Phase 2 — the current user's role name. When supplied, each field's
+  // `clinical.viewRoles` / `clinical.editRoles` are enforced (hide / read-only).
+  // When omitted, no role enforcement happens (safe no-op for existing callers).
+  userRole = null,
 }) {
   const [blockIdx,  setBlockIdx]  = useState(0);
   const [pageIdx,   setPageIdx]   = useState(0);
@@ -73,6 +78,9 @@ export default function StudyFormRunner({
   // Phase 1 — form status from runtime slice; blocks Submit on read-only.
   const formStatus = useSelector(selectFormStatus);
   const statusReadOnly = READ_ONLY_STATUSES.has(formStatus);
+
+  // Phase 2 — current user (for per-field role enforcement, below).
+  const currentUser = useSelector(selectCurrentUser);
 
   // Sidebar — collapsed (hide whole rail) + per-block expanded (show/hide
   // each block's page list).
@@ -155,6 +163,25 @@ export default function StudyFormRunner({
   const block = blocks[bi];
   const pi    = Math.min(pageIdx, block.pages.length - 1);
   const page  = block.pages[pi];
+
+  // Phase 2 — per-field role access from the field's `clinical` block. The
+  // role is the explicit `userRole` prop if given, else the signed-in user's
+  // role from the auth session. With no role resolvable, OR a field with no
+  // role list, the field shows + edits exactly as before (safe no-op).
+  const effectiveRole =
+    (typeof userRole === 'string' && userRole) ||
+    currentUser?.roleName ||
+    currentUser?.role_name ||
+    null;
+  const roleEnforced = typeof effectiveRole === 'string' && effectiveRole.length > 0;
+  const roleAllows = (roles) =>
+    !roleEnforced
+    || !Array.isArray(roles)
+    || roles.length === 0
+    || roles.includes(effectiveRole);
+  const canViewField = (field) => roleAllows(field?.clinical?.viewRoles);
+  const canEditField = (field) => roleAllows(field?.clinical?.editRoles);
+  const visibleFields = (page.fields || []).filter(canViewField);
 
   const isFirstPage = bi === 0 && pi === 0;
   const isLastPage  = bi === blocks.length - 1 && pi === block.pages.length - 1;
@@ -411,12 +438,12 @@ export default function StudyFormRunner({
           </div>
 
           <div className={s.fields}>
-            {page.fields.length === 0 ? (
+            {visibleFields.length === 0 ? (
               <div className={s.noFields}>
                 <p>This page has no fields.</p>
               </div>
             ) : (
-              page.fields.map((field) => {
+              visibleFields.map((field) => {
                 const isLayout = ['h2', 'paragraph', 'divider'].includes(field.type);
                 if (isLayout) {
                   return (
@@ -439,7 +466,7 @@ export default function StudyFormRunner({
                     >
                       {({ field: f, value: v, onChange, disabled }) => (
                         <fieldset
-                          disabled={readOnly || disabled}
+                          disabled={readOnly || disabled || !canEditField(f)}
                           style={{ border: 0, padding: 0, margin: 0 }}
                         >
                           <FieldInput field={f} value={v} onChange={onChange} />

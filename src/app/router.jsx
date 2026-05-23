@@ -66,6 +66,23 @@ function sp(C) {
   );
 }
 
+/**
+ * Suspense helper + CRO permission gate. Renders the route only when the
+ * logged-in CRO user holds `requiredPermission` (a `{leaf}.{action}` key,
+ * e.g. "studies.create") — otherwise ProtectedRoute shows the 403 page.
+ * @param {React.LazyExoticComponent} C
+ * @param {string} requiredPermission
+ */
+function spp(C, requiredPermission) {
+  return (
+    <ProtectedRoute requiredPermission={requiredPermission}>
+      <Suspense fallback={<PageLoader />}>
+        <C />
+      </Suspense>
+    </ProtectedRoute>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Lazy page imports — Public
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,6 +102,8 @@ const AuthLayout               = lazy(() => import('@/layouts/AuthLayout'));
 const SignInPage               = lazy(() => import('@/features/auth/pages/SignInPage'));
 const ForgotPasswordPage       = lazy(() => import('@/features/auth/pages/ForgotPasswordPage'));
 const AccountActivationPage    = lazy(() => import('@/features/auth/pages/AccountActivationPage'));
+const SponsorActivationPage    = lazy(() => import('@/features/auth/pages/SponsorActivationPage'));
+const SignUpPage               = lazy(() => import('@/features/auth/pages/SignUpPage'));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lazy page imports — Workspace selector
@@ -114,6 +133,8 @@ const TeamMembersPage    = lazy(() => import('@/features/cro/pages/team/TeamMemb
 const TeamMemberNewPage  = lazy(() => import('@/features/cro/pages/team/TeamMemberNewPage'));
 const TeamRolesPage      = lazy(() => import('@/features/cro/pages/team/TeamRolesPage'));
 const TeamRoleFormPage   = lazy(() => import('@/features/cro/pages/team/TeamRoleFormPage'));
+const SponsorRolesPage    = lazy(() => import('@/features/cro/pages/sponsor-roles/SponsorRolesPage'));
+const SponsorRoleFormPage = lazy(() => import('@/features/cro/pages/sponsor-roles/SponsorRoleFormPage'));
 const EmailTemplatesPage = lazy(() => import('@/features/cro/pages/masters/EmailTemplatesPage'));
 const StudyPhasesPage    = lazy(() => import('@/features/cro/pages/masters/StudyPhasesPage'));
 const CountryPage        = lazy(() => import('@/features/cro/pages/masters/CountryPage'));
@@ -266,8 +287,12 @@ export const router = createBrowserRouter([
         element: sp(AuthLayout),
         children: [
           { path: 'signin',            element: sp(SignInPage) },
+          { path: 'signup',            element: sp(SignUpPage) },
           { path: 'forgot-password',   element: sp(ForgotPasswordPage) },
           { path: 'activate',          element: sp(AccountActivationPage) },
+          // Sponsor activation — the invite email links here. Static path
+          // outranks the protected /sponsor/:studyId route in React Router.
+          { path: 'sponsor/activate',  element: sp(SponsorActivationPage) },
         ],
       },
 
@@ -341,7 +366,7 @@ export const router = createBrowserRouter([
       {
         path: 'cro/studies/:studyId/design',
         element: (
-          <ProtectedRoute>
+          <ProtectedRoute requiredPermission="studies.configure">
             <Suspense fallback={<PageLoader />}>
               <StudyDesignPage />
             </Suspense>
@@ -396,11 +421,11 @@ export const router = createBrowserRouter([
           { path: 'sponsors/:sponsorId',   element: sp(SponsorEditPage) },
 
           // Studies list + edit (design is a top-level standalone route — see below)
-          { path: 'studies',                 element: sp(StudyListPage)   },
-          { path: 'studies/:studyId/edit',   element: sp(StudyEditPage)   },
+          { path: 'studies',                 element: spp(StudyListPage, 'studies.view') },
+          { path: 'studies/:studyId/edit',   element: spp(StudyEditPage, 'studies.edit') },
 
           // Study creation wizard — tab-based, no sub-routes
-          { path: 'studies/new', element: sp(StudyNewPage) },
+          { path: 'studies/new', element: spp(StudyNewPage, 'studies.create') },
 
           // Team
           { path: 'team/members',              element: sp(TeamMembersPage) },
@@ -409,6 +434,10 @@ export const router = createBrowserRouter([
           { path: 'team/roles',                element: sp(TeamRolesPage) },
           { path: 'team/roles/new',           element: sp(TeamRoleFormPage) },
           { path: 'team/roles/:roleId',       element: sp(TeamRoleFormPage) },
+
+          { path: 'sponsor-roles',            element: sp(SponsorRolesPage) },
+          { path: 'sponsor-roles/new',        element: sp(SponsorRoleFormPage) },
+          { path: 'sponsor-roles/:roleId',    element: sp(SponsorRoleFormPage) },
 
           // Masters
           { path: 'masters/email-templates', element: sp(EmailTemplatesPage) },

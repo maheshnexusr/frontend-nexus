@@ -17,6 +17,7 @@ const STEP1_INIT = {
   studyDescription: '',
   sponsorId:        '',
   sponsorName:      '',   // organizationName for display
+  sponsorPermissions: null, // nested matrix — per-study sponsor workspace grant
 };
 
 const STEP2_INIT = {

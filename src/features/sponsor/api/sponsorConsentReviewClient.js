@@ -148,7 +148,7 @@ export const sponsorConsentReviewClient = {
   /** Role list from spec §13.2. */
   async getRoles(_studyId) {
     try {
-      const res = await sponsorAxiosClient.get(`${WORKSPACE}/site-roles`);
+      const res = await sponsorAxiosClient.get(`${WORKSPACE}/lookups/site-roles`);
       const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
       return arr.map((r) => ({ value: r.id ?? r.role_id, label: r.name ?? r.role_name ?? '' }));
     } catch { return []; }

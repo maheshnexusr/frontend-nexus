@@ -8,6 +8,7 @@ import {
 import { studiesClient } from '@/features/cro/api/studiesClient';
 import { addToast }      from '@/app/notificationSlice';
 import { resetWizard }   from '@/features/cro/store/studyWizardSlice';
+import { usePermissions } from '@/features/auth/usePermissions';
 import DataTable         from '@/components/data-table/DataTable';
 import StatusBadge       from '@/components/feedback/StatusBadge';
 import ConfirmDialog     from '@/components/feedback/ConfirmDialog';
@@ -49,6 +50,15 @@ function progressColor(pct, status) {
 export default function StudyListPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
+
+  // Per-action gates — mirror the backend authorize("ClinicalPrograms.Studies", …)
+  // checks so the UI never offers an action the API will reject with a 403.
+  const { has }      = usePermissions();
+  const canCreate    = has('studies', 'create');
+  const canEdit      = has('studies', 'edit');
+  const canConfigure = has('studies', 'configure');
+  const canDelete    = has('studies', 'delete');
+  const showActions  = canEdit || canConfigure || canDelete;
 
   const [studies, setStudies]   = useState([]);
   const [loading, setLoading]   = useState(true);
@@ -107,7 +117,8 @@ export default function StudyListPage() {
     navigate('/cro/studies/new');
   };
 
-  const columns = useMemo(() => [
+  const columns = useMemo(() => {
+    const cols = [
     {
       key:      'studyId',
       label:    'Study Details',
@@ -203,38 +214,52 @@ export default function StudyListPage() {
       sortable: true,
       render:   (val) => <StatusBadge status={val} />,
     },
-    {
-      key:   'id',
-      label: 'Actions',
-      width: '120px',
-      render: (_, row) => (
-        <div className={styles.actions}>
-          <button
-            className={styles.actionBtn}
-            title="Edit"
-            onClick={(e) => { e.stopPropagation(); navigate(`/cro/studies/${row.id}/edit`); }}
-          >
-            <Pencil size={14} />
-          </button>
-          <button
-            className={styles.actionBtn}
-            title="Design Study"
-            onClick={(e) => { e.stopPropagation(); navigate(`/cro/studies/${row.id}/design`); }}
-          >
-            <LayoutTemplate size={14} />
-          </button>
-          <button
-            className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
-            title="Delete"
-            onClick={(e) => { e.stopPropagation(); handleDeleteClick(row); }}
-          >
-            <Trash2 size={14} />
-          </button>
-        </div>
-      ),
-    },
+    ];
+
+    // Actions column — only the per-row buttons the role is allowed to use.
+    // Dropped entirely when the role can do none of edit / design / delete.
+    if (showActions) {
+      cols.push({
+        key:   'id',
+        label: 'Actions',
+        width: '120px',
+        render: (_, row) => (
+          <div className={styles.actions}>
+            {canEdit && (
+              <button
+                className={styles.actionBtn}
+                title="Edit"
+                onClick={(e) => { e.stopPropagation(); navigate(`/cro/studies/${row.id}/edit`); }}
+              >
+                <Pencil size={14} />
+              </button>
+            )}
+            {canConfigure && (
+              <button
+                className={styles.actionBtn}
+                title="Design Study"
+                onClick={(e) => { e.stopPropagation(); navigate(`/cro/studies/${row.id}/design`); }}
+              >
+                <LayoutTemplate size={14} />
+              </button>
+            )}
+            {canDelete && (
+              <button
+                className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+                title="Delete"
+                onClick={(e) => { e.stopPropagation(); handleDeleteClick(row); }}
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        ),
+      });
+    }
+
+    return cols;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+  }, [showActions, canEdit, canConfigure, canDelete]);
 
   return (
     <div className={styles.page}>
@@ -243,10 +268,12 @@ export default function StudyListPage() {
           <h1 className={styles.title}>Studies</h1>
           <p className={styles.sub}>Manage all clinical studies across sponsors.</p>
         </div>
-        <button className={styles.btnPrimary} onClick={handleCreateNew}>
-          <Plus size={15} />
-          Add Study
-        </button>
+        {canCreate && (
+          <button className={styles.btnPrimary} onClick={handleCreateNew}>
+            <Plus size={15} />
+            Add Study
+          </button>
+        )}
       </div>
 
       <DataTable
@@ -263,7 +290,9 @@ export default function StudyListPage() {
         searchPlaceholder="Search by Study ID, title, sponsor, phase…"
         emptyStateMessage={
           studies.length === 0
-            ? 'No studies yet. Click "Add Study" to get started.'
+            ? (canCreate
+                ? 'No studies yet. Click "Add Study" to get started.'
+                : 'No studies yet.')
             : 'No studies match your search.'
         }
         emptyStateIllustration={<FlaskConical size={40} strokeWidth={1.25} />}

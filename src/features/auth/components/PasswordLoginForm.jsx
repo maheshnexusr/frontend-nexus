@@ -227,6 +227,12 @@ export default function PasswordLoginForm() {
         {isSubmitting ? 'Signing in…' : 'Sign In'}
       </button>
 
+      {/* CRO self-service sign-up */}
+      <p style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--text-secondary, #64748b)' }}>
+        Don&apos;t have an account?{' '}
+        <Link to="/signup" className={styles.forgotLink}>Create one</Link>
+      </p>
+
     </form>
   );
 }
