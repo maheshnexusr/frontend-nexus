@@ -1,31 +1,45 @@
-import { useState } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Plus, Trash2 } from 'lucide-react';
-import {
-  selectFieldBucket, addQuery, updateQueryStatus, deleteQuery,
-} from '@/features/cro/store/formRuntimeSlice';
+import { useLocation, useSearchParams } from 'react-router-dom';
+import { Plus, Loader2 } from 'lucide-react';
 import { selectCurrentUser } from '@/features/auth/authSlice';
+import { addToast } from '@/app/notificationSlice';
+import { sponsorQueryClient } from '@/features/sponsor/api/sponsorQueryClient';
+import { siteQueryClient } from '@/features/site/api/siteQueryClient';
+import sponsorAxiosClient from '@/api/sponsorAxiosClient';
+import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
 import Popover from './Popover';
 import { useFieldCapabilities } from './useFieldCapabilities';
+import { useStudyAssignees } from './useStudyAssignees';
+import { useFormQueries } from '@/components/study-form-runner/FormQueriesContext';
+import { formatDateTime } from '@/utils/formatDate';
+import SearchableDropdown from '@/components/form/SearchableDropdown';
 import s from './runtime.module.css';
 
 /**
- * Query workflow — 3 states matching the requirement color palette:
- *   Raised   (#F59E0B) → Answered (#2563EB) → Resolved (#16A34A)
+ * QueryDrawer — field-level Query Management. Lists queries raised on this
+ * field for the current subject/form, and lets a Query Manager raise a new
+ * one. Persists to the backend on submit (POST /sponsor/workspace/queries
+ * → cro_studies tenant `queries` table) so the data survives a page refresh
+ * and shows up in the Queries page list.
  *
- * Legacy entries with status 'Open' / 'Closed' / 'Reviewed' are coerced to
- * the closest of the three on render.
+ * Scope handling:
+ *   - Sponsor / CRO impersonator (/sponsor/*)  → sponsorQueryClient
+ *   - Site personnel (/site/*)                 → siteQueryClient (read-only,
+ *     can't raise new queries)
+ *
+ * The drawer reads subjectId + formId from the URL search params — both
+ * CaptureFormPage variants put them there.
  */
-const STATUS_FLOW = ['Raised', 'Answered', 'Resolved'];
-const PRIORITIES  = ['Low', 'Medium', 'High', 'Critical'];
 
-const STATUS_ALIASES = { Open: 'Raised', Closed: 'Resolved', Reviewed: 'Answered' };
-const normalizeStatus = (st) => STATUS_ALIASES[st] ?? (STATUS_FLOW.includes(st) ? st : 'Raised');
+const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
 
-function fmt(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
+// Backend status vocab — Spec §4.5: Open / Answered / Closed
+// UI surface 3-step pipeline: Raised → Answered → Resolved.
+const STATUS_ALIASES = { Open: 'Raised', Raised: 'Raised', Answered: 'Answered', Closed: 'Resolved', Resolved: 'Resolved', Reviewed: 'Answered', 'In Progress': 'Raised' };
+const normalizeStatus = (st) => STATUS_ALIASES[st] ?? 'Raised';
+
+const fmt = (iso) => formatDateTime(iso);
 
 function pillClass(status) {
   const st = normalizeStatus(status);
@@ -43,73 +57,273 @@ function priorityPill(p) {
 }
 
 export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }) {
-  const dispatch = useDispatch();
-  const user     = useSelector(selectCurrentUser);
-  const bucket   = useSelector(selectFieldBucket(fieldId));
-  const caps     = useFieldCapabilities();
+  const dispatch  = useDispatch();
+  const user      = useSelector(selectCurrentUser);
+  const caps      = useFieldCapabilities();
+  const location  = useLocation();
+  const [params]  = useSearchParams();
+  const assignees = useStudyAssignees();
+  // Form-level aggregate — used to refresh sidebar + field-icon counts after
+  // the drawer raises / answers / closes a query.
+  const formQueries = useFormQueries();
 
-  const me = {
-    by:     user?.id ?? 'unknown',
-    byName: user?.fullName ?? user?.email ?? 'You',
-  };
+  // (subject, form) come from the form runner URL.
+  const subjectId = params.get('subjectId') ?? '';
+  const formId    = params.get('formId')    ?? '';
 
-  const [creating, setCreating] = useState(false);
-  const [draft, setDraft] = useState({
-    description: '', status: 'Raised', priority: 'Medium', assignedTo: '',
+  // Scope from the URL path. Both sponsor and site can raise queries (a site
+  // Query Manager is a valid role — it can raise queries on their site's data
+  // and assign them to a PI / CRC). The right backend client is picked per
+  // scope. site_id is pinned by the backend from the JWT in either case.
+  const scope = location.pathname.startsWith('/site/') ? 'site' : 'sponsor';
+  const client = scope === 'site' ? siteQueryClient : sponsorQueryClient;
+  const canRaise = caps.canCreateQuery;
+  const raiseBlockReason = !canRaise
+    ? 'Your role does not have "Raise Query" on Data Capture. Ask the CRO to tick Data Capture → Raise Query on your role (or on the Study Wizard Step 1 matrix when the study has a per-study cap).'
+    : null;
+  // One-shot diagnostic — paste this if the button still shows after a perm
+  // is removed. Shows raise + close gates side-by-side so we can see which
+  // one is failing.
+  // eslint-disable-next-line no-console
+  console.debug('[QueryDrawer] gates', {
+    canRaise,
+    canCreateQuery: caps.canCreateQuery,
+    canCloseQuery:  caps.canCloseQuery,
+    _hasWorkspace:   caps._hasWorkspace,
+    _hasPermissions: caps._hasPermissions,
   });
 
-  const queries = bucket?.queries ?? [];
+  const [queries,    setQueries]    = useState([]);
+  const [allCount,   setAllCount]   = useState(0); // total returned by API
+  const [loading,    setLoading]    = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [creating,   setCreating]   = useState(false);
+  const [draft, setDraft] = useState({ description: '', priority: 'Medium', assignedTo: '' });
+
+  // The subject's site — drives the Assigned-To picker so a query is only
+  // assignable to personnel actually working at this site. Fetched once; the
+  // strip up top fetches the same subject so this is cheap (browser cache).
+  const [subjectSiteId,   setSubjectSiteId]   = useState('');
+  const [subjectSiteName, setSubjectSiteName] = useState('');
+  useEffect(() => {
+    if (!subjectId) { setSubjectSiteId(''); setSubjectSiteName(''); return undefined; }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = scope === 'site'
+          ? await siteWorkspaceClient.getSubject(subjectId)
+          : await sponsorAxiosClient.get(`/api/v1/sponsor/workspace/subjects/${subjectId}`);
+        const sub = res?.subject ?? res?.item ?? res ?? {};
+        if (cancelled) return;
+        setSubjectSiteId(sub.siteId ?? sub.site_id ?? '');
+        setSubjectSiteName(sub.siteName ?? sub.site_name ?? '');
+      } catch { /* silent — falls back to study-wide assignees */ }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [scope, subjectId]);
+
+  // Site-scoped, status-tagged options for the Assigned-To dropdown. Mirrors
+  // the Site Master active/inactive pattern: every personnel on this site is
+  // listed with their status as a label suffix; an Inactive row stays
+  // selectable in case the QM needs to assign retroactively but is visually
+  // de-emphasised by the "(Inactive)" tag. If we can't resolve the subject's
+  // site, fall back to the study-wide list (status still tagged).
+  const assigneeOptions = useMemo(() => {
+    const sameSite = (p) => {
+      if (!subjectSiteId && !subjectSiteName) return true;
+      if (subjectSiteId   && p.siteId   && p.siteId   === subjectSiteId)   return true;
+      if (subjectSiteName && p.siteName && p.siteName === subjectSiteName) return true;
+      return false;
+    };
+    return assignees.items
+      .filter(sameSite)
+      .map((p) => {
+        const status = (p.status ?? 'Active');
+        const role   = p.role ? ` — ${p.role}` : '';
+        return {
+          value: p.id,
+          label: `${p.fullName}${role} (${status})`,
+        };
+      });
+  }, [assignees.items, subjectSiteId, subjectSiteName]);
+  // Per-query answer form state — keyed by queryId so opening one row's answer
+  // form doesn't clobber another's draft.
+  const [answeringId, setAnsweringId] = useState(null);
+  const [answerDraft, setAnswerDraft] = useState({ text: '', updatedFieldValue: '' });
+  const [answerSubmitting, setAnswerSubmitting] = useState(false);
+
+  // Pull all queries for this study/env and filter to this (subject, form,
+  // field). Cheap enough at MVP scale; if the volume grows we can add
+  // server-side filters.
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const all = await client.list();
+      setAllCount(all.length);
+      // Match on field first (always required), then narrow by subject + form
+      // when the URL has them. The runner can mount in a "form preview" mode
+      // without a subject — show every query on that field instead of empty.
+      const sameField = all.filter(
+        (q) => q.fieldName === fieldId || q.fieldId === fieldId
+      );
+      const narrowed = sameField.filter((q) => {
+        if (subjectId && q.subjectId && q.subjectId !== subjectId) return false;
+        if (formId    && q.formId    && q.formId    !== formId)    return false;
+        return true;
+      });
+      // Dev visibility — paste this if the list looks wrong:
+      // eslint-disable-next-line no-console
+      console.debug('[QueryDrawer]', {
+        fieldId, subjectId, formId,
+        apiReturned: all.length,
+        matchingField: sameField.length,
+        afterSubjectFormFilter: narrowed.length,
+        sample: all.slice(0, 3).map((q) => ({
+          id: q.id, fieldName: q.fieldName, subjectId: q.subjectId, formId: q.formId,
+        })),
+      });
+      setQueries(narrowed);
+    } catch (e) {
+      dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to load queries.' }));
+      setQueries([]);
+      setAllCount(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [client, subjectId, formId, fieldId, dispatch]);
+
+  useEffect(() => { load(); }, [load]);
 
   const startNew = () => {
-    setDraft({ description: '', status: 'Raised', priority: 'Medium', assignedTo: '' });
+    setDraft({ description: '', priority: 'Medium', assignedTo: '' });
     setCreating(true);
   };
 
-  const submit = () => {
-    if (!draft.description.trim()) return;
-    // Title field is retained internally as the first line of the description
-    // for backward compatibility with consumers that still expect q.title.
-    const desc = draft.description.trim();
-    const title = desc.split('\n')[0].slice(0, 80);
-    dispatch(addQuery({
-      fieldId,
-      title,
-      description: desc,
-      priority:    draft.priority,
-      assignedTo:  draft.assignedTo.trim() || null,
-      ...me,
-    }));
-    if (draft.status !== 'Raised') {
-      // The reducer always seeds status as 'Open'; if the user chose a
-      // different starting status, immediately transition it.
-      // We can't easily target the new query without its id, so this is a
-      // no-op for now and the user can advance from the row controls.
+  const submit = async () => {
+    const text = draft.description.trim();
+    if (!text || !canRaise || submitting) return;
+    if (!subjectId || !formId) {
+      dispatch(addToast({ type: 'error', message: 'Subject and form are required to raise a query.' }));
+      return;
     }
-    setCreating(false);
+    setSubmitting(true);
+    try {
+      // Both sponsor and site clients accept the same payload shape; the URL
+      // scope picked the right one upstairs.
+      const payload = {
+        subjectId,
+        formId,
+        fieldName: fieldId,
+        queryText: text,
+        priority:  draft.priority,
+        assignedTo: draft.assignedTo || undefined,
+      };
+      if (scope === 'site') {
+        await siteQueryClient.raise(payload);
+      } else {
+        await sponsorQueryClient.raise(undefined, payload);
+      }
+      dispatch(addToast({ type: 'success', message: 'Query raised.' }));
+      setCreating(false);
+      setDraft({ description: '', priority: 'Medium', assignedTo: '' });
+      await load();
+      // Bubble the change up so the sidebar block/page badges and the
+      // field-icon count update immediately too.
+      formQueries.refresh();
+    } catch (e) {
+      dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to raise query.' }));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const advance = (q) => {
-    const cur = normalizeStatus(q.status);
-    const idx = STATUS_FLOW.indexOf(cur);
-    const next = STATUS_FLOW[Math.min(STATUS_FLOW.length - 1, idx + 1)];
-    if (next === cur) return;
-    dispatch(updateQueryStatus({ fieldId, queryId: q.id, status: next, ...me }));
+  // Close a query (Resolve). Gated strictly on data_capture.close_query
+  // (migration 026) — separate from canEditQuery so a role can answer but
+  // not close.
+  const closeQuery = async (queryId) => {
+    if (!caps.canCloseQuery) return;
+    const reason = window.prompt(
+      'Closing reason (required) — explain how this query was resolved:',
+      ''
+    );
+    if (reason == null || !reason.trim()) return;
+    try {
+      if (scope === 'site') {
+        await siteQueryClient.close(queryId, { comments: reason.trim() });
+      } else {
+        await sponsorQueryClient.close(undefined, queryId, { comments: reason.trim() });
+      }
+      dispatch(addToast({ type: 'success', message: 'Query closed.' }));
+      await load();
+      // Bubble the change up so the sidebar block/page badges and the
+      // field-icon count update immediately too.
+      formQueries.refresh();
+    } catch (e) {
+      dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to close query.' }));
+    }
   };
+
+  const startAnswer = (queryId) => {
+    setAnsweringId(queryId);
+    setAnswerDraft({ text: '', updatedFieldValue: '' });
+  };
+
+  // Submit an answer (with optional new field value). Backend records it as a
+  // query_comment + flips status to 'Answered'. Updating the field value is
+  // optional but useful — a PI can fix the underlying value in the same step.
+  const submitAnswer = async (queryId) => {
+    const text = answerDraft.text.trim();
+    if (!text || answerSubmitting) return;
+    setAnswerSubmitting(true);
+    try {
+      const payload = {
+        responseText: text,
+        statusUpdate: 'Answered',
+        updatedFieldValue: answerDraft.updatedFieldValue.trim() || undefined,
+      };
+      if (scope === 'site') {
+        await siteQueryClient.respond(queryId, payload);
+      } else {
+        await sponsorQueryClient.respond(undefined, queryId, payload);
+      }
+      dispatch(addToast({ type: 'success', message: 'Answer submitted.' }));
+      setAnsweringId(null);
+      setAnswerDraft({ text: '', updatedFieldValue: '' });
+      await load();
+      // Bubble the change up so the sidebar block/page badges and the
+      // field-icon count update immediately too.
+      formQueries.refresh();
+    } catch (e) {
+      dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to submit answer.' }));
+    } finally {
+      setAnswerSubmitting(false);
+    }
+  };
+
+  // The user shown in row meta when there's no createdByName yet.
+  const meName = user?.fullName ?? user?.email ?? 'You';
+  void meName;
 
   return (
     <Popover
       anchorRect={anchorRect}
       title={`Queries · ${fieldLabel}`}
-      width={440}
+      width={460}
       maxHeight={520}
       onClose={onClose}
       footer={<button type="button" className={s.btnSecondary} onClick={onClose}>Close</button>}
     >
-      {!creating && caps.canCreateQuery && (
+      {!creating && canRaise && (
         <div style={{ marginBottom: 10 }}>
-          <button type="button" className={s.btnPrimary} onClick={startNew}>
+          <button type="button" className={s.btnPrimary} onClick={startNew} disabled={submitting}>
             <Plus size={13} /> Raise Query
           </button>
+        </div>
+      )}
+      {!creating && !canRaise && raiseBlockReason && (
+        <div style={{ marginBottom: 10, padding: '8px 10px', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 6, fontSize: 11.5, color: '#92400e' }}>
+          {raiseBlockReason}
         </div>
       )}
 
@@ -125,17 +339,7 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
               placeholder="Describe the query (e.g. DOB does not match source document)"
             />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-            <div className={s.formField}>
-              <label className={s.fieldLabel}>Status</label>
-              <select
-                className={s.selectInput}
-                value={draft.status}
-                onChange={(e) => setDraft((p) => ({ ...p, status: e.target.value }))}
-              >
-                {STATUS_FLOW.map((st) => <option key={st} value={st}>{st}</option>)}
-              </select>
-            </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 10 }}>
             <div className={s.formField}>
               <label className={s.fieldLabel}>Priority</label>
               <select
@@ -147,76 +351,193 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
               </select>
             </div>
             <div className={s.formField}>
-              <label className={s.fieldLabel}>Assigned To</label>
-              <input
-                className={s.textInput}
+              <label className={s.fieldLabel}>Associated</label>
+              {/* Searchable dropdown — personnel for the current subject's
+                  site only, each tagged with its Active/Inactive status
+                  (mirrors the Site Master status pattern the spec references).
+                  Inactive rows stay selectable in case a retroactive
+                  assignment is needed but the "(Inactive)" tag makes the
+                  current status obvious. */}
+              <SearchableDropdown
+                options={assigneeOptions}
                 value={draft.assignedTo}
-                onChange={(e) => setDraft((p) => ({ ...p, assignedTo: e.target.value }))}
-                placeholder="email or username"
+                onChange={(val) => setDraft((p) => ({ ...p, assignedTo: val ?? '' }))}
+                placeholder={
+                  assignees.loading ? 'Loading personnel…'
+                  : assigneeOptions.length === 0
+                    ? (subjectSiteName
+                        ? `No personnel on ${subjectSiteName}`
+                        : 'No personnel available')
+                    : 'Search personnel…'
+                }
+                searchPlaceholder="Search by name, role or status…"
+                disabled={assignees.loading}
+                clearable
               />
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 4 }}>
-            <button type="button" className={s.btnSecondary} onClick={() => setCreating(false)}>Cancel</button>
+            <button type="button" className={s.btnSecondary} onClick={() => setCreating(false)} disabled={submitting}>
+              Cancel
+            </button>
             <button
               type="button"
               className={s.btnPrimary}
               onClick={submit}
-              disabled={!draft.description.trim() || !caps.canCreateQuery}
-              title={!caps.canCreateQuery ? 'You do not have permission to raise queries.' : undefined}
+              disabled={!draft.description.trim() || !canRaise || submitting}
+              title={!canRaise ? 'You do not have permission to raise queries.' : undefined}
             >
-              Submit
+              {submitting ? <><Loader2 size={12} className={s.spin} /> Submitting…</> : 'Submit'}
             </button>
           </div>
         </div>
       )}
 
-      {queries.length === 0 ? (
-        <div className={s.emptyState}>No queries raised yet.</div>
+      {loading ? (
+        <div className={s.emptyState}>
+          <Loader2 size={14} className={s.spin} /> Loading queries…
+        </div>
+      ) : queries.length === 0 ? (
+        <div className={s.emptyState}>
+          No queries raised on this field yet.
+          {allCount > 0 && (
+            <div style={{ marginTop: 6, fontSize: 11, color: '#94a3b8' }}>
+              ({allCount} {allCount === 1 ? 'query exists' : 'queries exist'} on this study but none match this subject/form/field — see browser console for the comparison.)
+            </div>
+          )}
+        </div>
       ) : (
         <div className={s.itemList}>
           {queries.map((q) => {
             const status = normalizeStatus(q.status);
-            const idx    = STATUS_FLOW.indexOf(status);
-            const nextSt = idx < STATUS_FLOW.length - 1 ? STATUS_FLOW[idx + 1] : null;
+            const assigneeLabel =
+              q.assignedToName
+              || assignees.items.find((x) => x.id === q.assignedTo)?.fullName
+              || q.assignedTo;
+            const raisedByLabel    = q.raisedByName    || q.raisedBy    || 'Unknown';
+            const respondedByLabel = q.respondedByName || q.respondedBy || '';
+            const isOpen           = status !== 'Resolved';
+            const isAnswering      = answeringId === q.id;
             return (
               <div key={q.id} className={s.item}>
                 <div className={s.itemHead}>
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <span className={s.itemAuthor}>{q.title || (q.description || '').slice(0, 60)}</span>
+                      <span className={s.itemAuthor}>Query</span>
                       <span className={`${s.pill} ${pillClass(status)}`}>{status}</span>
                       <span className={`${s.pill} ${priorityPill(q.priority)}`}>{q.priority}</span>
                     </div>
                     <div className={s.itemMeta}>
-                      {q.createdByName} · {fmt(q.createdAt)}
-                      {q.assignedTo && <> · @{q.assignedTo}</>}
+                      Raised by {raisedByLabel} · {fmt(q.raisedDate)}
+                      {q.assignedTo && <> · @{assigneeLabel}</>}
+                      {q.siteName && <> · {q.siteName}</>}
                     </div>
                   </div>
                   <div className={s.itemActions}>
-                    {nextSt && caps.canEditQuery && (
+                    {/* PI / responder can Answer while the query is still open. */}
+                    {caps.canEditQuery && isOpen && !isAnswering && (
                       <button
                         type="button"
                         className={s.btnSecondary}
-                        style={{ height: 22, padding: '0 6px', fontSize: 10.5 }}
-                        onClick={() => advance(q)}
+                        style={{ height: 22, padding: '0 8px', fontSize: 10.5 }}
+                        onClick={() => startAnswer(q.id)}
+                        title="Answer this query with a reason"
                       >
-                        → {nextSt}
+                        Answer
                       </button>
                     )}
-                    {caps.canDeleteQuery && (
+                    {/* Strict close gate — only roles with
+                        data_capture.close_query (migration 026) see Close. */}
+                    {caps.canCloseQuery && isOpen && (
                       <button
                         type="button"
-                        className={`${s.itemActionBtn} ${s.itemActionBtnDanger}`}
-                        title="Delete"
-                        onClick={() => dispatch(deleteQuery({ fieldId, queryId: q.id, ...me }))}
+                        className={s.btnPrimary}
+                        style={{ height: 22, padding: '0 10px', fontSize: 10.5, background: '#16a34a' }}
+                        onClick={() => closeQuery(q.id)}
+                        title="Close (resolve) this query"
                       >
-                        <Trash2 size={13} />
+                        Close
                       </button>
                     )}
                   </div>
                 </div>
-                {q.description && <div className={s.itemBody}>{q.description}</div>}
+
+                {q.queryText && <div className={s.itemBody}>{q.queryText}</div>}
+
+                {/* Latest answer / resolution shown inline so the Query
+                    Manager can read the PI's reason without leaving the form. */}
+                {q.latestResponseText && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: '8px 10px',
+                      background: '#f0f9ff',
+                      border: '1px solid #bae6fd',
+                      borderRadius: 6,
+                      fontSize: 12,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: '#0369a1', marginBottom: 4 }}>
+                      {status === 'Resolved' ? 'Resolution' : 'Answer'}
+                      {respondedByLabel && (
+                        <span style={{ fontWeight: 400, color: '#475569', marginLeft: 6 }}>
+                          — {respondedByLabel}
+                          {q.responseDate ? ` · ${fmt(q.responseDate)}` : ''}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ color: '#0f172a', whiteSpace: 'pre-wrap' }}>
+                      {q.latestResponseText}
+                    </div>
+                  </div>
+                )}
+
+                {/* Inline Answer form. Optional updatedFieldValue lets the PI
+                    correct the underlying field in the same call (backend
+                    patches subject_form_data via siteQueryService.answerQuery). */}
+                {isAnswering && (
+                  <div style={{ marginTop: 10, padding: 10, background: '#fafbff', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+                    <div className={s.formField}>
+                      <label className={s.fieldLabel}>Your answer / reason</label>
+                      <textarea
+                        className={s.textArea}
+                        rows={3}
+                        value={answerDraft.text}
+                        onChange={(e) => setAnswerDraft((p) => ({ ...p, text: e.target.value }))}
+                        placeholder="e.g. DOB confirmed against the source document — value updated."
+                      />
+                    </div>
+                    <div className={s.formField}>
+                      <label className={s.fieldLabel}>Corrected field value <span style={{ color: '#94a3b8' }}>(optional)</span></label>
+                      <input
+                        className={s.textInput}
+                        value={answerDraft.updatedFieldValue}
+                        onChange={(e) => setAnswerDraft((p) => ({ ...p, updatedFieldValue: e.target.value }))}
+                        placeholder="Leave blank to keep the current value"
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 4 }}>
+                      <button
+                        type="button"
+                        className={s.btnSecondary}
+                        onClick={() => { setAnsweringId(null); }}
+                        disabled={answerSubmitting}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className={s.btnPrimary}
+                        onClick={() => submitAnswer(q.id)}
+                        disabled={!answerDraft.text.trim() || answerSubmitting}
+                      >
+                        {answerSubmitting
+                          ? <><Loader2 size={12} className={s.spin} /> Submitting…</>
+                          : 'Submit Answer'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}

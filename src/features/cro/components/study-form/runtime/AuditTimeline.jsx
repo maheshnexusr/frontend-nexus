@@ -1,5 +1,6 @@
 import { useSelector } from 'react-redux';
 import { selectAuditForField } from '@/features/cro/store/formRuntimeSlice';
+import { formatDateTime } from '@/utils/formatDate';
 import Popover from './Popover';
 import s from './runtime.module.css';
 
@@ -32,9 +33,7 @@ const ACTION_LABELS = {
   'form.approvalRevoked':    'Approval revoked',
 };
 
-function fmt(iso) {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
+const fmt = (iso) => formatDateTime(iso);
 
 function detailFor(entry) {
   const m = entry.meta ?? {};

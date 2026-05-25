@@ -3,7 +3,7 @@ import { useNavigate }  from 'react-router-dom';
 import { useDispatch }  from 'react-redux';
 import {
   Plus, Pencil, Trash2, FlaskConical, LayoutTemplate,
-  Calendar, Building2, Users,
+  Calendar, Building2, Users, Rocket,
 } from 'lucide-react';
 import { studiesClient } from '@/features/cro/api/studiesClient';
 import { addToast }      from '@/app/notificationSlice';
@@ -12,16 +12,13 @@ import { usePermissions } from '@/features/auth/usePermissions';
 import DataTable         from '@/components/data-table/DataTable';
 import StatusBadge       from '@/components/feedback/StatusBadge';
 import ConfirmDialog     from '@/components/feedback/ConfirmDialog';
+import PublishSettingsModal from './PublishSettingsModal';
+import { formatDate }       from '@/utils/formatDate';
 import styles from './StudyListPage.module.css';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmtDate(iso) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-}
+const fmtDate = (iso) => formatDate(iso) || null;
 
 /**
  * Progress % for a study based on its timeline (start → expectedEnd).
@@ -58,12 +55,14 @@ export default function StudyListPage() {
   const canEdit      = has('studies', 'edit');
   const canConfigure = has('studies', 'configure');
   const canDelete    = has('studies', 'delete');
-  const showActions  = canEdit || canConfigure || canDelete;
+  const canPublish   = has('studies', 'publish');
+  const showActions  = canEdit || canConfigure || canDelete || canPublish;
 
   const [studies, setStudies]   = useState([]);
   const [loading, setLoading]   = useState(true);
   const [query, setQuery]       = useState('');
   const [deleteTarget, setDel]  = useState(null);
+  const [publishTarget, setPublishTarget] = useState(null);
 
   const [page, setPage]         = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -210,9 +209,29 @@ export default function StudyListPage() {
     {
       key:      'status',
       label:    'Status',
-      width:    '110px',
+      width:    '180px',
       sortable: true,
-      render:   (val) => <StatusBadge status={val} />,
+      render:   (val, row) => (
+        <>
+          <StatusBadge status={val} />
+          {(row.publishedUat || row.publishedLive) && (
+            <span className={styles.envChips}>
+              {row.publishedUat && (
+                <span
+                  className={`${styles.envChip} ${styles.envChipUat}`}
+                  title={row.uatVersion ? `UAT v${row.uatVersion}` : 'Published to UAT'}
+                >UAT</span>
+              )}
+              {row.publishedLive && (
+                <span
+                  className={`${styles.envChip} ${styles.envChipLive}`}
+                  title={row.liveVersion ? `Production v${row.liveVersion}` : 'Published to Production'}
+                >LIVE</span>
+              )}
+            </span>
+          )}
+        </>
+      ),
     },
     ];
 
@@ -222,7 +241,7 @@ export default function StudyListPage() {
       cols.push({
         key:   'id',
         label: 'Actions',
-        width: '120px',
+        width: '160px',
         render: (_, row) => (
           <div className={styles.actions}>
             {canEdit && (
@@ -243,6 +262,15 @@ export default function StudyListPage() {
                 <LayoutTemplate size={14} />
               </button>
             )}
+            {canPublish && (
+              <button
+                className={styles.actionBtn}
+                title="Publish Settings"
+                onClick={(e) => { e.stopPropagation(); setPublishTarget(row); }}
+              >
+                <Rocket size={14} />
+              </button>
+            )}
             {canDelete && (
               <button
                 className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
@@ -259,7 +287,7 @@ export default function StudyListPage() {
 
     return cols;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showActions, canEdit, canConfigure, canDelete]);
+  }, [showActions, canEdit, canConfigure, canDelete, canPublish]);
 
   return (
     <div className={styles.page}>
@@ -306,6 +334,13 @@ export default function StudyListPage() {
         title="Delete Study"
         message={`Are you sure you want to delete '${deleteTarget?.studyTitle}'? This action cannot be undone.`}
         confirmLabel="Delete"
+      />
+
+      <PublishSettingsModal
+        open={!!publishTarget}
+        study={publishTarget}
+        onClose={() => setPublishTarget(null)}
+        onPublished={load}
       />
     </div>
   );

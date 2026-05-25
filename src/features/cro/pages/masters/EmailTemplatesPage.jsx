@@ -8,15 +8,10 @@ import StatusBadge              from '@/components/feedback/StatusBadge';
 import ConfirmDialog            from '@/components/feedback/ConfirmDialog';
 import EmailTemplateModal       from '@/features/cro/components/email-templates/EmailTemplateModal';
 import EmailPreviewModal        from '@/features/cro/components/email-templates/EmailPreviewModal';
+import { formatDate }           from '@/utils/formatDate';
 import styles from './EmailTemplatesPage.module.css';
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-function fmt(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
-}
+const fmt = (iso) => formatDate(iso) || '—';
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function EmailTemplatesPage() {

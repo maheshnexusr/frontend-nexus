@@ -23,6 +23,8 @@ import { addToast }  from '@/app/notificationSlice';
 import DataTable     from '@/components/data-table/DataTable';
 import ExportMenu    from '@/components/data-table/ExportMenu';
 import { exportTable } from '@/utils/exportTable';
+import { formatDateTime } from '@/utils/formatDate';
+import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import css from './SponsorActivityLogPage.module.css';
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
@@ -34,13 +36,7 @@ const ACTION_TYPES = ['CREATE', 'UPDATE', 'DELETE', 'VIEW', 'EXPORT', 'LOGIN', '
 const STATUSES     = ['SUCCESS', 'FAILURE', 'WARNING'];
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
-function fmtDate(ts) {
-  if (!ts) return '—';
-  return new Date(ts).toLocaleString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  });
-}
+const fmtDate = (ts) => formatDateTime(ts) || '—';
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function sevenDaysAgoISO() {
@@ -330,13 +326,13 @@ export default function SponsorActivityLogPage() {
           <div className={css.filterGrid}>
             <div className={css.fg}>
               <label className={css.flabel}>Date From</label>
-              <input type="date" className={css.finput} value={dateFrom}
-                max={dateTo || todayISO()} onChange={(e) => setDateFrom(e.target.value)} />
+              <PlatformDatePicker className={css.finput} value={dateFrom}
+                max={dateTo || todayISO()} onChange={setDateFrom} />
             </div>
             <div className={css.fg}>
               <label className={css.flabel}>Date To</label>
-              <input type="date" className={css.finput} value={dateTo}
-                min={dateFrom} max={todayISO()} onChange={(e) => setDateTo(e.target.value)} />
+              <PlatformDatePicker className={css.finput} value={dateTo}
+                min={dateFrom} max={todayISO()} onChange={setDateTo} />
             </div>
             <div className={css.fg}>
               <label className={css.flabel}>Module</label>

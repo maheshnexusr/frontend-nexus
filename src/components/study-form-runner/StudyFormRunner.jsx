@@ -19,18 +19,94 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 import { selectFormStatus, READ_ONLY_STATUSES } from '@/features/cro/store/formRuntimeSlice';
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import {
   ChevronLeft, ChevronRight, ChevronDown, CheckCircle2,
   UploadCloud, PenLine, Star, Layers,
   Search, FileText, Type as TypeIcon, CornerDownRight, PanelLeftClose, PanelLeft,
+  AlertCircle, History, Lock, Snowflake, CircleDot, X as XIcon,
 } from 'lucide-react';
 import RuntimeFieldRenderer from '@/features/cro/components/study-form/runtime/RuntimeFieldRenderer';
 import FormStatusToolbar    from './FormStatusToolbar';
+import { FormQueriesProvider, useFormQueries } from './FormQueriesContext';
+import PlatformDatePicker from '@/components/form/PlatformDatePicker';
+import ActivityLogDrawer from '@/features/sponsor/components/activity/ActivityLogDrawer';
+import { usePermissions } from '@/features/auth/usePermissions';
+import { selectAllFieldData } from '@/features/cro/store/formRuntimeSlice';
 import s from '@/features/cro/components/study-form/SFBPreview.module.css';
 
 function escapeRegExp(str) { return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+/**
+ * Sidebar badge helpers. Each returns a small inline `<span>` styled to match
+ * the existing query count chip, OR null when the badge doesn't apply.
+ *
+ * The data plumbing for per-page lock + per-page verification doesn't exist
+ * in the data model yet — these helpers fall back to the form-level status
+ * (which is the closest signal we have today). When per-page tracking is
+ * introduced, replace `formStatus` with the per-page value here.
+ */
+const PILL = {
+  display: 'inline-flex', alignItems: 'center', gap: 3,
+  padding: '1px 6px', borderRadius: 999,
+  fontSize: 10.5, fontWeight: 700, marginLeft: 4,
+};
+function LockBadge({ formStatus, size = 10 }) {
+  // Shown on a block/page only when the form's status is one of the locked
+  // statuses. Snowflake for Frozen; padlock for Locked / Signed.
+  if (formStatus === 'Frozen') {
+    return (
+      <span title="Frozen" style={{ ...PILL, background: '#dbeafe', color: '#1e40af' }}>
+        <Snowflake size={size} />
+      </span>
+    );
+  }
+  if (formStatus === 'Locked' || formStatus === 'Signed') {
+    return (
+      <span title={formStatus} style={{ ...PILL, background: '#e2e8f0', color: '#475569' }}>
+        <Lock size={size} />
+      </span>
+    );
+  }
+  return null;
+}
+/**
+ * Page status symbol per spec. Combines the data-entry signal (from runtime
+ * values) with the verification signal (from form status). The highest-
+ * priority state wins:
+ *
+ *   1. Verified                                 ✓  (green check)
+ *   2. In Verification / Partially Verified     ◔  (blue dot)
+ *   3. Data entered, not yet verified           ✕  (gray X — "submitted")
+ *   4. No data entry                            —  (no symbol)
+ */
+function VerificationBadge({ formStatus, dataEntered, size = 10 }) {
+  if (formStatus === 'Verified' || formStatus === 'Approved' || formStatus === 'Signed') {
+    return (
+      <span title="Verified" style={{ ...PILL, background: '#dcfce7', color: '#15803d' }}>
+        <CheckCircle2 size={size} />
+      </span>
+    );
+  }
+  if (formStatus === 'In Verification' || formStatus === 'Partially Verified' || formStatus === 'Reviewed') {
+    return (
+      <span title="In Verification" style={{ ...PILL, background: '#dbeafe', color: '#1d4ed8' }}>
+        <CircleDot size={size} />
+      </span>
+    );
+  }
+  if (dataEntered) {
+    return (
+      <span title="Data entered — awaiting verification" style={{ ...PILL, background: '#f1f5f9', color: '#475569' }}>
+        <XIcon size={size} />
+      </span>
+    );
+  }
+  // No data entry yet — no symbol per spec.
+  return null;
+}
 
 /** Highlight every match of `needle` inside `text`. */
 function Highlight({ text, needle }) {
@@ -57,7 +133,23 @@ const REQUIRED_STYLE = { color: '#dc2626' };
 const MAIN_COL_STYLE      = { padding: '20px 16px 28px' };
 const CONTENT_SHELL_STYLE = { maxWidth: 'none' };
 
-export default function StudyFormRunner({
+// Public wrapper — mounts the FormQueriesProvider once with the right
+// (subjectId, formId) from the URL so the inner component + every descendant
+// (sidebar badges, field renderer, query drawer) share one fetch.
+export default function StudyFormRunner(props) {
+  const [params] = useSearchParams();
+  return (
+    <FormQueriesProvider
+      subjectId={params.get('subjectId') ?? ''}
+      formId={params.get('formId') ?? ''}
+      blocks={props.blocks ?? []}
+    >
+      <StudyFormRunnerInner {...props} />
+    </FormQueriesProvider>
+  );
+}
+
+function StudyFormRunnerInner({
   blocks = [],
   formTitle = 'Study Form',
   defaultValues = {},
@@ -69,11 +161,43 @@ export default function StudyFormRunner({
   // When omitted, no role enforcement happens (safe no-op for existing callers).
   userRole = null,
 }) {
+  // Per-block and per-page active query counts from the runner context.
+  const { byBlock: queryCountByBlock, byPage: queryCountByPage } = useFormQueries();
+  // Per-page data-entry state — true if at least one field on the page has a
+  // non-empty value. Lets the sidebar show the spec's "X" (data entered,
+  // awaiting verification) vs "no symbol" (nothing entered yet). Driven by
+  // the runtime store so it updates immediately as users type.
+  const allFieldData = useSelector(selectAllFieldData);
+  const dataEnteredByPage = useMemo(() => {
+    const map = new Map(); // pageId → bool
+    const isEntered = (v) => v !== '' && v !== null && v !== undefined
+      && !(Array.isArray(v) && v.length === 0);
+    for (const blk of blocks ?? []) {
+      for (const pg of blk.pages ?? []) {
+        let entered = false;
+        for (const f of pg.fields ?? []) {
+          const rec = allFieldData?.[f.id];
+          if (rec && isEntered(rec.value)) { entered = true; break; }
+        }
+        map.set(pg.id, entered);
+      }
+    }
+    return map;
+  }, [blocks, allFieldData]);
   const [blockIdx,  setBlockIdx]  = useState(0);
   const [pageIdx,   setPageIdx]   = useState(0);
   const [submitted, setSubmitted] = useState(false);
   const [values,    setValues]    = useState(defaultValues);
   const [busy,      setBusy]      = useState(false);
+
+  // Per-form activity log. Gated by data_capture.activity_log; the form's
+  // identity comes from the URL (?formId=...). Subject context is implicit —
+  // any audit row tied to this form is shown regardless of subject.
+  const [params] = useSearchParams();
+  const formIdFromUrl = params.get('formId') ?? '';
+  const { has } = usePermissions();
+  const canViewFormActivity = has('data_capture', 'activity_log');
+  const [formActivityOpen, setFormActivityOpen] = useState(false);
 
   // Phase 1 — form status from runtime slice; blocks Submit on read-only.
   const formStatus = useSelector(selectFormStatus);
@@ -337,6 +461,23 @@ export default function StudyFormRunner({
                       {isPast ? <CheckCircle2 size={12} strokeWidth={2.5} /> : i + 1}
                     </span>
                     <span className={s.stepBlockLabel}>{blk.title || `Block ${i + 1}`}</span>
+                    {/* Active query count across every page in the block. Sourced
+                        from the runner-level FormQueriesProvider fetch. */}
+                    {(queryCountByBlock.get(blk.id) ?? 0) > 0 && (
+                      <span
+                        title={`${queryCountByBlock.get(blk.id)} active ${queryCountByBlock.get(blk.id) === 1 ? 'query' : 'queries'} in this block`}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 3,
+                          padding: '1px 6px', marginLeft: 4,
+                          borderRadius: 999, fontSize: 10.5, fontWeight: 700,
+                          background: '#fef3c7', color: '#b45309',
+                        }}
+                      >
+                        <AlertCircle size={10} /> {queryCountByBlock.get(blk.id)}
+                      </span>
+                    )}
+                    {/* Block-level lock indicator (Frozen / Locked / Signed). */}
+                    <LockBadge formStatus={formStatus} />
                     <span className={s.stepBlockCount}>{blk.pages.length}</span>
                     <ChevronDown
                       size={13}
@@ -364,6 +505,32 @@ export default function StudyFormRunner({
                             >
                               <span className={s.pageDot} />
                               <span className={s.pageItemLabel}>{pg.title || `Page ${j + 1}`}</span>
+                              {(queryCountByPage.get(pg.id) ?? 0) > 0 && (
+                                <span
+                                  title={`${queryCountByPage.get(pg.id)} active ${queryCountByPage.get(pg.id) === 1 ? 'query' : 'queries'} on this page`}
+                                  style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 3,
+                                    marginLeft: 'auto',
+                                    padding: '1px 6px', borderRadius: 999,
+                                    fontSize: 10, fontWeight: 700,
+                                    background: '#fef3c7', color: '#b45309',
+                                  }}
+                                >
+                                  <AlertCircle size={9} /> {queryCountByPage.get(pg.id)}
+                                </span>
+                              )}
+                              {/* Page-level lock + verification indicators.
+                                  Lock badge fires on Frozen / Locked / Signed.
+                                  Verification badge picks the right symbol
+                                  for the page state: ✓ (Verified) > ◔ (In
+                                  Verification) > ✕ (data entered, awaiting
+                                  verification) > nothing (no data entry). */}
+                              <LockBadge formStatus={formStatus} size={9} />
+                              <VerificationBadge
+                                formStatus={formStatus}
+                                dataEntered={dataEnteredByPage.get(pg.id) ?? false}
+                                size={9}
+                              />
                             </button>
                           </li>
                         );
@@ -425,7 +592,31 @@ export default function StudyFormRunner({
           </div>
 
           {/* Phase 1 — form-status pill + transition buttons */}
-          <FormStatusToolbar />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <FormStatusToolbar />
+            {canViewFormActivity && formIdFromUrl && (
+              <button
+                type="button"
+                onClick={() => setFormActivityOpen(true)}
+                title="View activity log for this form"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '6px 10px', fontSize: 12.5, fontWeight: 600,
+                  background: '#fff', color: '#0f172a',
+                  border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer',
+                }}
+              >
+                <History size={13} /> Activity Log
+              </button>
+            )}
+          </div>
+          <ActivityLogDrawer
+            open={formActivityOpen}
+            resourceType="form"
+            resourceId={formIdFromUrl}
+            resourceLabel={formTitle}
+            onClose={() => setFormActivityOpen(false)}
+          />
 
           <div className={s.pageHeading}>
             <div>
@@ -550,7 +741,9 @@ function FieldInput({ field, value, onChange }) {
         />
       );
     case 'date':
-      return <input type="date" className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
+      // Fluent-style calendar popover. Returns the same ISO "YYYY-MM-DD" the
+      // backend expects; display is always DD-MMM-YYYY (e.g. "12-MAY-2026").
+      return <PlatformDatePicker value={v ?? ''} onChange={onChange} />;
     case 'datetime':
       return <input type="datetime-local" className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
     case 'time':

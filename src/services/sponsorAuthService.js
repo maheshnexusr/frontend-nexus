@@ -185,7 +185,12 @@ function normalizeStudyAssignment(raw) {
     sponsorName:     raw.sponsorName      ?? raw.sponsor_name      ?? '',
     accessStartsAt:  raw.accessStartsAt   ?? raw.access_starts_at  ?? null,
     accessEndsAt:    raw.accessEndsAt     ?? raw.access_ends_at    ?? null,
-    config:          null,
+    // Step 3 module toggles from the wizard. The backend now joins
+    // cro_study_configuration and emits these on every list row. SponsorLayout
+    // reads this to gate Consent / Query Manager / Verification Manager menu
+    // entries. Falls back to null only when the wire shape doesn't include
+    // it (legacy responses) — resolveStudyConfig handles null safely.
+    config:          raw.config ?? null,
   };
 }
 

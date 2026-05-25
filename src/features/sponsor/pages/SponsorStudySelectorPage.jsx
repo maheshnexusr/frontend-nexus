@@ -121,13 +121,19 @@ export default function SponsorStudySelectorPage() {
     return () => { cancelled = true; };
   }, []);
 
-  /* ── Auto-redirect for "remember my choice" once studies are loaded ── */
+  /* ── Auto-redirect for "remember my choice" once studies are loaded ──
+   * Remembered key is `${studyId}|${environment}` — a study published to both
+   * UAT and LIVE renders as two cards, so we must remember which one. Legacy
+   * values without the pipe are discarded so the user re-picks. */
   useEffect(() => {
     if (loading || studies.length === 0) return;
-    let rememberedId = null;
-    try { rememberedId = localStorage.getItem(REMEMBER_KEY); } catch { /* ignore */ }
-    if (!rememberedId) return;
-    const match = studies.find((s) => s.id === rememberedId);
+    let rememberedKey = null;
+    try { rememberedKey = localStorage.getItem(REMEMBER_KEY); } catch { /* ignore */ }
+    if (!rememberedKey || !rememberedKey.includes('|')) {
+      if (rememberedKey) { try { localStorage.removeItem(REMEMBER_KEY); } catch { /* ignore */ } }
+      return;
+    }
+    const match = studies.find((s) => `${s.id}|${s.environment}` === rememberedKey);
     if (!match) {
       try { localStorage.removeItem(REMEMBER_KEY); } catch { /* ignore */ }
       return;
@@ -143,11 +149,14 @@ export default function SponsorStudySelectorPage() {
 
   const handleSelect = async (study, { replace = false } = {}) => {
     if (selectingId) return;
-    setSelectingId(study.id);
+    setSelectingId(`${study.id}|${study.environment}`);
     setError(null);
     try {
+      // Remember the (study, env) pair so a study published to both UAT and
+      // LIVE auto-restores the exact card the user opened last.
+      const rememberKey = `${study.id}|${study.environment}`;
       try {
-        if (remember || replace) localStorage.setItem(REMEMBER_KEY, study.id);
+        if (remember || replace) localStorage.setItem(REMEMBER_KEY, rememberKey);
         else                     localStorage.removeItem(REMEMBER_KEY);
       } catch { /* ignore */ }
 
@@ -248,7 +257,7 @@ export default function SponsorStudySelectorPage() {
               key={study.assignmentId ?? `${study.id}-${study.environment}`}
               study={study}
               onSelect={handleSelect}
-              busy={selectingId === study.id}
+              busy={selectingId === `${study.id}|${study.environment}`}
             />
           ))}
         </div>

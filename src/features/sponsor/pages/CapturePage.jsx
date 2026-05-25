@@ -19,10 +19,14 @@ import { useDispatch } from 'react-redux';
 import {
   Database, RefreshCw, Search, X, Filter,
   ClipboardList, FileText, UserCheck, AlertCircle,
-  Clock, CheckCircle2, PauseCircle, XCircle,
+  Clock, CheckCircle2, PauseCircle, XCircle, History,
 } from 'lucide-react';
 import axiosClient  from '@/api/sponsorAxiosClient';
 import { addToast } from '@/app/notificationSlice';
+import { formatDate } from '@/utils/formatDate';
+import SnapshotButton from '@/components/feedback/SnapshotButton';
+import ActivityLogDrawer from '@/features/sponsor/components/activity/ActivityLogDrawer';
+import { usePermissions } from '@/features/auth/usePermissions';
 import css from './CapturePage.module.css';
 
 /* ── Status meta ─────────────────────────────────────────────────────────── */
@@ -37,10 +41,7 @@ const STATUS_META = {
 };
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
-function fmtDate(ts) {
-  if (!ts) return '—';
-  return new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-}
+const fmtDate = (ts) => formatDate(ts) || '—';
 
 function normalize(raw) {
   return {
@@ -90,6 +91,13 @@ export default function CapturePage() {
   const { studyId } = useParams();
   const navigate    = useNavigate();
   const dispatch    = useDispatch();
+
+  // Activity-log drill-in. The icon shows only for roles with the data_capture
+  // activity_log permission. Subject CRUD was folded into data_capture in
+  // migration 030, so the audit gate collapsed to a single leaf as well.
+  const { has } = usePermissions();
+  const canViewSubjectActivity = has('data_capture', 'activity_log');
+  const [activitySubject, setActivitySubject] = useState(null);
 
   const [subjects,     setSubjects]     = useState([]);
   const [loading,      setLoading]      = useState(true);
@@ -208,14 +216,17 @@ export default function CapturePage() {
           <h1 className={css.title}>Data Capture</h1>
           <p className={css.sub}>Browse enrolled subjects and enter or review visit CRF data.</p>
         </div>
-        <button
-          className={css.btnRefresh}
-          onClick={() => loadSubjects(true)}
-          disabled={refreshing}
-          title="Refresh"
-        >
-          <RefreshCw size={15} className={refreshing ? css.spin : ''} />
-        </button>
+        <div className={css.headerActions}>
+          <SnapshotButton leaf="data_capture" filename="data_capture" />
+          <button
+            className={css.btnRefresh}
+            onClick={() => loadSubjects(true)}
+            disabled={refreshing}
+            title="Refresh"
+          >
+            <RefreshCw size={15} className={refreshing ? css.spin : ''} />
+          </button>
+        </div>
       </div>
 
       {/* Summary KPIs */}
@@ -335,6 +346,17 @@ export default function CapturePage() {
                       <span className={css.dateCell}>{fmtDate(subject.lastEntryAt)}</span>
                     </td>
                     <td className={css.tdActions}>
+                      {canViewSubjectActivity && (
+                        <button
+                          type="button"
+                          className={css.iconBtn}
+                          onClick={() => setActivitySubject(subject)}
+                          title="View activity log for this subject"
+                          aria-label="View activity log"
+                        >
+                          <History size={16} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         className={css.iconBtn}
@@ -373,6 +395,14 @@ export default function CapturePage() {
           </button>
         </div>
       )}
+
+      <ActivityLogDrawer
+        open={Boolean(activitySubject)}
+        resourceType="subject"
+        resourceId={activitySubject?.id}
+        resourceLabel={activitySubject ? `${activitySubject.subjectCode} — ${activitySubject.siteName}` : ''}
+        onClose={() => setActivitySubject(null)}
+      />
     </div>
   );
 }

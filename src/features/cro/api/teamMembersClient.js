@@ -28,6 +28,11 @@ function normalize(raw) {
       sponsorId:          a.sponsor_id         ?? a.sponsorId ?? '',
       sponsorName:        a.sponsor_name       ?? a.sponsorName ?? '',
       sponsorPermissions: a.sponsor_permissions ?? a.sponsorPermissions ?? {},
+      // Per-(team-member, study) dashboard widget whitelist (migration 024).
+      dashboardWidgetKeys:
+        a.dashboard_widget_keys != null ? a.dashboard_widget_keys
+        : a.dashboardWidgetKeys != null ? a.dashboardWidgetKeys
+        : null,
     })),
     studyIds:       raw.study_ids       ?? raw.studyIds ?? [],
     createdAt:      raw.created_at      ?? raw.createdAt,
@@ -64,8 +69,12 @@ function toFormData(form) {
   const assignedStudies = Array.isArray(form.assignedStudies)
     ? form.assignedStudies
         .map((s) => ({
-          study_id:            idOf(s),
-          sponsor_permissions: s?.sponsorPermissions ?? {},
+          study_id:              idOf(s),
+          sponsor_permissions:   s?.sponsorPermissions ?? {},
+          // Optional per-study dashboard whitelist for this team member.
+          dashboard_widget_keys: Array.isArray(s?.dashboardWidgetKeys)
+            ? s.dashboardWidgetKeys
+            : null,
         }))
         .filter((x) => !!x.study_id)
     : [];

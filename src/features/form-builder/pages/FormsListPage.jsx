@@ -2,13 +2,10 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Plus, Pencil, Trash2, Calendar } from 'lucide-react';
 import { base44 } from '@/features/form-builder/api/formsClient';
+import { formatDate as fmtPlatformDate } from '@/utils/formatDate';
 import s from './FormsListPage.module.css';
 
-function formatDate(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
+const formatDate = (iso) => fmtPlatformDate(iso) || '—';
 
 export default function Forms() {
   const navigate = useNavigate();

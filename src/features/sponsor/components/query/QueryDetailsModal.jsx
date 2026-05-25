@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import Modal from '@/components/feedback/Modal';
 import { sponsorQueryClient, PRIORITY_SLA_DAYS } from '@/features/sponsor/api/sponsorQueryClient';
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 import styles from './QueryDetailsModal.module.css';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -22,14 +23,8 @@ const STATUS_META = {
   Overdue:     { color: '#dc2626', bg: '#fef2f2' },
 };
 
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
-function fmtDateShort(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
-}
+const fmtDate      = (iso) => formatDateTime(iso) || '—';
+const fmtDateShort = (iso) => formatDate(iso)     || '—';
 
 const TABS = [
   { key: 'info',     label: 'Query Info',      icon: Info           },

@@ -7,14 +7,10 @@ import DataTable             from '@/components/data-table/DataTable';
 import StatusBadge           from '@/components/feedback/StatusBadge';
 import ConfirmDialog         from '@/components/feedback/ConfirmDialog';
 import StudyPhaseModal       from '@/features/cro/components/study-phases/StudyPhaseModal';
+import { formatDate }        from '@/utils/formatDate';
 import styles from './StudyPhasesPage.module.css';
 
-function fmt(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
-}
+const fmt = (iso) => formatDate(iso) || '—';
 
 export default function StudyPhasesPage() {
   const dispatch = useDispatch();

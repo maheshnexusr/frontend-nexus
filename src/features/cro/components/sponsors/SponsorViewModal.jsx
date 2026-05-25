@@ -2,12 +2,10 @@ import { useNavigate } from 'react-router-dom';
 import { Pencil, Mail, Phone, Building2, Globe, MapPin, Hash, Lock } from 'lucide-react';
 import Modal       from '@/components/feedback/Modal';
 import StatusBadge from '@/components/feedback/StatusBadge';
+import { formatDate } from '@/utils/formatDate';
 import styles from './SponsorViewModal.module.css';
 
-function fmt(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-}
+const fmt = (iso) => formatDate(iso) || '—';
 
 function Avatar({ photo, name }) {
   if (photo) return <img src={photo} alt={name} className={styles.photo} />;

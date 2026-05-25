@@ -24,6 +24,7 @@ import { formResponsesClient } from '@/features/cro/api/formResponsesClient';
 import { addToast } from '@/app/notificationSlice';
 import { validateField, evaluateField } from './runtime/runtimeEngine';
 import RuntimeFieldRenderer from './runtime/RuntimeFieldRenderer';
+import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import s from './SFBPreview.module.css';
 
 /* ── Helpers ──────────────────────────────────────────────────────────── */
@@ -520,7 +521,7 @@ function FieldInput({ field, value, onChange }) {
           onChange={(e) => onChange(e.target.value)}
         />
       );
-    case 'date':     return <input type="date"           className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
+    case 'date':     return <PlatformDatePicker value={v ?? ''} onChange={onChange} />;
     case 'datetime': return <input type="datetime-local" className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
     case 'time':     return <input type="time"           className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
     case 'select': {

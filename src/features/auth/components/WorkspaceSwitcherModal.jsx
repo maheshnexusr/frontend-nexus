@@ -30,7 +30,7 @@ import {
   switchIdentityAsync,
   selectCurrentUser,
 } from '@/features/auth/authSlice';
-import { enterSponsorWorkspaceAsync, exitSponsorView } from '@/features/workspace/store/sponsorViewSlice';
+import { enterSponsorWorkspaceAsync, exitSponsorView, selectIsViewingSponsor } from '@/features/workspace/store/sponsorViewSlice';
 import { profileService } from '@/services/profileService';
 import { sponsorStudyContextStore } from '@/services/sponsorAuthService';
 import { normalizePermissionsResponse } from '@/api/profileClient';
@@ -85,6 +85,11 @@ export default function WorkspaceSwitcherModal({ open, onClose }) {
   const navigate    = useNavigate();
   const location    = useLocation();
   const currentUser = useAppSelector(selectCurrentUser);
+  // True when a CRO operator is currently impersonating a sponsor via
+  // /workspace/sponsors/:id/enter. This — together with the URL — is how we
+  // detect a "real CRO session" vs a direct sponsor/site login. A stale
+  // `accessToken` in localStorage from a prior CRO session is NOT reliable.
+  const isViewingSponsor = useAppSelector(selectIsViewingSponsor);
 
   const [loading,    setLoading]    = useState(false);
   const [identities, setIdentities] = useState([]);
@@ -108,27 +113,32 @@ export default function WorkspaceSwitcherModal({ open, onClose }) {
   }, [open, dispatch]);
 
   // ── Build the unified workspace list ─────────────────────────────────────
-  // Always includes a "CRO Workspace" anchor (the always-available home).
-  // Each assignedStudies entry becomes a study workspace card. Identities
-  // that aren't the current CRO user surface in their own section below.
+  // The CRO Workspace anchor is only visible to genuine CRO operators —
+  // either currently inside the CRO app (/cro/*) or impersonating a sponsor
+  // via /workspace/sponsors/:id/enter (isViewingSponsor=true). A direct
+  // sponsor or site login must NOT see it: elevating to CRO from inside the
+  // app is forbidden (super-admin can switch down to admin, not the reverse).
   const assignedStudies = Array.isArray(currentUser?.assignedStudies)
     ? currentUser.assignedStudies
     : [];
 
   const onPath = location.pathname;
   const isOnCro = onPath.startsWith('/cro/');
+  const hasCroSession = isOnCro || isViewingSponsor;
 
   const navWorkspaces = useMemo(() => {
     const out = [];
-    out.push({
-      key:    'cro-home',
-      kind:   'nav',
-      type:   'cro',
-      label:  'CRO Workspace',
-      sub:    currentUser?.email || '',
-      path:   '/cro/dashboard',
-      active: isOnCro,
-    });
+    if (hasCroSession) {
+      out.push({
+        key:    'cro-home',
+        kind:   'nav',
+        type:   'cro',
+        label:  'CRO Workspace',
+        sub:    currentUser?.email || '',
+        path:   '/cro/dashboard',
+        active: isOnCro,
+      });
+    }
     for (const s of assignedStudies) {
       out.push({
         key:       `study-${s.studyId}`,
@@ -143,13 +153,19 @@ export default function WorkspaceSwitcherModal({ open, onClose }) {
       });
     }
     return out;
-  }, [currentUser?.email, assignedStudies, isOnCro, onPath]);
+  }, [hasCroSession, currentUser?.email, assignedStudies, isOnCro, onPath]);
 
-  // Hide alternate identities that point to the CRO scope we're already in —
-  // those are redundant with the "CRO Workspace" nav item above.
-  const altIdentities = (identities ?? []).filter(
-    (i) => (i.user_type ?? '').toLowerCase() !== 'cro' || !isOnCro
-  );
+  // Filter the alternate-identity list:
+  //   • Always hide CRO identities for a session without a CRO token — a
+  //     sponsor/site user can't elevate to CRO from inside the app.
+  //   • Hide CRO entries that point to the CRO scope we're already in —
+  //     redundant with the "CRO Workspace" nav item above.
+  const altIdentities = (identities ?? []).filter((i) => {
+    const type = (i.user_type ?? '').toLowerCase();
+    if (type === 'cro' && !hasCroSession) return false;
+    if (type === 'cro' && isOnCro)        return false;
+    return true;
+  });
 
   if (!open) return null;
 

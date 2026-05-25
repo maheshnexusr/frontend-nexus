@@ -82,6 +82,14 @@ export const siteWorkspaceClient = {
       throw err;
     }
   },
+
+  /** Site personnel for this study/site — used by the Query "Associated"
+   *  dropdown so a query can be routed to a real person (PI, CRC, …).
+   *  Uses the lookup endpoint (gated on data_capture.view) so a site Query
+   *  Manager without site_personnel.view can still populate the dropdown. */
+  async listPersonnel() {
+    return siteAxiosClient.get(`${BASE}/lookups/site-personnel`);
+  },
 };
 
 export default siteWorkspaceClient;

@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
   User, Mail, Building2, Shield, Clock,
-  CreditCard, ChevronRight, CheckCircle, XCircle, AlertTriangle,
+  CreditCard, ChevronRight,
 } from 'lucide-react';
 import Modal from '@/components/feedback/Modal';
 import { sponsorPersonnelClient } from '../../api/sponsorPersonnelClient';
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 import css from './PersonnelDetailsModal.module.css';
 
 /**
@@ -16,20 +17,13 @@ import css from './PersonnelDetailsModal.module.css';
  *   onClose    () => void
  */
 
+// Consent tab removed per spec — consent management lives in the dedicated
+// Consent Builder / Submission / Review pages, not the personnel record.
 const TABS = [
   { key: 'info',         label: 'Personnel Info' },
-  { key: 'consent',      label: 'Consent' },
   { key: 'compensation', label: 'Compensation' },
   { key: 'audit',        label: 'Activity Log' },
 ];
-
-const CONSENT_META = {
-  Pending:   { color: '#d97706', bg: '#fffbeb', border: '#fde68a', icon: Clock },
-  Submitted: { color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', icon: Clock },
-  Approved:  { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', icon: CheckCircle },
-  Rejected:  { color: '#dc2626', bg: '#fef2f2', border: '#fecaca', icon: XCircle },
-  Expired:   { color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', icon: AlertTriangle },
-};
 
 const PAYMENT_STATUS_COLORS = {
   Pending:   { color: '#d97706', bg: '#fffbeb' },
@@ -39,17 +33,9 @@ const PAYMENT_STATUS_COLORS = {
   Failed:    { color: '#dc2626', bg: '#fef2f2' },
 };
 
-function fmtDate(str) {
-  if (!str) return '—';
-  try { return new Date(str).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
-  catch { return str; }
-}
+const fmtDate = (str) => formatDate(str) || '—';
 
-function fmtDateTime(str) {
-  if (!str) return '—';
-  try { return new Date(str).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
-  catch { return str; }
-}
+const fmtDateTime = (str) => formatDateTime(str) || '—';
 
 function fmtCurrency(amount, currency = 'USD') {
   if (!amount) return '—';
@@ -79,8 +65,6 @@ export default function PersonnelDetailsModal({ studyId, personnel, onClose, cli
   }, [studyId, personnel]);
 
   const d = details ?? personnel;
-  const consentMeta = CONSENT_META[d.consentStatus] ?? CONSENT_META.Pending;
-  const ConsentIcon = consentMeta.icon;
   const comp = d.compensation ?? {};
 
   return (
@@ -103,14 +87,6 @@ export default function PersonnelDetailsModal({ studyId, personnel, onClose, cli
             {d.status}
           </span>
           <span className={css.roleBadge}>{d.role}</span>
-          {d.consentRequired && (
-            <span
-              className={css.consentBadge}
-              style={{ color: consentMeta.color, background: consentMeta.bg, borderColor: consentMeta.border }}
-            >
-              <ConsentIcon size={11} /> {d.consentStatus}
-            </span>
-          )}
         </div>
 
         {/* Tabs */}
@@ -155,50 +131,6 @@ export default function PersonnelDetailsModal({ studyId, personnel, onClose, cli
                       )}
                     </span>
                   </div>
-                </div>
-              )}
-
-              {/* ── Consent ───────────────────────────────────────────── */}
-              {tab === 'consent' && (
-                <div className={css.consentSection}>
-                  {!d.consentRequired ? (
-                    <div className={css.consentSkipped}>
-                      Consent was not required for this user.
-                    </div>
-                  ) : (
-                    <>
-                      <div
-                        className={css.consentStatusBanner}
-                        style={{ background: consentMeta.bg, borderColor: consentMeta.border }}
-                      >
-                        <ConsentIcon size={18} style={{ color: consentMeta.color }} />
-                        <div>
-                          <div className={css.consentStatusLabel} style={{ color: consentMeta.color }}>
-                            {d.consentStatus}
-                          </div>
-                          <div className={css.consentTemplateName}>
-                            {d.consentTemplateName || 'Default Consent Template'}
-                          </div>
-                        </div>
-                      </div>
-
-                      {d.consentStatus === 'Pending' && (
-                        <div className={css.consentWarning}>
-                          User has pending consent. They cannot access the system until consent is approved.
-                        </div>
-                      )}
-                      {d.consentStatus === 'Rejected' && (
-                        <div className={css.consentRejected}>
-                          Consent was rejected. User must resubmit with corrections.
-                        </div>
-                      )}
-                      {d.consentStatus === 'Expired' && (
-                        <div className={css.consentWarning}>
-                          Consent has expired. Re-consent is required for continued access.
-                        </div>
-                      )}
-                    </>
-                  )}
                 </div>
               )}
 

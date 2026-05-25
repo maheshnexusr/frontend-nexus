@@ -17,6 +17,7 @@ import FormField             from '@/components/form/FormField';
 import SearchableDropdown    from '@/components/form/SearchableDropdown';
 import ImageUpload           from '@/components/form/ImageUpload';
 import SponsorPermissionsMatrix from '@/features/cro/components/team-members/SponsorPermissionsMatrix';
+import DashboardWidgetPicker from '@/features/cro/components/sponsors/DashboardWidgetPicker';
 import { buildEmptyPermissions } from '@/features/sponsor/components/roles/permissionsTree';
 import styles from './TeamMemberNewPage.module.css';
 
@@ -130,6 +131,7 @@ export default function TeamMemberNewPage() {
                 sponsorId:          study.sponsorId,
                 sponsorName:        study.sponsorName,
                 sponsorPermissions: buildEmptyPermissions(),
+                dashboardWidgetKeys: null,
               },
             ],
       };
@@ -172,6 +174,17 @@ export default function TeamMemberNewPage() {
       ...prev,
       assignedStudies: prev.assignedStudies.map((s) =>
         s.id === id ? { ...s, sponsorPermissions: nextPerms } : s,
+      ),
+    }));
+  };
+
+  // Per-study dashboard widget whitelist (intersected with role-level cap
+  // server-side). null = no per-study cap; array = explicit whitelist.
+  const setStudyWidgetKeys = (id, nextKeys) => {
+    setForm((prev) => ({
+      ...prev,
+      assignedStudies: prev.assignedStudies.map((s) =>
+        s.id === id ? { ...s, dashboardWidgetKeys: nextKeys } : s,
       ),
     }));
   };
@@ -448,11 +461,22 @@ export default function TeamMemberNewPage() {
                             </div>
 
                             {checked && permsOpen && (
-                              <SponsorPermissionsMatrix
-                                value={assigned?.sponsorPermissions}
-                                onChange={(next) => setStudyPermissions(study.id, next)}
-                                studyConfig={study.config}
-                              />
+                              <>
+                                <SponsorPermissionsMatrix
+                                  value={assigned?.sponsorPermissions}
+                                  onChange={(next) => setStudyPermissions(study.id, next)}
+                                  studyConfig={study.config}
+                                />
+                                {/* Per-study dashboard whitelist for this team member's
+                                    sponsor-impersonation view. Intersected with their
+                                    CRO role's whitelist + Wizard Step 1 server-side. */}
+                                <div style={{ marginTop: 14 }}>
+                                  <DashboardWidgetPicker
+                                    value={assigned?.dashboardWidgetKeys ?? null}
+                                    onChange={(next) => setStudyWidgetKeys(study.id, next)}
+                                  />
+                                </div>
+                              </>
                             )}
                           </div>
                         );

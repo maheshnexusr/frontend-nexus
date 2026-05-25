@@ -7,14 +7,10 @@ import DataTable         from '@/components/data-table/DataTable';
 import StatusBadge       from '@/components/feedback/StatusBadge';
 import ConfirmDialog     from '@/components/feedback/ConfirmDialog';
 import RegionModal       from '@/features/cro/components/regions/RegionModal';
+import { formatDate }    from '@/utils/formatDate';
 import styles from './RegionsPage.module.css';
 
-function fmt(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
-  });
-}
+const fmt = (iso) => formatDate(iso) || '—';
 
 export default function RegionsPage() {
   const dispatch = useDispatch();

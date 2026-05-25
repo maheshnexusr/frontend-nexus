@@ -9,17 +9,28 @@ function Calendar({
   className,
   classNames,
   showOutsideDays = true,
+  captionLayout = "dropdown-buttons",
+  fromYear = 1900,
+  toYear = new Date().getFullYear() + 20,
   ...props
 }) {
   return (
     (<DayPicker
       showOutsideDays={showOutsideDays}
+      captionLayout={captionLayout}
+      fromYear={fromYear}
+      toYear={toYear}
       className={cn("p-3", className)}
       classNames={{
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
         caption: "flex justify-center pt-1 relative items-center",
         caption_label: "text-sm font-medium",
+        caption_dropdowns: "flex items-center gap-1.5",
+        dropdown: "relative inline-flex items-center",
+        dropdown_month: "[&>select]:appearance-none [&>select]:bg-transparent [&>select]:border [&>select]:border-transparent [&>select]:rounded-md [&>select]:px-2 [&>select]:py-1 [&>select]:pr-6 [&>select]:text-sm [&>select]:font-medium [&>select]:cursor-pointer [&>select]:hover:bg-accent [&>select]:focus:outline-none [&>select]:focus:ring-2 [&>select]:focus:ring-ring",
+        dropdown_year:  "[&>select]:appearance-none [&>select]:bg-transparent [&>select]:border [&>select]:border-transparent [&>select]:rounded-md [&>select]:px-2 [&>select]:py-1 [&>select]:pr-6 [&>select]:text-sm [&>select]:font-medium [&>select]:cursor-pointer [&>select]:hover:bg-accent [&>select]:focus:outline-none [&>select]:focus:ring-2 [&>select]:focus:ring-ring",
+        vhidden: "sr-only",
         nav: "space-x-1 flex items-center",
         nav_button: cn(
           buttonVariants({ variant: "outline" }),

@@ -46,6 +46,10 @@ function normalizeQuery(raw) {
     siteId:       raw.site_id      ?? raw.siteId      ?? raw.site_code ?? raw.siteCode ?? '',
     subjectId:    raw.subject_id   ?? raw.subjectId   ?? '',
     subjectInitials: raw.subject_initials ?? raw.subjectInitials ?? '',
+    // FormQueriesContext filters by (subjectId, formId) so the per-field /
+    // per-page / per-block count badges work. Without formId here the site
+    // workspace silently dropped every query → no badges for site users.
+    formId:       raw.form_id      ?? raw.formId      ?? '',
     blockName:    raw.block_name   ?? raw.blockName   ?? '',
     pageName:     raw.page_name    ?? raw.pageName    ?? raw.form_name ?? raw.formName ?? '',
     formName:     raw.form_name    ?? raw.formName    ?? '',
@@ -55,17 +59,21 @@ function normalizeQuery(raw) {
     severity,
     priority,
     status,
-    raisedBy:     raw.raised_by    ?? raw.raisedBy    ?? '',
+    raisedBy:       raw.raised_by      ?? raw.raisedBy      ?? '',
+    raisedByName:   raw.raised_by_name ?? raw.raisedByName  ?? '',
     raisedDate,
-    responseDate:  raw.response_date  ?? raw.responseDate  ?? '',
-    respondedBy:   raw.responded_by   ?? raw.respondedBy   ?? '',
+    responseDate:       raw.response_date       ?? raw.responseDate       ?? raw.latest_response_at ?? raw.latestResponseAt ?? '',
+    respondedBy:        raw.responded_by        ?? raw.respondedBy        ?? '',
+    respondedByName:    raw.responded_by_name   ?? raw.respondedByName    ?? '',
+    latestResponseText: raw.latest_response_text ?? raw.latestResponseText ?? '',
     resolvedBy:    raw.resolved_by    ?? raw.resolvedBy    ?? raw.closed_by   ?? raw.closedBy    ?? '',
     resolvedDate:  raw.resolved_date  ?? raw.resolvedDate  ?? raw.closed_date ?? raw.closedDate  ?? '',
     resolutionComment: raw.resolution_comment ?? raw.resolutionComment ?? raw.close_comments ?? raw.closeComments ?? '',
     dueAt:        raw.due_at        ?? raw.dueAt       ?? '',
     daysOpen:     daysOpen(raisedDate),
     slaRemaining: slaRemaining(priority, raisedDate),
-    assignedTo:   raw.assigned_to  ?? raw.assignedTo  ?? '',
+    assignedTo:     raw.assigned_to       ?? raw.assignedTo     ?? '',
+    assignedToName: raw.assigned_to_name  ?? raw.assignedToName ?? '',
   };
 }
 
@@ -93,6 +101,33 @@ export const siteQueryClient = {
   async getById(queryId) {
     const res = await siteAxiosClient.get(`${BASE}/${queryId}`);
     return normalizeQuery(res?.item ?? res ?? {});
+  },
+
+  /** POST /queries — site Query Manager raises a query. site_id is set by the
+   *  backend from the JWT (a site user can't raise queries for another site). */
+  async raise(data) {
+    const severity = data.severity
+      ?? SEVERITY_FROM_PRIORITY[data.priority]
+      ?? data.priority
+      ?? 'Major';
+    const res = await siteAxiosClient.post(BASE, {
+      subject_id:  data.subjectId,
+      form_id:     data.formId,
+      field_name:  data.fieldName ?? data.fieldKey,
+      query_text:  data.queryText ?? data.question,
+      severity,
+      assigned_to: data.assignedTo || undefined,
+      due_at:      data.dueAt      || undefined,
+    });
+    return normalizeQuery(res?.item ?? res?.query ?? res ?? {});
+  },
+
+  /** POST /queries/:queryId/close — site Query Manager closes a query. */
+  async close(queryId, data) {
+    const res = await siteAxiosClient.post(`${BASE}/${queryId}/close`, {
+      comments: data.comments ?? data.closureReason ?? data.resolution,
+    });
+    return normalizeQuery(res?.item ?? res?.query ?? res ?? {});
   },
 
   /** POST /queries/:queryId/answer — site responds to a sponsor/CRO query. */

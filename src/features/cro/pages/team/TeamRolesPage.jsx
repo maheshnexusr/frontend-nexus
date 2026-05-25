@@ -7,6 +7,7 @@ import { addToast }      from '@/app/notificationSlice';
 import { countPermissions } from '@/features/cro/constants/permissionsSchema';
 import DataTable         from '@/components/data-table/DataTable';
 import ConfirmDialog     from '@/components/feedback/ConfirmDialog';
+import { formatDate }    from '@/utils/formatDate';
 import styles from './TeamRolesPage.module.css';
 
 export default function TeamRolesPage() {
@@ -133,9 +134,7 @@ export default function TeamRolesPage() {
       key:   'createdAt',
       label: 'Created',
       width: '130px',
-      render: (val) => val
-        ? new Date(val).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-        : '—',
+      render: (val) => formatDate(val) || '—',
     },
     {
       key:   'id',

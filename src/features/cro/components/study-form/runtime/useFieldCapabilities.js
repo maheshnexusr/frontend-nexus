@@ -41,12 +41,15 @@ const ALLOW_ALL = Object.freeze({
   canSeeClear:         true,
   // Per-action perms — gate buttons inside popovers.
   canCreateQuery:      true,
+  canCloseQuery:       true,
   canEditQuery:        true,
   canDeleteQuery:      true,
   canVerify:           true,
   canEditField:        true,
   canSubmitForm:       true,
   // Data-capture form-lifecycle actions.
+  canComplete:         true,
+  canReview:           true,
   canSign:             true,
   canFreeze:           true,
   canLock:             true,
@@ -63,7 +66,18 @@ export function useFieldCapabilities() {
   const study = useSelector(selectActiveStudy);
 
   return useMemo(() => {
-    const hasWorkspace = !!study?.id;
+    // workspaceSlice.activeStudy is set only by the sponsor study picker;
+    // direct site/sponsor sessions live entirely through (site|sponsor)
+    // StudyContext (localStorage) and may not have dispatched selectStudy yet.
+    // Treat any active session-token as having a workspace — otherwise the
+    // fail-open below leaks EVERY permission (Mark Reviewed / Approve Form /
+    // Freeze / Lock / Sign / Raise Query / Close Query) to sponsor + site
+    // users whose Redux activeStudy hadn't been populated.
+    const isSiteSession    = typeof window !== 'undefined' &&
+                             !!localStorage.getItem('siteAccessToken');
+    const isSponsorSession = typeof window !== 'undefined' &&
+                             !!localStorage.getItem('sponsorAccessToken');
+    const hasWorkspace = !!study?.id || isSiteSession || isSponsorSession;
     if (!hasWorkspace) return ALLOW_ALL;
 
     const config = resolveStudyConfig(study?.config);
@@ -79,14 +93,24 @@ export function useFieldCapabilities() {
       canSeeClear:        p.canClearField,
 
       // ─ Per-action perms — used to gate buttons inside popovers ─
-      canCreateQuery:     p.canRaiseQuery,
+      // Inline Raise Query is gated strictly on data_capture.raise_query
+      // (migration 025). The legacy query_manager.create gate no longer
+      // grants this — Query Manager roles must now ALSO tick Raise Query
+      // on data_capture to keep raising inline.
+      canCreateQuery:     p.canRaiseQueryOnField,
+      // Strict close gate (migration 026). The legacy canEditQuery (above)
+      // still gates the "Answer" button and other respond/reopen actions —
+      // close is its own discrete permission.
+      canCloseQuery:      p.canCloseQueryOnField,
       canEditQuery:       p.canRespondQuery || p.canResolveQuery || p.canReopenQuery,
       canDeleteQuery:     p.canDeleteQuery,
       canVerify:          p.canVerifyField,
       canEditField:       p.canEditForm,
       canSubmitForm:      p.canSubmitForm,
 
-      // ─ Data-capture form-lifecycle actions (migration 021) ─
+      // ─ Data-capture form-lifecycle actions (migrations 021 + 022) ─
+      canComplete:        p.canCompleteForm,
+      canReview:          p.canReviewForm,
       canSign:            p.canSignForm,
       canFreeze:          p.canFreezeForm,
       canLock:            p.canLockForm,

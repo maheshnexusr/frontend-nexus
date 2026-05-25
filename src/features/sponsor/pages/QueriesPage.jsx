@@ -5,7 +5,7 @@ import {
   Eye, MessageSquare, CheckCircle, AlertTriangle,
   RotateCcw, Download, Filter, Search, X as XIcon,
   RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown,
-  MessageSquareWarning, FileText,
+  MessageSquareWarning, FileText, Clock,
 } from 'lucide-react';
 import { sponsorQueryClient }   from '@/features/sponsor/api/sponsorQueryClient';
 import sponsorAxiosClient       from '@/api/sponsorAxiosClient';
@@ -18,11 +18,18 @@ import CloseReopenModal         from '@/features/sponsor/components/query/CloseR
 import EscalateModal            from '@/features/sponsor/components/query/EscalateModal';
 import ConfirmDialog            from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }      from '@/features/workspace/hooks/useReadOnlyView';
+import { formatDate }           from '@/utils/formatDate';
+import PlatformDatePicker       from '@/components/form/PlatformDatePicker';
+import SlaSettingsModal         from '@/features/sponsor/components/sla/SlaSettingsModal';
+import SnapshotButton           from '@/components/feedback/SnapshotButton';
+import { usePermissions }       from '@/features/auth/usePermissions';
 import styles from './QueriesPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS   = ['All', 'Raised', 'Answered', 'Resolved', 'Overdue'];
+// Status quick-filter options — the new spec palette. `All` shows everything;
+// `Overdue` is computed (slaRemaining < 0 OR status === 'Overdue').
+const STATUS_OPTIONS   = ['All', 'Open', 'In Progress', 'Resolved', 'Closed', 'Overdue'];
 const PRIORITY_OPTIONS = ['All', 'High', 'Medium', 'Low'];
 
 const PRIORITY_META = {
@@ -30,37 +37,38 @@ const PRIORITY_META = {
   Medium: { color: '#f59e0b', bg: '#fffbeb', dot: '#f59e0b' },
   Low:    { color: '#3b82f6', bg: '#eff6ff', dot: '#3b82f6' },
 };
-// Query status palette (per requirement):
-//   Raised   #F59E0B (Amber)  — warning / pending action
-//   Answered #2563EB (Blue)   — informational / under review
-//   Resolved #16A34A (Green)  — success / completed
+// Query status palette per spec:
+//   Open         Yellow
+//   In Progress  Blue
+//   Resolved     Green
+//   Closed       Gray
+//   Overdue      Red
+// `Raised` and `Answered` are legacy server values mapped onto Open / In
+// Progress respectively so existing data renders with the spec palette.
 const STATUS_META = {
-  Raised:       { color: '#92400e', bg: '#fef3c7', accent: '#F59E0B' },
-  Answered:     { color: '#1d4ed8', bg: '#dbeafe', accent: '#2563EB' },
-  Resolved:     { color: '#166534', bg: '#dcfce7', accent: '#16A34A' },
-  Open:         { color: '#92400e', bg: '#fef3c7', accent: '#F59E0B' },
-  'In Progress':{ color: '#1d4ed8', bg: '#dbeafe', accent: '#2563EB' },
-  Closed:       { color: '#166534', bg: '#dcfce7', accent: '#16A34A' },
-  Overdue:      { color: '#dc2626', bg: '#fef2f2', accent: '#dc2626' },
+  Open:          { color: '#92400e', bg: '#fef3c7', accent: '#F59E0B' }, // Yellow
+  'In Progress': { color: '#1d4ed8', bg: '#dbeafe', accent: '#2563EB' }, // Blue
+  Resolved:      { color: '#166534', bg: '#dcfce7', accent: '#16A34A' }, // Green
+  Closed:        { color: '#475569', bg: '#f1f5f9', accent: '#94A3B8' }, // Gray
+  Overdue:       { color: '#b91c1c', bg: '#fef2f2', accent: '#DC2626' }, // Red
+  Raised:        { color: '#92400e', bg: '#fef3c7', accent: '#F59E0B' }, // alias → Open
+  Answered:      { color: '#1d4ed8', bg: '#dbeafe', accent: '#2563EB' }, // alias → In Progress
 };
 
-// Map legacy server statuses onto the 3-state palette for display.
-const STATUS_DISPLAY = { Open: 'Raised', 'In Progress': 'Answered', Closed: 'Resolved' };
-const toDisplayStatus = (st) => STATUS_DISPLAY[st] ?? st ?? 'Raised';
+// Map legacy / server alias statuses onto the spec's 4-state palette.
+const STATUS_DISPLAY = { Raised: 'Open', Answered: 'In Progress' };
+const toDisplayStatus = (st) => STATUS_DISPLAY[st] ?? st ?? 'Open';
 
+// Spec: aging is always rendered as `<n>d`. We used to collapse multi-week
+// values into "Nw Md" for compactness; reverted to plain days so the column
+// is one consistent unit and easy to sort visually.
 function fmtAging(days) {
   if (days == null || Number.isNaN(days)) return '—';
-  if (days === 0) return 'Today';
-  if (days < 7)  return `${days}d`;
-  const wk = Math.floor(days / 7);
-  const rem = days % 7;
-  return rem ? `${wk}w ${rem}d` : `${wk}w`;
+  if (days <= 0) return '0d';
+  return `${days}d`;
 }
 
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
-}
+const fmtDate = (iso) => formatDate(iso) || '—';
 
 function SortIcon({ col, sortKey, sortDir }) {
   if (col !== sortKey) return <ChevronsUpDown size={12} style={{ opacity: 0.4 }} />;
@@ -78,6 +86,13 @@ export default function QueriesPage() {
   const currentUser = useSelector(selectCurrentUser);
   // Phase 2 — "My Queries" toggle (filters to queries assigned to me).
   const [onlyMine, setOnlyMine] = useState(false);
+
+  // SLA Settings modal — open from the header. Visible to any role that can
+  // VIEW queries; edits are gated server-side AND client-side by the discrete
+  // `query_manager.sla_settings` permission.
+  const { has } = usePermissions();
+  const canEditSla = has('query_manager', 'sla_settings');
+  const [slaOpen,  setSlaOpen]  = useState(false);
 
   // ── Data ─────────────────────────────────────────────────────────────────
   const [queries,   setQueries]   = useState([]);
@@ -176,6 +191,21 @@ export default function QueriesPage() {
       .map((s) => String(s).toLowerCase()),
   ), [currentUser]);
 
+  // Per-study sequential Query ID (1, 2, 3, …) computed from the unfiltered
+  // result set so the same query keeps the same number regardless of the
+  // active filter. Sorted ASC by raised date so #1 is always the oldest.
+  // Shifts on delete; if you need an immutable number, surface it from the BE.
+  const sequenceById = useMemo(() => {
+    const sorted = [...queries].sort((a, b) => {
+      const av = a.raisedDate ?? '';
+      const bv = b.raisedDate ?? '';
+      return av < bv ? -1 : av > bv ? 1 : 0;
+    });
+    const map = new Map();
+    sorted.forEach((q, idx) => map.set(q.id, idx + 1));
+    return map;
+  }, [queries]);
+
   const filtered = useMemo(() => {
     let rows = queries;
     if (onlyMine) {
@@ -212,15 +242,17 @@ export default function QueriesPage() {
     else { setSortKey(key); setSortDir('desc'); }
   };
 
-  // ── Stats ─────────────────────────────────────────────────────────────────
+  // ── Stats — keyed to the new spec palette. ───────────────────────────────
   const stats = useMemo(() => {
     const byDisplay = (label) => queries.filter((q) => toDisplayStatus(q.status) === label).length;
     return {
-      total:    queries.length,
-      raised:   byDisplay('Raised'),
-      answered: byDisplay('Answered'),
-      resolved: byDisplay('Resolved'),
-      overdue:  queries.filter((q) => q.status === 'Overdue' || (q.slaRemaining < 0 && toDisplayStatus(q.status) !== 'Resolved')).length,
+      total:      queries.length,
+      open:       byDisplay('Open'),
+      inProgress: byDisplay('In Progress'),
+      resolved:   byDisplay('Resolved'),
+      closed:     byDisplay('Closed'),
+      overdue:    queries.filter((q) => q.status === 'Overdue'
+        || (q.slaRemaining < 0 && toDisplayStatus(q.status) !== 'Resolved' && toDisplayStatus(q.status) !== 'Closed')).length,
     };
   }, [queries]);
 
@@ -387,6 +419,14 @@ export default function QueriesPage() {
           <p className={styles.sub}>Track and resolve data queries for this study.</p>
         </div>
         <div className={styles.headerActions}>
+          <button
+            className={styles.btnSecondary}
+            onClick={() => setSlaOpen(true)}
+            title={canEditSla ? 'Configure SLA' : 'View SLA settings'}
+          >
+            <Clock size={13} /> SLA Settings
+          </button>
+          <SnapshotButton leaf="query_manager" filename="queries" className={styles.btnSecondary} />
           <button className={styles.btnSecondary} onClick={handleExport} disabled={exporting}>
             <Download size={13} /> {exporting ? 'Exporting…' : 'Export'}
           </button>
@@ -396,14 +436,22 @@ export default function QueriesPage() {
         </div>
       </div>
 
-      {/* Counts banner */}
+      <SlaSettingsModal
+        open={slaOpen}
+        kind="query_manager"
+        canEdit={canEditSla}
+        onClose={() => setSlaOpen(false)}
+      />
+
+      {/* Counts banner — new spec palette. */}
       <div className={styles.statsBar}>
         {[
-          { label: 'Total Queries', value: stats.total,    color: '#0f172a', bg: '#f1f5f9' },
-          { label: 'Raised',        value: stats.raised,   color: '#F59E0B', bg: '#fef3c7' },
-          { label: 'Answered',      value: stats.answered, color: '#2563EB', bg: '#dbeafe' },
-          { label: 'Resolved',      value: stats.resolved, color: '#16A34A', bg: '#dcfce7' },
-          { label: 'Overdue',       value: stats.overdue,  color: '#dc2626', bg: '#fee2e2' },
+          { label: 'Total Queries', value: stats.total,      color: '#0f172a', bg: '#f1f5f9' },
+          { label: 'Open',          value: stats.open,       color: '#92400e', bg: '#fef3c7' },
+          { label: 'In Progress',   value: stats.inProgress, color: '#1d4ed8', bg: '#dbeafe' },
+          { label: 'Resolved',      value: stats.resolved,   color: '#166534', bg: '#dcfce7' },
+          { label: 'Closed',        value: stats.closed,     color: '#475569', bg: '#f1f5f9' },
+          { label: 'Overdue',       value: stats.overdue,    color: '#b91c1c', bg: '#fef2f2' },
         ].map(({ label, value, color, bg }) => (
           <div key={label} className={styles.statCard}>
             <div className={styles.statText}>
@@ -490,9 +538,9 @@ export default function QueriesPage() {
 
           {/* Date range */}
           <div className={styles.dateRange}>
-            <input type="date" className={styles.dateInput} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} title="From" />
+            <PlatformDatePicker className={styles.dateInput} value={dateFrom} onChange={setDateFrom} placeholder="From" />
             <span className={styles.dateSep}>–</span>
-            <input type="date" className={styles.dateInput} value={dateTo}   onChange={(e) => setDateTo(e.target.value)}   title="To"   />
+            <PlatformDatePicker className={styles.dateInput} value={dateTo}   onChange={setDateTo}   placeholder="To" />
           </div>
         </div>
 
@@ -508,6 +556,49 @@ export default function QueriesPage() {
           {query && <button className={styles.searchClear} onClick={() => setQuery('')}><XIcon size={12} /></button>}
         </div>
       </div>
+
+      {/* Active-filter chips — quick-dismiss for every non-default filter the
+          user has applied. Status / All-vs-My are intentionally NOT shown as
+          chips since they're always-visible pills above. */}
+      {(() => {
+        const chips = [];
+        if (priorityFilter && priorityFilter !== 'All') {
+          chips.push({ key: 'priority', label: `Priority: ${priorityFilter}`, clear: () => setPriorityFilter('All') });
+        }
+        if (siteFilter) {
+          const opt = siteOpts.find((o) => o.value === siteFilter);
+          chips.push({ key: 'site', label: `Site: ${opt?.label ?? siteFilter}`, clear: () => setSiteFilter('') });
+        }
+        if (dateFrom) chips.push({ key: 'from',  label: `From: ${formatDate(dateFrom)}`, clear: () => setDateFrom('') });
+        if (dateTo)   chips.push({ key: 'to',    label: `To: ${formatDate(dateTo)}`,     clear: () => setDateTo('')   });
+        if (query)    chips.push({ key: 'query', label: `Search: "${query}"`,            clear: () => setQuery('')    });
+        if (chips.length === 0) return null;
+        return (
+          <div className={styles.filterChips}>
+            {chips.map((c) => (
+              <span key={c.key} className={styles.filterChip}>
+                {c.label}
+                <button type="button" className={styles.filterChipClear} onClick={c.clear} aria-label={`Clear ${c.key} filter`}>
+                  <XIcon size={11} />
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              className={styles.filterChipsClearAll}
+              onClick={() => {
+                setPriorityFilter('All');
+                setSiteFilter('');
+                setDateFrom('');
+                setDateTo('');
+                setQuery('');
+              }}
+            >
+              Clear all
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Bulk bar */}
       {selectedCount > 0 && (
@@ -613,15 +704,15 @@ export default function QueriesPage() {
                                   : display === 'Answered' ? (q.responseDate || q.raisedDate)
                                   : q.raisedDate;
 
-              const siteLabel = q.siteId
-                ? `${q.siteId}${q.siteName ? ` — ${q.siteName}` : ''}`
-                : (q.siteName || '—');
+              // Site column shows both the code and the name. Either may be
+              // missing depending on what the backend joined in — fall back to
+              // siteId only as a last resort.
+              const siteCode = q.siteCode || '';
+              const siteName = q.siteName || '';
               const subjectLabel = q.subjectId
                 ? `${q.subjectId}${q.subjectInitials ? ` (${q.subjectInitials})` : ''}`
                 : '—';
-              const blockPageLabel = q.blockName && q.pageName
-                ? `${q.blockName} / ${q.pageName}`
-                : (q.pageName || q.blockName || q.formName || '—');
+              const sequenceLabel = sequenceById.get(q.id) ?? '—';
 
               return (
                 <tr
@@ -633,10 +724,35 @@ export default function QueriesPage() {
                       <input type="checkbox" checked={selected.has(q.id)} onChange={() => toggleRow(q.id)} />
                     )}
                   </td>
-                  <td className={styles.td}><code className={styles.qid}>{q.id}</code></td>
-                  <td className={styles.td} title={q.siteName || ''}>{siteLabel}</td>
+                  <td className={styles.td}>
+                    {/* Sequential per-study Query ID — backed by sequenceById.
+                        Hover the cell to see the underlying random id for
+                        support/debugging. */}
+                    <code className={styles.qid} title={q.id}>{sequenceLabel}</code>
+                  </td>
+                  <td className={styles.td} title={[siteCode, siteName].filter(Boolean).join(' — ')}>
+                    {siteCode || siteName ? (
+                      <>
+                        <span className={styles.siteCode}>{siteCode || '—'}</span>
+                        {siteName && (
+                          <span className={styles.siteName}>{siteName}</span>
+                        )}
+                      </>
+                    ) : '—'}
+                  </td>
                   <td className={styles.td}><span className={styles.pill}>{subjectLabel}</span></td>
-                  <td className={styles.td}>{blockPageLabel}</td>
+                  <td className={styles.td}>
+                    {/* Block in grey, Page in black per spec. Either may be
+                        empty depending on the form schema — show only what
+                        the row carries. */}
+                    {(q.blockName || q.pageName) ? (
+                      <>
+                        {q.blockName && <span className={styles.blockName}>{q.blockName}</span>}
+                        {q.blockName && q.pageName && <span className={styles.blockPageSep}> / </span>}
+                        {q.pageName && <span className={styles.pageName}>{q.pageName}</span>}
+                      </>
+                    ) : (q.formName || '—')}
+                  </td>
                   <td className={styles.td}><span className={styles.fieldName}>{q.fieldName || '—'}</span></td>
                   <td className={styles.td}>
                     <span className={styles.queryText} title={q.queryText}>

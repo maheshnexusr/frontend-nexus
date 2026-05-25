@@ -13,6 +13,7 @@
  *   rating
  *   h2 | paragraph | divider   (layout-only, no input)
  */
+import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import s from './DynamicForm.module.css';
 
 /* normalise options → always [{ value, label }] */
@@ -117,8 +118,13 @@ export default function FieldRenderer({ field, value, error, onChange, readOnly 
       /* ─ date / time pickers ─ */
       case 'date':
         return (
-          <input id={field.id} type="date" className={baseClass}
-            value={v} readOnly={readOnly} onChange={(e) => set(e.target.value)} />
+          <PlatformDatePicker
+            id={field.id}
+            value={v ?? ''}
+            disabled={readOnly}
+            error={Boolean(error)}
+            onChange={set}
+          />
         );
       case 'datetime':
         return (

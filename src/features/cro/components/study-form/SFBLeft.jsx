@@ -17,6 +17,8 @@ import {
   addBlock, removeBlock, updateBlock, toggleBlockCollapse,
   addPage, removePage, updatePage, selectPage,
 } from '@/features/cro/store/studyFormSlice';
+import ConfirmDialog     from '@/components/feedback/ConfirmDialog';
+import { activityLogService } from '@/services/activityLogService';
 import s from './SFBLeft.module.css';
 
 // ── Field palette definition ──────────────────────────────────────────────
@@ -138,11 +140,24 @@ function BlockNode({ blk, bIdx, selBlockId, selPageId }) {
   const dispatch  = useDispatch();
   const [renaming, setRenaming] = useState(false);
   const [title,    setTitle]    = useState(blk.title);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const isActive  = selBlockId === blk.id;
 
   const commitRename = () => {
     dispatch(updateBlock({ blockId: blk.id, updates: { title: title.trim() || blk.title } }));
     setRenaming(false);
+  };
+
+  const handleDelete = () => {
+    dispatch(removeBlock(blk.id));
+    activityLogService.record({
+      actionType:  'DELETE',
+      module:      'Study Form Builder',
+      entityType:  'Block',
+      entityId:    blk.id,
+      entityName:  blk.title,
+      description: `Deleted block "${blk.title}" (${blk.pages?.length ?? 0} page(s)).`,
+    });
   };
 
   return (
@@ -194,7 +209,7 @@ function BlockNode({ blk, bIdx, selBlockId, selPageId }) {
           {bIdx > 0 && (
             <button
               className={`${s.nodeBtn} ${s.nodeBtnDanger}`}
-              onClick={() => dispatch(removeBlock(blk.id))}
+              onClick={() => setConfirmDelete(true)}
               title="Delete Block"
             >
               <Trash2 size={11} />
@@ -202,6 +217,16 @@ function BlockNode({ blk, bIdx, selBlockId, selPageId }) {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDelete}
+        title="Delete block?"
+        message={`This will permanently remove "${blk.title}" and all ${blk.pages?.length ?? 0} page(s) inside it. This action cannot be undone.`}
+        confirmLabel="Delete block"
+        variant="danger"
+      />
 
       {/* Pages */}
       {!blk.collapsed && (
@@ -226,11 +251,24 @@ function PageNode({ pg, pIdx, blk, selPageId, selBlockId }) {
   const dispatch    = useDispatch();
   const [renaming,  setRenaming] = useState(false);
   const [title,     setTitle]    = useState(pg.title);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const isActive    = selPageId === pg.id && selBlockId === blk.id;
 
   const commitRename = () => {
     dispatch(updatePage({ blockId: blk.id, pageId: pg.id, updates: { title: title.trim() || pg.title } }));
     setRenaming(false);
+  };
+
+  const handleDelete = () => {
+    dispatch(removePage({ blockId: blk.id, pageId: pg.id }));
+    activityLogService.record({
+      actionType:  'DELETE',
+      module:      'Study Form Builder',
+      entityType:  'Page',
+      entityId:    pg.id,
+      entityName:  `${blk.title} / ${pg.title}`,
+      description: `Deleted page "${pg.title}" from block "${blk.title}" (${pg.fields?.length ?? 0} field(s)).`,
+    });
   };
 
   return (
@@ -273,12 +311,22 @@ function PageNode({ pg, pIdx, blk, selPageId, selBlockId }) {
       {blk.pages.length > 1 && (
         <button
           className={`${s.nodeBtn} ${s.nodeBtnSm}`}
-          onClick={(e) => { e.stopPropagation(); dispatch(removePage({ blockId: blk.id, pageId: pg.id })); }}
+          onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
           title="Delete Page"
         >
           <Trash2 size={10} />
         </button>
       )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        onConfirm={handleDelete}
+        title="Delete page?"
+        message={`This will permanently remove "${pg.title}" and all ${pg.fields?.length ?? 0} field(s) on it. This action cannot be undone.`}
+        confirmLabel="Delete page"
+        variant="danger"
+      />
     </div>
   );
 }

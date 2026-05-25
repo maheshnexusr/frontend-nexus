@@ -9,17 +9,21 @@ import { filterFeatureTreeByConfig } from '@/features/cro/utils/studyConfigGatin
 import css from './SponsorPermissionsMatrix.module.css';
 
 const PERM_LABELS = {
-  view:       'View',
-  create:     'Create',
-  edit:       'Edit',
-  delete:     'Delete',
-  import:     'Import',
-  export:     'Export',
-  screenshot: 'Screenshot',
-  verify:     'Verify',
-  sign:       'Sign',
-  freeze:     'Freeze',
-  lock:       'Lock',
+  view:        'View',
+  create:      'Create',
+  edit:        'Edit',
+  delete:      'Delete',
+  import:      'Import',
+  export:      'Export',
+  screenshot:  'Screenshot',
+  complete:    'Mark Completed',
+  review:      'Mark Reviewed',
+  verify:      'Verify',
+  sign:        'Sign',
+  freeze:      'Freeze',
+  lock:        'Lock',
+  raise_query: 'Raise Query',
+  close_query: 'Close Query',
 };
 
 // ── State helpers ─────────────────────────────────────────────────────────────

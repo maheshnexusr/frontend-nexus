@@ -13,12 +13,13 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Loader2, AlertCircle, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import StudyFormRunner from '@/components/study-form-runner/StudyFormRunner';
 import sponsorAxiosClient from '@/api/sponsorAxiosClient';
 import { useReadOnlyView } from '@/features/workspace/hooks/useReadOnlyView';
 import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
 import { addToast } from '@/app/notificationSlice';
+import SubjectContextStrip from '@/features/sponsor/components/capture/SubjectContextStrip';
 import s from './CaptureFormPage.module.css';
 
 export default function CaptureFormPage() {
@@ -42,6 +43,7 @@ export default function CaptureFormPage() {
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState(null);
   const [defaults,  setDefaults]  = useState({});
+  const [submitted, setSubmitted] = useState(false);
 
   /* ── fetch form schema (and existing data if a subject is provided) ── */
   useEffect(() => {
@@ -109,6 +111,7 @@ export default function CaptureFormPage() {
       { form_data: formData, status: 'Submitted' },
     );
     dispatch(addToast({ type: 'success', message: 'Form saved.' }));
+    setSubmitted(true);
   }, [formId, subjectId, ro.isReadOnly, ro.readOnlyMessage, canEdit, dispatch]);
 
   if (loading) {
@@ -132,6 +135,45 @@ export default function CaptureFormPage() {
     );
   }
 
+  if (submitted) {
+    return (
+      <div className={s.page}>
+        <div className={s.topBar}>
+          <button
+            className={s.backBtn}
+            onClick={() => navigate(`/sponsor/${studyId}/capture`)}
+            style={{ marginBottom: 0 }}
+          >
+            <ArrowLeft size={14} /> All subjects
+          </button>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{formTitle || 'Data Capture'}</span>
+        </div>
+        <div className={s.successCard}>
+          <CheckCircle2 size={44} className={s.successIcon} />
+          <h2 className={s.successTitle}>Form submitted</h2>
+          <p className={s.successSub}>
+            <strong>{formTitle || 'eCRF'}</strong> has been saved for subject{' '}
+            <code className={s.successCode}>{subjectId}</code>.
+          </p>
+          <div className={s.successActions}>
+            <button
+              className={s.successPrimary}
+              onClick={() => navigate(`/sponsor/${studyId}/capture`)}
+            >
+              Back to subjects
+            </button>
+            <button
+              className={s.successSecondary}
+              onClick={() => setSubmitted(false)}
+            >
+              Edit this form
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={s.page}>
       <div className={s.topBar}>
@@ -140,6 +182,8 @@ export default function CaptureFormPage() {
         </button>
         <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{formTitle || 'Data Capture'}</span>
       </div>
+
+      <SubjectContextStrip studyId={studyId} subjectId={subjectId} />
 
       <StudyFormRunner
         blocks={blocks}

@@ -59,7 +59,19 @@ function buildFlat(permissions) {
     canSaveForm:        can('data_capture', 'edit'),
     canSubmitForm:      can('data_capture', 'create') || can('data_capture', 'edit'),
     // Data-capture form-lifecycle actions — granular toggles on the
-    // `data_capture` leaf (migration 021). Each maps to its own permission.
+    // `data_capture` leaf (migrations 021 + 022). Each maps to its own
+    // permission so an "edit"-only role can't move the form's status.
+    canCompleteForm:    can('data_capture', 'complete'),
+    canReviewForm:      can('data_capture', 'review'),
+    // Inline Raise Query on a captured field (migration 025). Distinct from
+    // query_manager.create — a role can raise queries inline without seeing
+    // the Query Manager page. Legacy roles configured with only
+    // query_manager.create are accepted as a fallback inside the drawer.
+    canRaiseQueryOnField: can('data_capture', 'raise_query'),
+    // Inline Close (resolve) Query (migration 026). Strict — no fallback to
+    // query_manager.edit. A role can answer queries without being able to
+    // close them.
+    canCloseQueryOnField: can('data_capture', 'close_query'),
     canFreezeForm:      can('data_capture', 'freeze'),
     canLockForm:        can('data_capture', 'lock'),
     canUnlockForm:      can('data_capture', 'lock'),
@@ -135,7 +147,36 @@ export function usePermissions() {
     // Mirrors the backend (buildSponsorView / authorizeSponsor). Direct
     // sponsor + site logins are unaffected (viewingAsSponsor is false).
     const wildcardFromArr = Array.isArray(permissionsArr) && permissionsArr.includes('*');
-    const base            = wildcardFromArr ? '*' : (permissionsTree ?? null);
+    // Site + direct-sponsor sessions don't populate state.auth.permissionsTree
+    // — their tree lives in (site|sponsor)StudyContext.permissions, exposed via
+    // useSiteRolePermissions (`sponsorRolePerms`). Without routing these
+    // sessions through that tree, every leaf check fell through to null →
+    // ALLOW_ALL, so Mark Reviewed / Approve / Freeze / Lock / Sign Form / Raise
+    // & Close Query all rendered for users who weren't granted them.
+    const isSiteSession    = typeof window !== 'undefined' &&
+                             !!localStorage.getItem('siteAccessToken');
+    const isSponsorSession = typeof window !== 'undefined' &&
+                             !!localStorage.getItem('sponsorAccessToken');
+    // Site + sponsor sessions take ABSOLUTE precedence — must short-circuit
+    // before checking wildcardFromArr / permissionsTree, because both can
+    // contain STALE data from a previous CRO session that the user logged out
+    // of without clearing localStorage.
+    //
+    // Null vs empty-object semantics:
+    //   • Site session, sponsorRolePerms === null → fail CLOSED ({}). Site
+    //     sessions always have a per-study tree once /site/studies/choose
+    //     has been called; null means "tree missing", so deny everything.
+    //   • Sponsor session, sponsorRolePerms === null → fail OPEN (null).
+    //     useSiteRolePermissions returns null for a sponsor sys-admin
+    //     (`permissions: '*'` in sponsorStudyContext) — passing null through
+    //     lets hasPerm treat them as unrestricted.
+    //   • Either session, sponsorRolePerms is an object → use it verbatim.
+    //     Missing leaves on a granted tree mean DENY (correct).
+    const base            =
+        isSiteSession                ? (sponsorRolePerms ?? {})
+      : isSponsorSession             ? sponsorRolePerms            // null = sys-admin (unrestricted)
+      : wildcardFromArr              ? '*'
+                                     : (permissionsTree ?? null);
     const effective       = viewingAsSponsor ? sponsorRolePerms : base;
 
     const flat = buildFlat(effective);

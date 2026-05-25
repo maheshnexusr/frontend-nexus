@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
 import { addToast } from '@/app/notificationSlice';
+import { formatDate } from '@/utils/formatDate';
+import { usePermissions } from '@/features/auth/usePermissions';
 import css from '@/features/sponsor/pages/CapturePage.module.css';
 import pageCss from './SiteCapturePage.module.css';
 
@@ -31,10 +33,7 @@ const STATUS_META = {
   Discontinued: { label: 'Discontinued', cls: css.sWithdrawn,  icon: <AlertCircle size={11} /> },
 };
 
-function fmtDate(ts) {
-  if (!ts) return '—';
-  return new Date(ts).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-}
+const fmtDate = (ts) => formatDate(ts) || '—';
 
 function normalize(raw) {
   return {
@@ -79,6 +78,14 @@ function VisitProgress({ completed, total }) {
 export default function SiteCapturePage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
+
+  // Subject creation is a discrete permission inside the Data Capture leaf
+  // (migration 030 folded the standalone subjects leaf into data_capture).
+  // Roles with `data_capture.subject_create` see the button; anyone else
+  // just sees the list. Same permission gates the create form route —
+  // direct URL hits are caught by useFieldCapabilities downstream.
+  const { has } = usePermissions();
+  const canCreateSubject = has('data_capture', 'subject_create');
 
   const [subjects,     setSubjects]     = useState([]);
   const [loading,      setLoading]      = useState(true);
@@ -150,13 +157,15 @@ export default function SiteCapturePage() {
           <p className={css.sub}>Browse subjects enrolled at your site and enter or review visit CRF data.</p>
         </div>
         <div className={pageCss.headerActions}>
-          <button
-            className={pageCss.btnCreate}
-            onClick={openCreate}
-            title="Enroll a new subject at your site"
-          >
-            <Plus size={14} /> Create Subject
-          </button>
+          {canCreateSubject && (
+            <button
+              className={pageCss.btnCreate}
+              onClick={openCreate}
+              title="Enroll a new subject at your site"
+            >
+              <Plus size={14} /> Create Subject
+            </button>
+          )}
           <button
             className={css.btnRefresh}
             onClick={() => loadSubjects(true)}

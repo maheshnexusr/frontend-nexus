@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import { sponsorConsentClient }  from '@/features/sponsor/api/sponsorConsentClient';
 import { addToast }              from '@/app/notificationSlice';
+import { formatDate, formatDateTime } from '@/utils/formatDate';
+import SnapshotButton from '@/components/feedback/SnapshotButton';
 import SearchableDropdown        from '@/components/form/SearchableDropdown';
 import FormField                 from '@/components/form/FormField';
 import Modal                     from '@/components/feedback/Modal';
@@ -36,7 +38,7 @@ const VARIABLES_SAMPLE = {
   '{UserFullName}':          'John Doe',
   '{UserEmail}':             'john.doe@example.com',
   '{UserRole}':              'Principal Investigator',
-  '{CurrentDate}':           new Date().toLocaleDateString(),
+  '{CurrentDate}':           formatDate(new Date()),
   '{PrincipalInvestigator}': 'Dr. Jane Smith',
   '{ContactEmail}':          'study@example.com',
   '{ContactPhone}':          '+1-800-555-0100',
@@ -642,7 +644,7 @@ export default function ConsentConfigPage() {
                       {f.type === 'file'       && <div className={styles.previewFile}><Upload size={12} /> Choose file</div>}
                       {f.type === 'checkbox'   && <input type="checkbox" disabled />}
                       {f.type === 'textarea'   && <div className={styles.previewInputBox} style={{ minHeight: 56 }} />}
-                      {f.type === 'date-auto'  && <div className={styles.previewInputBox}>{new Date().toLocaleDateString()}</div>}
+                      {f.type === 'date-auto'  && <div className={styles.previewInputBox}>{formatDate(new Date())}</div>}
                       {!['signature','file','checkbox','textarea','date-auto'].includes(f.type) && (
                         <div className={styles.previewInputBox} />
                       )}
@@ -663,7 +665,7 @@ export default function ConsentConfigPage() {
             </p>
             <div className={styles.previewSig}>[ Signature pad ]</div>
             <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-secondary,#64748b)' }}>
-              Date: {new Date().toLocaleDateString()}
+              Date: {formatDate(new Date())}
             </div>
           </div>
 
@@ -695,6 +697,7 @@ export default function ConsentConfigPage() {
           <p className={styles.sub}>Configure role-based eConsent forms for this study.</p>
         </div>
         <div className={styles.headerActions}>
+          <SnapshotButton leaf="consent_builder" filename="consent_builder" className={styles.btnSecondary} />
           {selectedRole && (
             <button
               className={styles.btnSecondary}
@@ -733,7 +736,7 @@ export default function ConsentConfigPage() {
         </div>
         {selectedRole && lastSaved && (
           <span className={styles.versionInfo}>
-            Version {version} · Saved {new Date(lastSaved).toLocaleString()}
+            Version {version} · Saved {formatDateTime(lastSaved)}
           </span>
         )}
         {selectedRole && !lastSaved && (

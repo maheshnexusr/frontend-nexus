@@ -22,6 +22,7 @@ import { useDispatch } from 'react-redux';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 
 import FormField from '@/components/form/FormField';
+import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
 import { addToast } from '@/app/notificationSlice';
 
@@ -205,9 +206,8 @@ export default function SiteSubjectFormPage() {
           </FormField>
 
           <FormField label="Enrollment Date" name="enrollmentDate">
-            <input
+            <PlatformDatePicker
               id="enrollmentDate"
-              type="date"
               className={styles.input}
               value={form.enrollmentDate}
               onChange={setField('enrollmentDate')}

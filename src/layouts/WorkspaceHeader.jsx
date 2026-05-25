@@ -99,13 +99,16 @@ export default function WorkspaceHeader({
   const isViewingSponsor = useAppSelector(selectIsViewingSponsor);
 
   const handleLogout = () => {
-    // While viewing a sponsor workspace (CRO entered via /enter), "logout"
-    // only exits the viewer — the CRO session stays alive.
-    if (isViewingSponsor) {
-      dispatch(exitSponsorView());
-      navigate('/cro/dashboard');
-      return;
-    }
+    // "Sign out" always ends the session — no implicit "exit viewer back to
+    // CRO" shortcut. That hidden behaviour confused CRO users who entered a
+    // sponsor workspace, clicked Sign out, and were silently sent back to the
+    // CRO dashboard with the CRO session still alive. The Switch-workspace
+    // dropdown + ReadOnlySponsorBanner still cover the "go back to CRO
+    // without signing out" path explicitly.
+    //
+    // Clear the sponsor-view Redux/localStorage first so a stale `isViewing`
+    // can't survive into the next session that mounts in this tab.
+    if (isViewingSponsor) dispatch(exitSponsorView());
     dispatch(logoutAsync());
     navigate('/');
   };

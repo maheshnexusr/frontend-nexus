@@ -1,7 +1,14 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import { authService }        from '@/services/authService';
 import { sponsorAuthService, sponsorTokenStore } from '@/services/sponsorAuthService';
+import { siteAuthClient } from '@/features/site/api/siteAuthClient';
 import { profileService }     from '@/services/profileService';
+// profileClient — scope-aware variant of profileService that picks the right
+// Bearer token (sponsorView > sponsor > site > CRO). Use this in any login
+// branch that has NOT yet written the CRO `accessToken` slot — e.g. a
+// sponsor login, where the CRO-bound `profileService` call would 401 with
+// "Authentication required" because no CRO token is set.
+import { profileClient }      from '@/api/profileClient';
 import { setSiteSession }     from '@/features/site/authStore';
 import { PERMISSION_GROUPS }  from '@/features/cro/constants/permissionsSchema';
 import axiosClient            from '@/api/axiosClient';
@@ -81,17 +88,59 @@ const _storedPermTree = (() => {
   try { return JSON.parse(localStorage.getItem('authPermissionsTree')) ?? null; } catch { return null; }
 })();
 
+// Scope-aware hydration: if a sponsor or site session is active in localStorage
+// but the CRO `accessToken` is ALSO present, the CRO blob is almost certainly
+// stale from a prior sign-in that was never explicitly logged out. Drop the CRO
+// hydration so the CRO sidebar doesn't render with the previous user's tree
+// while the current session belongs to a different scope.
+const _hasCroAccess     = typeof window !== 'undefined' && !!localStorage.getItem('accessToken');
+const _hasSponsorAccess = typeof window !== 'undefined' && !!localStorage.getItem('sponsorAccessToken');
+const _hasSiteAccess    = typeof window !== 'undefined' && !!localStorage.getItem('siteAccessToken');
+const _croScopeIsActive = _hasCroAccess && !_hasSponsorAccess && !_hasSiteAccess;
+
+if (typeof window !== 'undefined' && !_croScopeIsActive) {
+  // Best-effort wipe — keeps siteAuthUser / sponsorAuthUser intact (those
+  // belong to their own scopes), but removes anything the CRO scope reads on
+  // boot so we never render the previous CRO menu while a different scope owns
+  // the live session.
+  try {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('authUser');
+    localStorage.removeItem('authPermissions');
+    localStorage.removeItem('authPermissionsTree');
+  } catch { /* ignore quota errors */ }
+}
+
 const initialState = {
-  user:            _storedUser,
-  accessToken:     localStorage.getItem('accessToken')  || null,
-  refreshToken:    localStorage.getItem('refreshToken') || null,
-  permissions:     _storedPerms,        // flat dot-notation array — CRO sidebar
-  permissionsTree: _storedPermTree,     // raw backend tree — usePermissions / runtime fields
-  isAuthenticated: Boolean(_storedUser && localStorage.getItem('accessToken')),
+  user:            _croScopeIsActive ? _storedUser     : null,
+  accessToken:     _croScopeIsActive ? (localStorage.getItem('accessToken')  || null) : null,
+  refreshToken:    _croScopeIsActive ? (localStorage.getItem('refreshToken') || null) : null,
+  permissions:     _croScopeIsActive ? _storedPerms     : [],   // flat dot-notation — CRO sidebar
+  permissionsTree: _croScopeIsActive ? _storedPermTree  : null, // raw backend tree
+  isAuthenticated: _croScopeIsActive && Boolean(_storedUser && localStorage.getItem('accessToken')),
   status:          'idle',
   error:           null,
   geoInfo:         null,
 };
+
+// Centralised cross-scope cleanup. Called at the start of every login thunk's
+// `fulfilled` handler so a prior session's tokens / user / permission tree can
+// never shadow the freshly-minted one. The `keep` argument names the scope
+// whose keys should be PRESERVED ('cro' | 'sponsor' | 'site'); everything else
+// is dropped.
+function clearOtherScopeStorage(keep) {
+  const CRO     = ['accessToken', 'refreshToken', 'authUser', 'authPermissions', 'authPermissionsTree'];
+  const SPONSOR = ['sponsorAccessToken', 'sponsorRefreshToken', 'sponsorAuthUser',
+                   'sponsorStudyContext', 'sponsorViewToken', 'sponsorViewMeta', 'sponsorViewFlash'];
+  const SITE    = ['siteAccessToken', 'siteRefreshToken', 'siteWorkspaceToken',
+                   'siteAuthUser', 'siteStudies', 'siteStudyContext'];
+  const groups = { cro: CRO, sponsor: SPONSOR, site: SITE };
+  for (const [scope, keys] of Object.entries(groups)) {
+    if (scope === keep) continue;
+    keys.forEach((k) => { try { localStorage.removeItem(k); } catch { /* ignore */ } });
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Async thunks
@@ -110,8 +159,20 @@ export const activateAccountAsync = createAsyncThunk(
 );
 
 /** True when the login response user is a sponsor role. Sponsor users don't
- *  need CRO permissions — their sidebar is driven by study scope + config. */
+ *  need CRO permissions — their sidebar is driven by study scope + config.
+ *
+ *  Backend signals (in priority order):
+ *    1. `is_sponsor` / `isSponsor` flag — authoritative for both direct
+ *       sponsor logins and sponsor-role CRO logins (set by loginCroUserWithPassword
+ *       and sponsorAuthService.loginWithPassword).
+ *    2. `scope === 'sponsor'` — set by the direct sponsor provider path.
+ *    3. role_name substring — legacy fallback for older responses. Not
+ *       reliable on its own because custom sponsor roles like "Verification
+ *       Manager" don't contain the word "sponsor". */
 const loginResIsSponsor = (loginRes) => {
+  if (loginRes?.is_sponsor === true || loginRes?.isSponsor === true) return true;
+  if (loginRes?.scope === 'sponsor') return true;
+  if (loginRes?.user?.is_sponsor === true || loginRes?.user?.isSponsor === true) return true;
   const roleName = (
     loginRes?.user?.role_name ?? loginRes?.user?.roleName ?? ''
   ).toLowerCase();
@@ -244,14 +305,28 @@ export const loginAsync = createAsyncThunk(
       // Handles multiple backend wrapper shapes (item / data / tokens / …).
       const { accessToken, refreshToken } = extractAuthTokens(loginRes);
 
-      if (accessToken)  localStorage.setItem('accessToken',  accessToken);
-      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
-
       // Surface the flat tokens on the returned object so downstream slices
       // and `sponsorTokenStore.saveTokens` see them at predictable keys.
       const flatRes = { ...loginRes, accessToken, refreshToken };
+      const isSponsorScope = loginResIsSponsor(flatRes);
 
-      if (loginResIsSponsor(flatRes)) {
+      // Wipe every OTHER scope's storage before writing the new session. Without
+      // this, a stale CRO `accessToken` + `authPermissionsTree` from a previous
+      // sign-in stays in localStorage, and CROLayout filters its sidebar against
+      // the leftover sponsor tree (whose leaves overlap with CRO menu keys like
+      // `studies`, `dashboard`) — so the CRO menu lights up after a sponsor login.
+      clearOtherScopeStorage(isSponsorScope ? 'sponsor' : 'cro');
+
+      // Only persist into the CRO `accessToken` slot when the session actually
+      // belongs to the CRO scope. Sponsor tokens go through sponsorTokenStore
+      // below — writing them to the CRO key was the bug that let a sponsor
+      // user pass the CRO ProtectedRoute / load CROLayout on direct navigation.
+      if (!isSponsorScope) {
+        if (accessToken)  localStorage.setItem('accessToken',  accessToken);
+        if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+      }
+
+      if (isSponsorScope) {
         sponsorTokenStore.saveTokens(flatRes);
         if (flatRes.user) sponsorTokenStore.saveUser(flatRes.user);
 
@@ -264,16 +339,27 @@ export const loginAsync = createAsyncThunk(
         // The token saved at the top of this thunk is picked up by the
         // request interceptor. If the endpoint doesn't accept the sponsor
         // token shape, we degrade cleanly (sponsor menu stays unrestricted).
+        //
+        // `scope: 'sponsor'` is set on the payload so loginAsync.fulfilled
+        // routes through applySponsorFulfilled (which wipes stale CRO
+        // permissions) instead of applyUser (which writes the sponsor's
+        // permission tree into the CRO `authPermissionsTree` slot — the
+        // exact bug that surfaced the previous CRO menu after sponsor login).
         try {
-          const permRes = await profileService.getPermissions();
+          // Use the scope-aware profileClient — it picks the sponsor token
+          // from localStorage. profileService uses the CRO-only axios which
+          // would 401 here because we deliberately don't write the CRO
+          // `accessToken` slot for sponsor logins.
+          const permRes = await profileClient.fetchMyPermissions();
           const perms   = permRes?.permissions ?? permRes?.items ?? permRes ?? [];
           return {
             ...flatRes,
+            scope: 'sponsor',
             permissions: perms,
             ...(permRes?.user ? { user: { ...(flatRes.user ?? {}), ...permRes.user } } : {}),
           };
         } catch {
-          return flatRes;
+          return { ...flatRes, scope: 'sponsor' };
         }
       }
 
@@ -363,8 +449,11 @@ export const fetchIdentitiesAsync = createAsyncThunk(
  *  the right scope's storage and return the thunk payload. Both endpoints
  *  return the same shape as a normal login. */
 async function persistMintedSession(loginRes, label, rejectWithValue) {
-  // Site personnel scope — persist to site storage, not CRO.
+  // Site personnel scope — persist to site storage, not CRO. Drop CRO +
+  // sponsor scope storage so a stale token from the previous workspace
+  // doesn't shadow the new site session.
   if (loginRes?.scope === 'site') {
+    clearOtherScopeStorage('site');
     setSiteSession(loginRes);
     return { scope: 'site', user: loginRes.user };
   }
@@ -378,12 +467,18 @@ async function persistMintedSession(loginRes, label, rejectWithValue) {
     return rejectWithValue('No access token returned by the server. Please try again.');
   }
 
-  localStorage.setItem('accessToken', accessToken);
-  if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
-
   const flatRes = { ...loginRes, accessToken, refreshToken };
+  const isSponsorScope = loginResIsSponsor(flatRes);
 
-  if (loginResIsSponsor(flatRes)) {
+  // Wipe stale tokens / permission caches from every OTHER scope. Sponsor
+  // identities never use the CRO `accessToken` slot.
+  clearOtherScopeStorage(isSponsorScope ? 'sponsor' : 'cro');
+  if (!isSponsorScope) {
+    localStorage.setItem('accessToken', accessToken);
+    if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+  }
+
+  if (isSponsorScope) {
     sponsorTokenStore.saveTokens(flatRes);
     if (flatRes.user) sponsorTokenStore.saveUser(flatRes.user);
 
@@ -391,14 +486,16 @@ async function persistMintedSession(loginRes, label, rejectWithValue) {
     // permission tree, use it. Otherwise fetch via /profile/me/permissions
     // so the sponsor menu has actual gating data (without this, the menu
     // falls back to "unrestricted" and the backend's per-route guards
-    // reject everything).
-    if (loginRes?.permissions != null) return flatRes;
+    // reject everything). `scope: 'sponsor'` is set on the payload so the
+    // reducer routes through applySponsorFulfilled and CRO state stays clean.
+    if (loginRes?.permissions != null) return { ...flatRes, scope: 'sponsor' };
     try {
-      const permRes = await profileService.getPermissions();
+      // Sponsor branch — scope-aware profileClient picks the sponsor token.
+      const permRes = await profileClient.fetchMyPermissions();
       const perms   = permRes?.permissions ?? permRes?.items ?? permRes ?? [];
-      return { ...flatRes, permissions: perms };
+      return { ...flatRes, scope: 'sponsor', permissions: perms };
     } catch {
-      return flatRes;
+      return { ...flatRes, scope: 'sponsor' };
     }
   }
 
@@ -504,20 +601,29 @@ export const loginWithOtpAsync = createAsyncThunk(
       }
 
       const { accessToken, refreshToken } = extractAuthTokens(loginRes);
-      if (accessToken)  localStorage.setItem('accessToken',  accessToken);
-      if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
 
       const flatRes = { ...loginRes, accessToken, refreshToken };
+      const isSponsorScope = loginResIsSponsor(flatRes);
 
-      if (loginResIsSponsor(flatRes)) {
+      // Same scope-segregation as loginAsync — sponsor token never lands in
+      // the CRO `accessToken` slot, and the OTHER scope's leftover storage
+      // gets cleared before the new session takes hold.
+      clearOtherScopeStorage(isSponsorScope ? 'sponsor' : 'cro');
+      if (!isSponsorScope) {
+        if (accessToken)  localStorage.setItem('accessToken',  accessToken);
+        if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+      }
+
+      if (isSponsorScope) {
         sponsorTokenStore.saveTokens(flatRes);
         if (flatRes.user) sponsorTokenStore.saveUser(flatRes.user);
         try {
-          const permRes = await profileService.getPermissions();
+          // OTP login sponsor branch — same fix as the password branch.
+          const permRes = await profileClient.fetchMyPermissions();
           const perms   = permRes?.permissions ?? permRes?.items ?? permRes ?? [];
-          return { ...flatRes, permissions: perms };
+          return { ...flatRes, scope: 'sponsor', permissions: perms };
         } catch {
-          return flatRes;
+          return { ...flatRes, scope: 'sponsor' };
         }
       }
 
@@ -556,6 +662,10 @@ export const sponsorLoginAsync = createAsyncThunk(
   async ({ emailAddress, password }, { rejectWithValue }) => {
     try {
       const res = await sponsorAuthService.login({ emailAddress, password });
+      // Drop CRO + site storage first — otherwise stale `accessToken` /
+      // `authPermissionsTree` from a previous sign-in keep CROLayout's gates
+      // alive and the sponsor user sees the prior CRO menu after sign-in.
+      clearOtherScopeStorage('sponsor');
       sponsorTokenStore.saveTokens(res);
       if (res?.user) sponsorTokenStore.saveUser(res.user);
       return res;
@@ -583,6 +693,7 @@ export const sponsorLoginWithOtpAsync = createAsyncThunk(
   async ({ emailAddress, otp }, { rejectWithValue }) => {
     try {
       const res = await sponsorAuthService.verifyOtp({ emailAddress, otp });
+      clearOtherScopeStorage('sponsor');
       sponsorTokenStore.saveTokens(res);
       if (res?.user) sponsorTokenStore.saveUser(res.user);
       return res;
@@ -594,17 +705,25 @@ export const sponsorLoginWithOtpAsync = createAsyncThunk(
 
 /**
  * Logs the user out of whichever scopes currently hold a token (CRO, sponsor,
- * or both), then clears client state. Server calls are best-effort — a failed
- * revocation (expired token, offline) must still clear the session locally.
+ * site, or any combination), then clears client state. Server calls are
+ * best-effort — a failed revocation (expired token, offline) must still clear
+ * the session locally.
+ *
+ * All three scopes call THEIR OWN /auth/logout endpoint so the server can
+ * revoke the refresh token. Without the site branch, site personnel logging
+ * out left their refresh token live on the server even though the FE cleared
+ * the keys — and no logout audit row was written for the site scope.
  */
 export const logoutAsync = createAsyncThunk(
   'auth/logoutAll',
   async (_, { dispatch }) => {
     const hasCRO     = !!localStorage.getItem('accessToken');
     const hasSponsor = !!localStorage.getItem('sponsorAccessToken');
+    const hasSite    = !!localStorage.getItem('siteAccessToken');
     await Promise.allSettled([
       hasCRO     ? authService.logout()        : Promise.resolve(),
       hasSponsor ? sponsorAuthService.logout() : Promise.resolve(),
+      hasSite    ? siteAuthClient.logout()     : Promise.resolve(),
     ]);
     dispatch(authSlice.actions.logout());
   },
@@ -895,6 +1014,37 @@ function applyUser(state, raw) {
   }
 }
 
+/**
+ * Apply a sponsor-scoped login payload to Redux + localStorage. Defined at
+ * module scope (rather than inside extraReducers) so loginAsync.fulfilled and
+ * the identity-switch reducers can route sponsor responses through here too.
+ *
+ * Critical: a previous CRO session may have populated `state.permissions`,
+ * `state.permissionsTree`, `accessToken`, `refreshToken` and `authUser` in
+ * Redux + localStorage. Sponsor login must clear ALL of those — otherwise
+ * CROLayout filters its sidebar against the stale tree and the sponsor user
+ * sees the previous CRO menu (overlapping leaf keys like `studies.view`,
+ * `dashboard.view`, `query_manager.view` are the smoking gun).
+ */
+function applySponsorFulfilled(state, { payload }) {
+  const user = normalizeUser(payload?.user);
+  state.user            = user;
+  state.accessToken     = null;   // CRO token slot — sponsor uses sponsorAccessToken
+  state.refreshToken    = null;
+  state.permissions     = [];     // wipe stale CRO permissions
+  state.permissionsTree = null;   // wipe stale CRO tree
+  state.isAuthenticated = Boolean(user);
+  state.status          = 'succeeded';
+  state.error           = null;
+  if (user) localStorage.setItem('authUser', JSON.stringify(user));
+  // Mirror the Redux wipe into localStorage so a page reload doesn't
+  // re-hydrate the CRO state from the previous session.
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.setItem('authPermissions',     JSON.stringify([]));
+  localStorage.setItem('authPermissionsTree', JSON.stringify(null));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Slice
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1022,27 +1172,59 @@ const authSlice = createSlice({
       .addCase(activateAccountAsync.fulfilled, (state) => { state.status = 'succeeded'; })
       .addCase(activateAccountAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
 
+    // The shared /auth/login/password endpoint serves CRO, sponsor, and (via
+    // the choose/switch flows) site identities — the response payload carries
+    // `scope` to tell us which one. Sponsor + site MUST NOT flow through
+    // applyUser, or the sponsor/site permission tree would land in the CRO
+    // `authPermissionsTree` slot and CROLayout would render a stale menu.
+    const applyByScope = (state, { payload }) => {
+      const scope = (payload?.scope ?? '').toLowerCase();
+      if (scope === 'sponsor') {
+        applySponsorFulfilled(state, { payload });
+        return;
+      }
+      if (scope === 'site') {
+        // Site session — tokens + permissions belong to siteAuthStore (the
+        // SiteLayout reads them directly). But the shared header/profile UI
+        // reads `state.user.fullName` for the avatar + display name, so we
+        // still normalize the user into Redux. Without this, site users
+        // signed in via the unified /auth/login/password show a blank name.
+        //
+        // Permission slots stay empty so CROLayout never renders for a site
+        // session.
+        const user = normalizeUser(payload?.user);
+        state.user            = user;
+        state.accessToken     = null;
+        state.refreshToken    = null;
+        state.permissions     = [];
+        state.permissionsTree = null;
+        state.isAuthenticated = Boolean(user);
+        state.status          = 'succeeded';
+        state.error           = null;
+        if (user) localStorage.setItem('authUser', JSON.stringify(user));
+        return;
+      }
+      applyTokens(state, payload);
+      applyUser(state, payload);
+    };
+
     // ── loginAsync ──────────────────────────────────────────────────────────
     builder
       .addCase(loginAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
-      .addCase(loginAsync.fulfilled, (state, { payload }) => {
+      .addCase(loginAsync.fulfilled, (state, action) => {
         // requires_choice response carries no tokens or final user — skip
         // applying it (otherwise an in-app workspace switch would null
         // out the currently authenticated user mid-flow). The component
         // will call chooseIdentityAsync next, which DOES apply state.
-        if (payload?.requiresChoice) { state.status = 'succeeded'; return; }
-        applyTokens(state, payload);
-        applyUser(state, payload);
+        if (action.payload?.requiresChoice) { state.status = 'succeeded'; return; }
+        applyByScope(state, action);
       })
       .addCase(loginAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
 
     // ── loginWithOtpAsync ───────────────────────────────────────────────────
     builder
       .addCase(loginWithOtpAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
-      .addCase(loginWithOtpAsync.fulfilled, (state, { payload }) => {
-        applyTokens(state, payload);
-        applyUser(state, payload);
-      })
+      .addCase(loginWithOtpAsync.fulfilled, applyByScope)
       .addCase(loginWithOtpAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
 
     // ── chooseIdentityAsync ─────────────────────────────────────────────────
@@ -1052,10 +1234,7 @@ const authSlice = createSlice({
     // already in localStorage.
     builder
       .addCase(chooseIdentityAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
-      .addCase(chooseIdentityAsync.fulfilled, (state, { payload }) => {
-        applyTokens(state, payload);
-        applyUser(state, payload);
-      })
+      .addCase(chooseIdentityAsync.fulfilled, applyByScope)
       .addCase(chooseIdentityAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
 
     // ── switchIdentityAsync ─────────────────────────────────────────────────
@@ -1063,25 +1242,17 @@ const authSlice = createSlice({
     // chooseIdentityAsync (a minted session for one of the user's identities).
     builder
       .addCase(switchIdentityAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
-      .addCase(switchIdentityAsync.fulfilled, (state, { payload }) => {
-        applyTokens(state, payload);
-        applyUser(state, payload);
-      })
+      .addCase(switchIdentityAsync.fulfilled, applyByScope)
       .addCase(switchIdentityAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
 
     // ── sponsor login (password + OTP) ──────────────────────────────────────
     // Sponsor tokens live in localStorage under sponsor-scope keys (handled by
     // sponsorTokenStore inside the thunk). The sponsor user overwrites state.user
     // so the header/profile reflect the logged-in sponsor identity.
-    const applySponsorFulfilled = (state, { payload }) => {
-      const user = normalizeUser(payload?.user);
-      state.user            = user;
-      state.permissions     = payload?.permissions ?? state.permissions;
-      state.isAuthenticated = Boolean(user);
-      state.status          = 'succeeded';
-      state.error           = null;
-      if (user) localStorage.setItem('authUser', JSON.stringify(user));
-    };
+    //
+    // The shared `applySponsorFulfilled` (defined at module scope above) wipes
+    // any stale CRO permissions / tokens that would otherwise cause CROLayout
+    // to render a stale menu under the sponsor session.
     builder
       .addCase(sponsorLoginAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
       .addCase(sponsorLoginAsync.fulfilled, applySponsorFulfilled)

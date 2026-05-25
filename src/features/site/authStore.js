@@ -120,6 +120,14 @@ export function setSiteStudyContext(payload) {
     versionNumber: o.versionNumber ?? o.version_number ?? '',
     scope:         o.scope         ?? { edc: false, survey: false, epro: false },
     permissions:   o.permissions   ?? {},
+    // Per-role dashboard whitelist (site_roles.dashboard_widget_keys). null →
+    // use default category-leaf gating; array (possibly empty) → explicit
+    // whitelist. Source: backend buildSiteView → /sponsor-or-site studies/choose
+    // and /profile/me/permissions both include it under user.dashboard_widget_keys.
+    dashboardWidgetKeys:
+      o.dashboard_widget_keys ?? o.dashboardWidgetKeys
+      ?? o.user?.dashboard_widget_keys ?? o.user?.dashboardWidgetKeys
+      ?? null,
   };
   safeWrite(CONTEXT_KEY, JSON.stringify(context));
   return context;

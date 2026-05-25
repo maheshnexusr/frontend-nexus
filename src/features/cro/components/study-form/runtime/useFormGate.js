@@ -57,12 +57,11 @@ export function useFormGate(fieldId) {
     // Per-status transition gates — used by the runner footer to decide
     // which action buttons to show. `canEditField` already collapses to
     // false in read-only statuses; these decide the next legal transition.
-    canMarkCompleted:  formStatus === 'In Progress' && caps.canEditField,
-    // Marking the form Reviewed is a data-capture workflow transition — gate it
-    // on data_capture.edit, consistent with the other toolbar transitions, so a
-    // view-only role (e.g. Query Manager with no data_capture.edit) can't move
-    // the form's status.
-    canMarkReviewed:   formStatus === 'Completed'   && caps.canEditField,
+    // Per-transition permissions (migration 022). A role with only
+    // data_capture.edit can capture data but NOT move the form's status —
+    // each transition has its own action: complete, review, verify, …
+    canMarkCompleted:  formStatus === 'In Progress' && caps.canComplete,
+    canMarkReviewed:   formStatus === 'Completed'   && caps.canReview,
     canMarkVerified:   formStatus === 'Reviewed'    && caps.canVerify,
     // Freeze / lock / sign — each gated by its own data_capture permission
     // (migration 021), combined with the workflow-state rule.

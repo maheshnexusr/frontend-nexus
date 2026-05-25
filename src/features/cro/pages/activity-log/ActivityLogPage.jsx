@@ -25,6 +25,8 @@ import { addToast }           from '@/app/notificationSlice';
 import DataTable              from '@/components/data-table/DataTable';
 import ExportMenu             from '@/components/data-table/ExportMenu';
 import { exportTable }        from '@/utils/exportTable';
+import { formatDateTime }     from '@/utils/formatDate';
+import PlatformDatePicker     from '@/components/form/PlatformDatePicker';
 import styles from './ActivityLogPage.module.css';
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
@@ -59,13 +61,7 @@ function buildExportRows(items) {
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
-function fmtDate(ts) {
-  if (!ts) return '—';
-  return new Date(ts).toLocaleString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  });
-}
+const fmtDate = (ts) => formatDateTime(ts) || '—';
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function sevenDaysAgoISO() {
@@ -375,13 +371,13 @@ export default function ActivityLogPage() {
           <div className={styles.filterGrid}>
             <div className={styles.fg}>
               <label className={styles.flabel}>Date From</label>
-              <input type="date" className={styles.finput} value={dateFrom}
-                max={dateTo || todayISO()} onChange={(e) => setDateFrom(e.target.value)} />
+              <PlatformDatePicker className={styles.finput} value={dateFrom}
+                max={dateTo || todayISO()} onChange={setDateFrom} />
             </div>
             <div className={styles.fg}>
               <label className={styles.flabel}>Date To</label>
-              <input type="date" className={styles.finput} value={dateTo}
-                min={dateFrom} max={todayISO()} onChange={(e) => setDateTo(e.target.value)} />
+              <PlatformDatePicker className={styles.finput} value={dateTo}
+                min={dateFrom} max={todayISO()} onChange={setDateTo} />
             </div>
             <div className={styles.fg}>
               <label className={styles.flabel}>Module</label>

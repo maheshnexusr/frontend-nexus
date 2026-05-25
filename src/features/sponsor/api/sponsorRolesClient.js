@@ -43,6 +43,12 @@ function normalizeRole(raw) {
     createdAt:    raw.created_at    ?? raw.createdAt    ?? '',
     updatedAt:    raw.updated_at    ?? raw.updatedAt    ?? '',
     permissions:  raw.permissions   ?? buildEmptyPermissions(),
+    // Per-role dashboard widget whitelist. null/undefined → use default
+    // category-leaf gating; array (possibly empty) → explicit whitelist.
+    dashboardWidgetKeys:
+      raw.dashboard_widget_keys != null ? raw.dashboard_widget_keys
+      : raw.dashboardWidgetKeys != null ? raw.dashboardWidgetKeys
+      : null,
   };
 }
 
@@ -76,6 +82,7 @@ export const sponsorRolesClient = {
       description:  data.description,
       status:       data.status ?? 'Active',
       permissions:  data.permissions,
+      dashboard_widget_keys: data.dashboardWidgetKeys ?? null,
     });
     return normalizeRole(res?.item ?? res?.role ?? res?.site_role ?? res?.data ?? res ?? {});
   },
@@ -87,6 +94,7 @@ export const sponsorRolesClient = {
       description: data.description,
       status:      data.status,
       permissions: data.permissions,
+      dashboard_widget_keys: data.dashboardWidgetKeys ?? null,
     });
     return normalizeRole(res?.item ?? res?.role ?? res?.site_role ?? res?.data ?? res ?? {});
   },

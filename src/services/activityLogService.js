@@ -78,6 +78,36 @@ export const activityLogService = {
   },
 
   /**
+   * Record a user-driven action emitted from the frontend. Used by surfaces
+   * that mutate local state before any save (e.g. the Study Form Builder's
+   * block / page / control deletions) so the action is auditable even if the
+   * user never saves the surrounding form.
+   *
+   * payload: { actionType, module, entityType, entityId?, entityName?,
+   *            description, beforeValue?, afterValue? }
+   *
+   * Failures are silent — auditing should never block the UX. Errors are
+   * surfaced to the console only.
+   */
+  record: async (payload) => {
+    try {
+      await axiosClient.post('/api/v1/activity-logs', {
+        actionType:  payload.actionType,
+        module:      payload.module,
+        entityType:  payload.entityType,
+        entityId:    payload.entityId   ?? null,
+        entityName:  payload.entityName ?? null,
+        description: payload.description,
+        beforeValue: payload.beforeValue ?? null,
+        afterValue:  payload.afterValue  ?? null,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[activityLog] record failed', err?.message ?? err);
+    }
+  },
+
+  /**
    * Export filtered logs as CSV and trigger a browser download.
    * Accepts the same filter params as list(); mapped to spec §9 names.
    */

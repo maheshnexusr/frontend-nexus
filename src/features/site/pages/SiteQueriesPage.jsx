@@ -1,14 +1,21 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import {
-  Eye, MessageSquare, Download, Filter, Search, X as XIcon,
+  Eye, MessageSquare, CheckCircle, FileText, Filter, Search, X as XIcon,
   RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown,
   MessageSquareWarning,
 } from 'lucide-react';
 import { siteQueryClient } from '@/features/site/api/siteQueryClient';
+import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
 import { addToast }         from '@/app/notificationSlice';
 import { Card, CardContent } from '@/components/ui/card';
+import { formatDate }       from '@/utils/formatDate';
+import PlatformDatePicker   from '@/components/form/PlatformDatePicker';
+import RespondModal         from '@/features/sponsor/components/query/RespondModal';
+import CloseReopenModal     from '@/features/sponsor/components/query/CloseReopenModal';
+import { usePermissions }   from '@/features/auth/usePermissions';
 import styles from '@/features/sponsor/pages/QueriesPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -37,10 +44,7 @@ const STATUS_META = {
 const STATUS_DISPLAY = { Open: 'Raised', 'In Progress': 'Answered', Closed: 'Resolved' };
 const toDisplayStatus = (st) => STATUS_DISPLAY[st] ?? st ?? 'Raised';
 
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
-}
+const fmtDate = (iso) => formatDate(iso) || '—';
 
 function fmtAging(days) {
   if (days == null || Number.isNaN(days)) return '—';
@@ -61,10 +65,25 @@ function SortIcon({ col, sortKey, sortDir }) {
 
 export default function SiteQueriesPage() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  // Permission-driven action visibility. The backend gates each route:
+  //   /queries/:id/answer → query_manager.edit
+  //   /queries/:id/close  → data_capture.close_query  (migration 026 split)
+  // Without these checks the buttons would render and 403 on click.
+  const { has } = usePermissions();
+  const canRespond = has('query_manager', 'edit');
+  const canClose   = has('data_capture', 'close_query');
 
   // ── Data ─────────────────────────────────────────────────────────────────
   const [queries, setQueries] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Study's first form id — used by the "Open Study Form" action when a query
+  // row doesn't carry its own formId (single-form studies).
+  const [studyFormId, setStudyFormId] = useState(null);
+
+  // ── Modal targets — Respond / Close. Resolved-only rows hide both. ─────
+  const [respondTarget, setRespond] = useState(null);
+  const [closeTarget,   setClose]   = useState(null);
 
   // ── Filters ──────────────────────────────────────────────────────────────
   const [statusFilter,   setStatusFilter]   = useState('Raised');
@@ -103,6 +122,29 @@ export default function SiteQueriesPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [statusFilter, priorityFilter, query, dateFrom, dateTo, onlyMine]);
+
+  // Resolve the study's primary form id once, so the per-row "Open Study
+  // Form" action works on rows whose payload doesn't include a formId.
+  useEffect(() => {
+    let cancelled = false;
+    siteWorkspaceClient.listForms()
+      .then((res) => {
+        if (cancelled) return;
+        const items = res?.items ?? res ?? [];
+        if (items.length) setStudyFormId(items[0].formId ?? items[0].form_id ?? null);
+      })
+      .catch(() => { /* leave null — the action falls back to a toast */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const openStudyForm = (q) => {
+    const formId = q.formId || studyFormId;
+    if (!formId || !q.subjectId) {
+      dispatch(addToast({ type: 'error', message: 'Cannot open the form — no form or subject for this query.' }));
+      return;
+    }
+    navigate(`/site/capture/form?formId=${formId}&subjectId=${q.subjectId}`);
+  };
 
   // ── Local filter & sort ───────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -153,16 +195,28 @@ export default function SiteQueriesPage() {
     };
   }, [queries]);
 
-  // ── Respond (inline placeholder — opens browser prompt for now) ──────────
-  const handleRespond = async (q) => {
-    const answer = window.prompt(`Respond to query ${q.id}:\n${q.queryText}`);
-    if (answer == null || !answer.trim()) return;
+  // ── Modal-driven Respond + Close (mirrors the sponsor QueryManager page). ──
+  const handleRespond = async (data) => {
     try {
-      await siteQueryClient.respond(q.id, { responseText: answer.trim(), statusUpdate: 'Answered' });
+      await siteQueryClient.respond(respondTarget.id, data);
       dispatch(addToast({ type: 'success', message: 'Response sent.' }));
+      setRespond(null);
       load();
     } catch {
       dispatch(addToast({ type: 'error', message: 'Failed to send response.' }));
+      throw new Error();
+    }
+  };
+
+  const handleClose = async (data) => {
+    try {
+      await siteQueryClient.close(closeTarget.id, data);
+      dispatch(addToast({ type: 'success', message: 'Query closed.' }));
+      setClose(null);
+      load();
+    } catch {
+      dispatch(addToast({ type: 'error', message: 'Failed to close query.' }));
+      throw new Error();
     }
   };
 
@@ -279,9 +333,9 @@ export default function SiteQueriesPage() {
           </div>
 
           <div className={styles.dateRange}>
-            <input type="date" className={styles.dateInput} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} title="From" />
+            <PlatformDatePicker className={styles.dateInput} value={dateFrom} onChange={setDateFrom} placeholder="From" />
             <span className={styles.dateSep}>–</span>
-            <input type="date" className={styles.dateInput} value={dateTo}   onChange={(e) => setDateTo(e.target.value)}   title="To"   />
+            <PlatformDatePicker className={styles.dateInput} value={dateTo}   onChange={setDateTo}   placeholder="To" />
           </div>
         </div>
 
@@ -440,13 +494,25 @@ export default function SiteQueriesPage() {
                     <button className={styles.actionBtn} title="View Details" onClick={() => dispatch(addToast({ type: 'info', message: `Query ${q.id} — full details view coming soon.` }))}>
                       <Eye size={12} />
                     </button>
-                    {isActive && (
+                    <button className={styles.actionBtn} title="Open Study Form" onClick={() => openStudyForm(q)}>
+                      <FileText size={12} />
+                    </button>
+                    {isActive && canRespond && (
                       <button
                         className={`${styles.actionBtn} ${styles.actionRespond}`}
                         title="Respond"
-                        onClick={() => handleRespond(q)}
+                        onClick={() => setRespond(q)}
                       >
                         <MessageSquare size={12} />
+                      </button>
+                    )}
+                    {isActive && canClose && (
+                      <button
+                        className={`${styles.actionBtn} ${styles.actionClose}`}
+                        title="Close"
+                        onClick={() => setClose(q)}
+                      >
+                        <CheckCircle size={12} />
                       </button>
                     )}
                   </td>
@@ -480,6 +546,24 @@ export default function SiteQueriesPage() {
             {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n} / page</option>)}
           </select>
         </div>
+      )}
+
+      {/* Reuse the sponsor modals — they're presentational and call back into
+          the parent for the API hit, so the site client wiring works fine. */}
+      {respondTarget && (
+        <RespondModal
+          query={respondTarget}
+          onConfirm={handleRespond}
+          onClose={() => setRespond(null)}
+        />
+      )}
+      {closeTarget && (
+        <CloseReopenModal
+          mode="close"
+          query={closeTarget}
+          onConfirm={handleClose}
+          onClose={() => setClose(null)}
+        />
       )}
     </div>
   );

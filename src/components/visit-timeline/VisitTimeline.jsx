@@ -13,6 +13,7 @@
  */
 
 import { CalendarDays, Check, AlertCircle, Lock, Snowflake, PenLine, Eye, FileText } from 'lucide-react';
+import { formatDate } from '@/utils/formatDate';
 
 const VISIT_STATUS_META = {
   'Completed':   { color: '#16a34a', bg: '#dcfce7', Icon: Check       },
@@ -43,11 +44,7 @@ const FORM_STATUS_COLOR = {
   'Not Started': '#94a3b8',
 };
 
-function fmtDate(iso) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-}
+const fmtDate = (iso) => formatDate(iso) || null;
 
 export default function VisitTimeline({ visits = [], loading = false, onSelectForm }) {
   if (loading) {

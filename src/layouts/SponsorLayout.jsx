@@ -121,8 +121,9 @@ export default function SponsorLayout() {
   /* ── Primary nav: each leaf must be allowed by BOTH study.config AND
         the active user's role permissions. ─────────────────────────────── */
   const consentChildren = [
-    allowed('consent_builder') && { key: 'consent-builder', label: 'Consent Builder',           path: `${base}/consent/config` },
-    allowed('consent_review')  && { key: 'consent-review',  label: 'Consent Review & Approval', path: `${base}/consent/review` },
+    allowed('consent_builder')    && { key: 'consent-builder',    label: 'Consent Builder',           path: `${base}/consent/config` },
+    allowed('consent_submission') && { key: 'consent-submission', label: 'Consent Submission',        path: `${base}/consent/submit` },
+    allowed('consent_review')     && { key: 'consent-review',     label: 'Consent Review & Approval', path: `${base}/consent/review` },
   ].filter(Boolean);
 
   const qualityChildren = [

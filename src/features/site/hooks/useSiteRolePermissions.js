@@ -75,7 +75,12 @@ export function resolveRolePermissions(studyId) {
   //    earlier PI session leaking into a later sponsor session's menu.
   if (typeof window !== 'undefined' && localStorage.getItem('siteAccessToken')) {
     const ctx = readJSON('siteStudyContext');
-    if (ctx?.permissions && Object.keys(ctx.permissions).length) return ctx.permissions;
+    // Fail CLOSED for site sessions: return the tree even when empty so
+    // hasPerm denies (instead of falling through to null = ALLOW_ALL). The
+    // fall-through made Raise/Close Query leak on stale site sessions whose
+    // siteStudyContext.permissions wasn't yet populated by /site/studies/choose.
+    if (ctx?.permissions && typeof ctx.permissions === 'object') return ctx.permissions;
+    return {};
   }
 
   // 1b. Sponsor workspace session — gate by the per-study permission tree

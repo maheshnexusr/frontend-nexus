@@ -100,7 +100,8 @@ function apiPermsToNested(apiPerms) {
       locked:        p.canlock      ?? p.canLock      ?? p.can_lock      ?? false,
       import:        p.canimport    ?? p.canImport    ?? p.can_import    ?? false,
       configuration: p.canconfigure ?? p.canConfigure ?? p.can_configure ?? false,
-      publish:       p.canpublish   ?? p.canPublish   ?? p.can_publish   ?? false,
+      publish_uat:        p.canpublishuat        ?? p.canPublishUat        ?? p.can_publish_uat        ?? false,
+      publish_production: p.canpublishproduction ?? p.canPublishProduction ?? p.can_publish_production ?? false,
     };
 
     result[groupKey][featureKey] = result[groupKey][featureKey] ?? {};
@@ -118,7 +119,8 @@ function apiPermsToNested(apiPerms) {
  *
  * Backend expects strict snake_case keys: feature_name, can_view, can_create,
  * can_edit, can_delete, can_export, can_duplicate, can_lock, can_import,
- * can_configure, can_publish. Missing can_* keys are treated as false.
+ * can_configure, can_publish_uat, can_publish_production. Missing can_* keys
+ * are treated as false.
  *
  * `feature_name` MUST be the canonical PascalCase key from
  * CANONICAL_FEATURE_NAMES (e.g. "Masters.EmailTemplates", "ActivityLog"),
@@ -154,7 +156,8 @@ function nestedPermsToApi(permsObj) {
         can_lock:      fp.locked        ?? false,
         can_import:    fp.import        ?? false,
         can_configure: fp.configuration ?? false,
-        can_publish:   fp.publish       ?? false,
+        can_publish_uat:        fp.publish_uat        ?? false,
+        can_publish_production: fp.publish_production ?? false,
       });
     }
   }
@@ -163,13 +166,24 @@ function nestedPermsToApi(permsObj) {
 
 /* ── Response normalizer ─────────────────────────────────────────────────── */
 function normalize(raw) {
+  const isSystem = raw.is_system_role ?? raw.isSystem ?? false;
+  // System roles (CRO Administrator) get full access on every action in the
+  // schema, including UI-only actions that have no DB column (stop_uat,
+  // freeze_form, triggers, etc.). Mapping from the DB rows would otherwise
+  // mark those as FALSE because the columns don't exist — making the Roles
+  // table show e.g. "47 / 54" for an admin that really has total access.
   return {
     id:          raw.role_id        ?? raw.id,
     name:        raw.role_name      ?? raw.name ?? '',
     description: raw.description    ?? '',
-    isSystem:    raw.is_system_role ?? raw.isSystem ?? false,
-    // Convert API flat array → nested UI object so the form can consume it
-    permissions: apiPermsToNested(raw.permissions ?? []),
+    isSystem,
+    permissions: isSystem ? buildPermissions(true) : apiPermsToNested(raw.permissions ?? []),
+    // Per-role dashboard whitelist (migration 024). null/undefined → default
+    // category-leaf gating; array → explicit whitelist of widget IDs.
+    dashboardWidgetKeys:
+      raw.dashboard_widget_keys != null ? raw.dashboard_widget_keys
+      : raw.dashboardWidgetKeys != null ? raw.dashboardWidgetKeys
+      : null,
     createdAt:   raw.created_at     ?? raw.createdAt,
     updatedAt:   raw.updated_at     ?? raw.updatedAt,
   };
@@ -198,6 +212,7 @@ export const rolesClient = {
       description: data.description ?? '',
       // data.permissions is the nested UI object — convert to API array
       permissions: nestedPermsToApi(data.permissions),
+      dashboard_widget_keys: data.dashboardWidgetKeys ?? null,
     });
     return normalize(res?.item ?? res);
   },
@@ -207,6 +222,7 @@ export const rolesClient = {
       role_name:   data.name,
       description: data.description ?? '',
       permissions: nestedPermsToApi(data.permissions),
+      dashboard_widget_keys: data.dashboardWidgetKeys ?? null,
     });
     return normalize(res?.item ?? res);
   },

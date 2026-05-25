@@ -4,7 +4,7 @@
  */
 
 import axiosClient from '@/api/axiosClient';
-import { nestedPermsToApi, apiPermsToNested } from '@/features/cro/api/sponsorRolesClient';
+import { nestedPermsToApi, apiPermsToNested } from '@/features/cro/api/sponsorPermsCodec';
 
 /* ── snake_case → camelCase (used when hydrating persisted form structure) ── */
 const toCamel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
@@ -72,6 +72,11 @@ function normalize(raw) {
     // Per-study sponsor workspace permissions (Study Wizard Step 1) — nested
     // matrix shape for the FE. Empty array → all-false matrix.
     sponsorPermissions:  apiPermsToNested(raw.sponsor_permissions ?? raw.sponsorPermissions ?? []),
+    // Per-study dashboard widget whitelist for sponsor users (Wizard Step 1).
+    sponsorDashboardWidgetKeys:
+      raw.sponsor_dashboard_widget_keys != null ? raw.sponsor_dashboard_widget_keys
+      : raw.sponsorDashboardWidgetKeys != null ? raw.sponsorDashboardWidgetKeys
+      : null,
     startDate:           raw.start_date         ?? raw.startDate ?? '',
     expectedEndDate:     raw.expected_end_date  ?? raw.expectedEndDate ?? '',
     maxSites:            raw.max_sites          ?? raw.maxSites ?? null,
@@ -113,8 +118,17 @@ function normalize(raw) {
     teamAssignments:     raw.team_assignments   ?? raw.teamAssignments ?? [],
     assignments:         normalizeAssignments(raw.team_assignments ?? raw.teamAssignments),
     versions:            (raw.versions ?? []).map(normalizeVersion),
+    // Per-env publish summary (powers the Studies-table chips). Absent on the
+    // detail endpoint — leave as nulls so the FE only renders chips when the
+    // backend includes them.
+    uatVersion:          raw.uat_version        ?? raw.uatVersion ?? null,
+    liveVersion:         raw.live_version       ?? raw.liveVersion ?? null,
+    uatPublishedAt:      raw.uat_published_at   ?? raw.uatPublishedAt ?? null,
+    livePublishedAt:     raw.live_published_at  ?? raw.livePublishedAt ?? null,
+    publishedUat:        Boolean(raw.uat_version ?? raw.uatVersion),
+    publishedLive:       Boolean(raw.live_version ?? raw.liveVersion),
     createdAt:           raw.created_at         ?? raw.createdAt,
-    updatedAt:           raw.updated_at         ?? raw.updatedAt, 
+    updatedAt:           raw.updated_at         ?? raw.updatedAt,
   };
 }
 
@@ -154,18 +168,19 @@ function normalizeAssignments(list) {
 
 function normalizeVersion(v) {
   return {
-    id:            v.version_id     ?? v.id,
-    studyId:       v.study_id       ?? v.studyId,
-    versionNumber: v.version_number ?? v.versionNumber,
-    environment:   v.environment    ?? '',
-    status:        v.status         ?? '',
-    description:   v.description    ?? '',
-    databaseName:  v.database_name  ?? v.databaseName ?? '',
-    uatLink:       v.uat_link       ?? v.uatLink ?? null,
-    liveLink:      v.live_link      ?? v.liveLink ?? null,
-    publishedBy:   v.published_by   ?? v.publishedBy ?? '',
-    publishedAt:   v.published_at   ?? v.publishedAt ?? '',
-    isCurrent:     v.is_current     ?? false,
+    id:              v.version_id          ?? v.id,
+    studyId:         v.study_id            ?? v.studyId,
+    versionNumber:   v.version_number      ?? v.versionNumber,
+    environment:     v.environment         ?? '',
+    status:          v.status              ?? '',
+    description:     v.description         ?? '',
+    databaseName:    v.database_name       ?? v.databaseName ?? '',
+    uatLink:         v.uat_link            ?? v.uatLink ?? null,
+    liveLink:        v.live_link           ?? v.liveLink ?? null,
+    publishedBy:     v.published_by        ?? v.publishedBy ?? '',
+    publishedByName: v.published_by_name   ?? v.publishedByName ?? '',
+    publishedAt:     v.published_at        ?? v.publishedAt ?? '',
+    isCurrent:       v.is_current          ?? false,
   };
 }
 
@@ -211,6 +226,7 @@ export const studiesClient = {
       sponsor_permissions: data.sponsorPermissions
         ? nestedPermsToApi(data.sponsorPermissions)
         : undefined,
+      sponsor_dashboard_widget_keys: data.sponsorDashboardWidgetKeys ?? null,
     });
     return normalize(res?.item ?? res);
   },
@@ -228,6 +244,7 @@ export const studiesClient = {
       sponsor_permissions: data.sponsorPermissions
         ? nestedPermsToApi(data.sponsorPermissions)
         : undefined,
+      sponsor_dashboard_widget_keys: data.sponsorDashboardWidgetKeys ?? null,
     });
     return normalize(res?.item ?? res);
   },
@@ -274,6 +291,17 @@ export const studiesClient = {
     return normalize(res?.item ?? res);
   },
 
+  // ── Publish history (UAT + LIVE) ─────────────────────────────────────────
+  // Returns { uat: [...], live: [...] } with newest first. Used by the
+  // Studies-table "Publish Settings" modal.
+  async versions(studyId) {
+    const res = await axiosClient.get(`/api/v1/studies/${studyId}/versions`);
+    return {
+      uat:  (res?.uat  ?? []).map(normalizeVersion),
+      live: (res?.live ?? []).map(normalizeVersion),
+    };
+  },
+
   // ── Publish ───────────────────────────────────────────────────────────────
   async publish(studyId, publishConfig) {
     const res = await axiosClient.post(`/api/v1/studies/${studyId}/publish`, {
@@ -281,6 +309,13 @@ export const studiesClient = {
       status:      publishConfig.status || undefined,
     });
     return res?.item ?? res;
+  },
+
+  // ── Stop an environment (unpublish the current release) ──────────────────
+  // Inverse of publish — flips is_current=FALSE on the active version so the
+  // env disappears from the sponsor/site study pickers. Tenant DB is kept.
+  async stop(studyId, { environment }) {
+    return axiosClient.post(`/api/v1/studies/${studyId}/stop`, { environment });
   },
 
   // ── Invitations ───────────────────────────────────────────────────────────

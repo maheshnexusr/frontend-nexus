@@ -133,8 +133,6 @@ const TeamMembersPage    = lazy(() => import('@/features/cro/pages/team/TeamMemb
 const TeamMemberNewPage  = lazy(() => import('@/features/cro/pages/team/TeamMemberNewPage'));
 const TeamRolesPage      = lazy(() => import('@/features/cro/pages/team/TeamRolesPage'));
 const TeamRoleFormPage   = lazy(() => import('@/features/cro/pages/team/TeamRoleFormPage'));
-const SponsorRolesPage    = lazy(() => import('@/features/cro/pages/sponsor-roles/SponsorRolesPage'));
-const SponsorRoleFormPage = lazy(() => import('@/features/cro/pages/sponsor-roles/SponsorRoleFormPage'));
 const EmailTemplatesPage = lazy(() => import('@/features/cro/pages/masters/EmailTemplatesPage'));
 const StudyPhasesPage    = lazy(() => import('@/features/cro/pages/masters/StudyPhasesPage'));
 const CountryPage        = lazy(() => import('@/features/cro/pages/masters/CountryPage'));
@@ -154,6 +152,7 @@ const CapturePage            = lazy(() => import('@/features/sponsor/pages/Captu
 const CaptureFormPage        = lazy(() => import('@/features/sponsor/pages/CaptureFormPage'));
 const ConsentConfigPage      = lazy(() => import('@/features/sponsor/pages/ConsentConfigPage'));
 const ConsentReviewPage      = lazy(() => import('@/features/sponsor/pages/ConsentReviewPage'));
+const ConsentSubmissionPage  = lazy(() => import('@/features/sponsor/pages/ConsentSubmissionPage'));
 const QueriesPage            = lazy(() => import('@/features/sponsor/pages/QueriesPage'));
 const VerificationPage       = lazy(() => import('@/features/sponsor/pages/VerificationPage'));
 const SitesPage              = lazy(() => import('@/features/sponsor/pages/SitesPage'));
@@ -329,7 +328,10 @@ export const router = createBrowserRouter([
           // (see below) so the runner fills the entire viewport, matching
           // the form-builder Preview's full-screen experience.
           { path: 'queries',                 element: sp(SiteQueriesPage) },
-          { path: 'verification',            element: sp(SiteFeaturePlaceholderPage) },
+          // Site verification reuses the sponsor VerificationPage. The page's
+          // fail-soft loadData() means even if some site endpoints aren't
+          // fully implemented yet the list still renders.
+          { path: 'verification',            element: sp(VerificationPage) },
           { path: 'consent/config',          element: sp(SiteFeaturePlaceholderPage) },
           { path: 'consent/review',          element: sp(SiteFeaturePlaceholderPage) },
           { path: 'reports',                 element: sp(SiteFeaturePlaceholderPage) },
@@ -435,10 +437,6 @@ export const router = createBrowserRouter([
           { path: 'team/roles/new',           element: sp(TeamRoleFormPage) },
           { path: 'team/roles/:roleId',       element: sp(TeamRoleFormPage) },
 
-          { path: 'sponsor-roles',            element: sp(SponsorRolesPage) },
-          { path: 'sponsor-roles/new',        element: sp(SponsorRoleFormPage) },
-          { path: 'sponsor-roles/:roleId',    element: sp(SponsorRoleFormPage) },
-
           // Masters
           { path: 'masters/email-templates', element: sp(EmailTemplatesPage) },
           { path: 'masters/study-phases',    element: sp(StudyPhasesPage) },
@@ -494,6 +492,7 @@ export const router = createBrowserRouter([
           // (see below) so the runner fills the entire viewport, matching
           // the form-builder Preview's full-screen experience.
           { path: 'consent/config', element: sp(ConsentConfigPage) },
+          { path: 'consent/submit', element: sp(ConsentSubmissionPage) },
           { path: 'consent/review', element: sp(ConsentReviewPage) },
           { path: 'queries',        element: sp(QueriesPage) },
           { path: 'verification',   element: sp(VerificationPage) },

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import Modal from '@/components/feedback/Modal';
 import { sponsorSitesClient } from '../../api/sponsorSitesClient';
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 import css from './SiteDetailsModal.module.css';
 
 /**
@@ -24,17 +25,8 @@ const TABS = [
   { key: 'audit',      label: 'Activity Log' },
 ];
 
-function fmtDate(str) {
-  if (!str) return '—';
-  try { return new Date(str).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
-  catch { return str; }
-}
-
-function fmtDateTime(str) {
-  if (!str) return '—';
-  try { return new Date(str).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
-  catch { return str; }
-}
+const fmtDate     = (str) => formatDate(str)     || '—';
+const fmtDateTime = (str) => formatDateTime(str) || '—';
 
 function progressColor(pct) {
   if (pct >= 80) return '#10b981';

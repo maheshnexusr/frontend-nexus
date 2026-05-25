@@ -10,11 +10,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { Loader2, AlertCircle, ArrowLeft, FileText } from 'lucide-react';
+import { Loader2, AlertCircle, ArrowLeft, FileText, CheckCircle2 } from 'lucide-react';
 import StudyFormRunner from '@/components/study-form-runner/StudyFormRunner';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
 import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
 import { addToast } from '@/app/notificationSlice';
+import SubjectContextStrip from '@/features/sponsor/components/capture/SubjectContextStrip';
 import s from '@/features/sponsor/pages/CaptureFormPage.module.css';
 import picker from './SiteCaptureFormPage.module.css';
 
@@ -36,6 +37,7 @@ export default function SiteCaptureFormPage() {
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState(null);
   const [noFormsHere, setNoFormsHere] = useState(false);
+  const [submitted,   setSubmitted]   = useState(false);
 
   // ── Auto-resolve formId: each study has a single form. ─────────────────
   useEffect(() => {
@@ -109,6 +111,7 @@ export default function SiteCaptureFormPage() {
         status: 'Submitted',
       });
       dispatch(addToast({ type: 'success', message: 'Form submitted.' }));
+      setSubmitted(true);
     } catch (e) {
       dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to save form.' }));
       throw e;
@@ -151,6 +154,42 @@ export default function SiteCaptureFormPage() {
     );
   }
 
+  if (submitted) {
+    return (
+      <div className={s.page}>
+        <div className={s.topBar}>
+          <button className={s.backBtn} onClick={() => navigate('/site/capture')} style={{ marginBottom: 0 }}>
+            <ArrowLeft size={14} /> All subjects
+          </button>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{formTitle || 'Data Capture'}</span>
+        </div>
+        <div className={s.successCard}>
+          <CheckCircle2 size={44} className={s.successIcon} />
+          <h2 className={s.successTitle}>Form submitted</h2>
+          <p className={s.successSub}>
+            <strong>{formTitle || 'eCRF'}</strong> has been saved for subject{' '}
+            <code className={s.successCode}>{subjectId}</code>. The Query Manager and Data
+            Manager can now review it.
+          </p>
+          <div className={s.successActions}>
+            <button
+              className={s.successPrimary}
+              onClick={() => navigate('/site/capture')}
+            >
+              Back to subjects
+            </button>
+            <button
+              className={s.successSecondary}
+              onClick={() => setSubmitted(false)}
+            >
+              Edit this form
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Form fill ──────────────────────────────────────────────────────────
   return (
     <div className={s.page}>
@@ -160,6 +199,12 @@ export default function SiteCaptureFormPage() {
         </button>
         <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{formTitle || 'Data Capture'}</span>
       </div>
+
+      {/* Identity strip — Protocol Number / Site Code / Screening Number /
+          Subject Initials / Audit Log. Site session has its studyId pinned in
+          the JWT, so the prop just needs to be truthy to trigger the fetch. */}
+      <SubjectContextStrip studyId="site" subjectId={subjectId} />
+
       <StudyFormRunner
         blocks={blocks}
         formTitle={formTitle}

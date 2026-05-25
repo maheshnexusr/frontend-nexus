@@ -5,7 +5,7 @@
  * site-scoped welcome + metrics card.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Building2, FileText, User, Loader2, AlertCircle, RefreshCw,
 } from 'lucide-react';
@@ -75,8 +75,32 @@ function Metric({ icon, label, value }) {
   );
 }
 
+// Maps each fixed site-dashboard metric to a widget ID so the per-role
+// dashboard whitelist (site_roles.dashboard_widget_keys) can hide individual
+// cards. IDs align with the sponsor-side WIDGETS registry where possible so
+// the same picker UI selects the same conceptual cards across scopes.
+const METRIC_WIDGET_KEYS = {
+  subjectsTotal:    'totalSubjects',
+  subjectsEnrolled: 'enrolledSubjects',
+  subjectsScreening:'subjectsScreening',
+  openQueries:      'openQueries',
+  answeredQueries:  'answeredQueries',
+  closedQueries:    'closedQueries',
+  enrollmentTarget: 'enrollmentTarget',
+};
+
 export default function SiteWorkspaceDashboardPage() {
   const context = getSiteStudyContext();
+  // Per-role widget whitelist (site_roles.dashboard_widget_keys). null/missing
+  // → show every card; array → only those keys are visible. Persisted in the
+  // study context by setSiteStudyContext after /studies/choose.
+  const widgetKeys = context?.dashboardWidgetKeys ?? null;
+  const showWidget = useMemo(() => {
+    if (!Array.isArray(widgetKeys)) return () => true;
+    const set = new Set(widgetKeys);
+    return (key) => set.has(key);
+  }, [widgetKeys]);
+
   const [dashboard, setDashboard] = useState(null);
   const [phase, setPhase] = useState('loading');
   const [error, setError] = useState('');
@@ -135,13 +159,27 @@ export default function SiteWorkspaceDashboardPage() {
           <>
             <h2 style={sectionTitle}>Your site at a glance</h2>
             <div style={grid}>
-              <Metric icon={<User size={14} />}      label="Subjects (total)"  value={metrics.subjects?.total} />
-              <Metric icon={<User size={14} />}      label="Subjects enrolled" value={metrics.subjects?.enrolled} />
-              <Metric icon={<User size={14} />}      label="In screening"      value={metrics.subjects?.screening} />
-              <Metric icon={<FileText size={14} />}  label="Open queries"      value={metrics.queries?.open_queries} />
-              <Metric icon={<FileText size={14} />}  label="Answered queries"  value={metrics.queries?.answered_queries} />
-              <Metric icon={<FileText size={14} />}  label="Closed queries"    value={metrics.queries?.closed_queries} />
-              <Metric icon={<Building2 size={14} />} label="Enrollment target" value={metrics.site?.enrollment_target} />
+              {showWidget(METRIC_WIDGET_KEYS.subjectsTotal) && (
+                <Metric icon={<User size={14} />}      label="Subjects (total)"  value={metrics.subjects?.total} />
+              )}
+              {showWidget(METRIC_WIDGET_KEYS.subjectsEnrolled) && (
+                <Metric icon={<User size={14} />}      label="Subjects enrolled" value={metrics.subjects?.enrolled} />
+              )}
+              {showWidget(METRIC_WIDGET_KEYS.subjectsScreening) && (
+                <Metric icon={<User size={14} />}      label="In screening"      value={metrics.subjects?.screening} />
+              )}
+              {showWidget(METRIC_WIDGET_KEYS.openQueries) && (
+                <Metric icon={<FileText size={14} />}  label="Open queries"      value={metrics.queries?.open_queries} />
+              )}
+              {showWidget(METRIC_WIDGET_KEYS.answeredQueries) && (
+                <Metric icon={<FileText size={14} />}  label="Answered queries"  value={metrics.queries?.answered_queries} />
+              )}
+              {showWidget(METRIC_WIDGET_KEYS.closedQueries) && (
+                <Metric icon={<FileText size={14} />}  label="Closed queries"    value={metrics.queries?.closed_queries} />
+              )}
+              {showWidget(METRIC_WIDGET_KEYS.enrollmentTarget) && (
+                <Metric icon={<Building2 size={14} />} label="Enrollment target" value={metrics.site?.enrollment_target} />
+              )}
             </div>
           </>
         )}

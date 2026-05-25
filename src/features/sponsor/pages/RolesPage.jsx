@@ -13,6 +13,7 @@ import ViewPermissionsModal    from '../components/roles/ViewPermissionsModal';
 import ConfirmDialog           from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }     from '@/features/workspace/hooks/useReadOnlyView';
 import { countPermissions } from '../components/roles/permissionsTree';
+import { formatDate } from '@/utils/formatDate';
 import css from './RolesPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -29,11 +30,7 @@ const COLS = [
   { key: 'status',      label: 'Status',        sortable: true  },
 ];
 
-function fmtDate(str) {
-  if (!str) return '—';
-  try { return new Date(str).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
-  catch { return str; }
-}
+const fmtDate = (str) => formatDate(str) || '—';
 
 function SortIcon({ colKey, sort }) {
   if (sort.key !== colKey) return <ChevronsUpDown size={11} style={{ opacity: .35 }} />;

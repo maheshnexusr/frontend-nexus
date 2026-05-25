@@ -101,25 +101,42 @@ export const sponsorPersonnelClient = {
     return arr.map(normalizePersonnel);
   },
 
+  /** GET /lookups/site-personnel — dropdown-only list, ungated by
+   *  site_personnel.view. Used by the Raise Query "Associated" dropdown so a
+   *  Query Manager can assign work without holding the personnel-management
+   *  permission. */
+  async lookup() {
+    const res = await sponsorAxiosClient.get(
+      '/api/v1/sponsor/workspace/lookups/site-personnel'
+    );
+    const arr = Array.isArray(res) ? res : (res?.items ?? res?.personnel ?? res?.data ?? []);
+    return arr.map(normalizePersonnel);
+  },
+
   /** GET /site-personnel/:personnelId — details. */
   async getById(_studyId, personnelId) {
     const res = await sponsorAxiosClient.get(`${BASE}/${personnelId}`);
     return normalizeDetails(res?.item ?? res?.personnel ?? res ?? {});
   },
 
-  /** POST /site-personnel/invite — spec §13.3 invite body. */
+  /** POST /site-personnel/invite — spec §13.3 invite body.
+   *  Sends `site_ids` (array); the first element is the primary site and the
+   *  rest land in additional_site_ids on the backend. Single-site invites
+   *  send a one-element array. */
   async invite(_studyId, data) {
+    const siteIds = Array.isArray(data.siteIds) && data.siteIds.length
+      ? data.siteIds
+      : (data.siteId ? [data.siteId] : []);
     const res = await sponsorAxiosClient.post(`${BASE}/invite`, {
-      // Spec fields
       full_name:      data.fullName,
       email_address:  data.email,
       role_id:        data.roleId ?? data.role,
-      site_id:        data.siteId,
+      site_ids:       siteIds,
+      // Keep the legacy single-site field populated for back-compat with
+      // any caller still on the old contract.
+      site_id:        siteIds[0],
       contact_number: data.contactNumber,
-      // Extras (non-spec)
-      status:               data.status ?? 'Active',
-      consent_required:     data.consentRequired,
-      consent_template_id:  data.consentTemplateId || undefined,
+      status:         data.status ?? 'Active',
       compensation: data.compensation?.type !== 'None' ? {
         type:                  data.compensation.type,
         amount:                Number(data.compensation.amount),
@@ -134,14 +151,16 @@ export const sponsorPersonnelClient = {
 
   /** PATCH /site-personnel/:personnelId — spec §13.3 edit. */
   async update(_studyId, personnelId, data) {
+    const siteIds = Array.isArray(data.siteIds) && data.siteIds.length
+      ? data.siteIds
+      : (data.siteId ? [data.siteId] : []);
     const res = await sponsorAxiosClient.patch(`${BASE}/${personnelId}`, {
-      full_name:           data.fullName,
-      role_id:             data.roleId ?? data.role,
-      site_id:             data.siteId,
-      contact_number:      data.contactNumber,
-      status:              data.status,
-      consent_required:    data.consentRequired,
-      consent_template_id: data.consentTemplateId || undefined,
+      full_name:      data.fullName,
+      role_id:        data.roleId ?? data.role,
+      site_ids:       siteIds,
+      site_id:        siteIds[0],
+      contact_number: data.contactNumber,
+      status:         data.status,
       compensation: data.compensation?.type !== 'None' ? {
         type:                  data.compensation.type,
         amount:                Number(data.compensation.amount),

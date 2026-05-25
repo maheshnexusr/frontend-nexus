@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CheckCircle, Info } from 'lucide-react';
 import Modal     from '@/components/feedback/Modal';
 import FormField from '@/components/form/FormField';
+import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import styles from './ApproveModal.module.css';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -74,8 +75,7 @@ export default function ApproveModal({ submission, bulk, onConfirm, onClose }) {
 
         <div className={styles.row2}>
           <FormField label="Effective Date" name="effectiveDate">
-            <input
-              type="date"
+            <PlatformDatePicker
               id="effectiveDate"
               className={styles.input}
               value={form.effectiveDate}
@@ -83,8 +83,7 @@ export default function ApproveModal({ submission, bulk, onConfirm, onClose }) {
             />
           </FormField>
           <FormField label="Expiry Date" name="expiryDate" helpText="Auto-set from consent config">
-            <input
-              type="date"
+            <PlatformDatePicker
               id="expiryDate"
               className={styles.input}
               value={form.expiryDate}

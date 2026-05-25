@@ -13,6 +13,9 @@ import {
   updatePage, updateBlock,
 } from '@/features/cro/store/studyFormSlice';
 import { selectStep3 } from '@/features/cro/store/studyWizardSlice';
+import ConfirmDialog from '@/components/feedback/ConfirmDialog';
+import { activityLogService } from '@/services/activityLogService';
+import { usePermissions } from '@/features/auth/usePermissions';
 import s from './SFBRight.module.css';
 
 export default function SFBRight() {
@@ -96,7 +99,29 @@ function FieldPropsPanel({ block, page, field }) {
   const dispatch  = useDispatch();
   const allFields = useSelector(selectAllFields);
   const step3     = useSelector(selectStep3);
-  const queryManagerEnabled = !!step3?.queryManager;
+  const queryManagerEnabled        = !!step3?.queryManager;
+  const verificationManagerEnabled = !!step3?.verificationManager;
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // Studies-permission gates for author-only sections. Hidden entirely from
+  // CRO team members who don't have the permission — that way an author can
+  // still configure validation rules / appearance without seeing Conditional
+  // Visibility or Collaboration accordions they aren't allowed to author.
+  const { has } = usePermissions();
+  const canEditConditions    = has('studies', 'conditional_visibility');
+  const canEditCollaboration = has('studies', 'collaboration');
+
+  const handleDelete = () => {
+    dispatch(removeField({ blockId: block.id, pageId: page.id, fieldId: field.id }));
+    activityLogService.record({
+      actionType:  'DELETE',
+      module:      'Study Form Builder',
+      entityType:  'Control',
+      entityId:    field.id,
+      entityName:  field.label || field.type,
+      description: `Deleted ${field.type} control "${field.label || field.id}" via the properties panel.`,
+      beforeValue: { type: field.type, label: field.label, required: field.required ?? false },
+    });
+  };
 
   const up       = (k, v) => dispatch(updateField({ blockId: block.id, pageId: page.id, fieldId: field.id, updates: { [k]: v } }));
   const upV      = (k, v) => up('validation',   { ...field.validation,   [k]: v });
@@ -117,9 +142,18 @@ function FieldPropsPanel({ block, page, field }) {
           <button className={s.iconBtn} title="Duplicate" onClick={() => dispatch(duplicateField({ blockId: block.id, pageId: page.id, fieldId: field.id }))}>
             <Copy size={13} />
           </button>
-          <button className={`${s.iconBtn} ${s.iconBtnDanger}`} title="Delete" onClick={() => dispatch(removeField({ blockId: block.id, pageId: page.id, fieldId: field.id }))}>
+          <button className={`${s.iconBtn} ${s.iconBtnDanger}`} title="Delete" onClick={() => setConfirmDelete(true)}>
             <Trash2 size={13} />
           </button>
+          <ConfirmDialog
+            open={confirmDelete}
+            onClose={() => setConfirmDelete(false)}
+            onConfirm={handleDelete}
+            title="Delete control?"
+            message={`This will permanently remove the "${field.label || field.type}" control. Any data or queries already captured for this control will be inaccessible. This action cannot be undone.`}
+            confirmLabel="Delete control"
+            variant="danger"
+          />
           <button className={s.iconBtn} onClick={() => dispatch(deselectField())}>
             <X size={13} />
           </button>
@@ -144,15 +178,22 @@ function FieldPropsPanel({ block, page, field }) {
           </Accordion>
         )}
 
-        {!isLayout && (
+        {!isLayout && canEditConditions && (
           <Accordion title="Conditional Behavior">
             <LogicTab field={field} block={block} page={page} allFields={allFields} />
           </Accordion>
         )}
 
-        <Accordion title="Collaboration & Audit Tools">
-          <CommentsTab field={field} upCollab={upCollab} queryManagerEnabled={queryManagerEnabled} />
-        </Accordion>
+        {canEditCollaboration && (
+          <Accordion title="Collaboration & Audit Tools">
+            <CommentsTab
+              field={field}
+              upCollab={upCollab}
+              queryManagerEnabled={queryManagerEnabled}
+              verificationManagerEnabled={verificationManagerEnabled}
+            />
+          </Accordion>
+        )}
       </div>
     </div>
   );
@@ -792,13 +833,17 @@ const COLLAB_FEATURES = [
   },
 ];
 
-function CommentsTab({ field, upCollab, queryManagerEnabled }) {
+function CommentsTab({ field, upCollab, queryManagerEnabled, verificationManagerEnabled }) {
   const collab = field.collaboration ?? {};
-  // The "Queries" feature row is only available when the study's Query Manager
-  // module is enabled in Step 3. Other collaboration features remain visible.
-  const features = queryManagerEnabled
-    ? COLLAB_FEATURES
-    : COLLAB_FEATURES.filter((f) => f.key !== 'queries');
+  // Step 3 toggles drive which collaboration rows appear:
+  //   • `queries` row is hidden when Query Manager is off
+  //   • `verification` row is hidden when Verification Manager is off
+  // Other rows (Annotations / Notes / Attachments / Clear) are always visible.
+  const features = COLLAB_FEATURES.filter((f) => {
+    if (f.key === 'queries')      return queryManagerEnabled;
+    if (f.key === 'verification') return verificationManagerEnabled;
+    return true;
+  });
   return (
     <div className={s.collabWrap}>
       <p className={s.collabHint}>Enable collaboration features for this field</p>
@@ -817,6 +862,11 @@ function CommentsTab({ field, upCollab, queryManagerEnabled }) {
       {!queryManagerEnabled && (
         <p className={s.collabHint} style={{ marginTop: 6, fontStyle: 'italic' }}>
           Enable Query Manager in study configuration to allow queries on fields.
+        </p>
+      )}
+      {!verificationManagerEnabled && (
+        <p className={s.collabHint} style={{ marginTop: 6, fontStyle: 'italic' }}>
+          Enable Verification Manager in study configuration to allow field verification.
         </p>
       )}
     </div>

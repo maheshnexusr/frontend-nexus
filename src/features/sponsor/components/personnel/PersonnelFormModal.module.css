@@ -159,3 +159,23 @@
 }
 .btnSave:hover    { background: #1d4ed8; }
 .btnSave:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ── Multi-site assignment ──────────────────────────────────────────────── */
+.multiSiteWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.allSitesRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: #0f172a;
+  cursor: pointer;
+}
+.allSitesRow input { cursor: pointer; }

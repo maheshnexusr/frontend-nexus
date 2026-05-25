@@ -1,147 +1,120 @@
 /**
- * permissionsTree.js
- * Single source of truth for the Sponsor Workspace feature/permission matrix.
+ * permissionsTree.js — sponsor-side adapter over the canonical permissions
+ * schema.
  *
- * Structure:
- *   FEATURE_TREE  — ordered list of module groups (may have submodules)
- *   ALL_PERMS     — the full set of permission keys rendered as columns
- *   PERM_LABELS   — display labels for permission columns
- *   buildEmptyPermissions()  — returns a zeroed-out permissions object
- *   DEFAULT_ROLE_PERMISSIONS — preset permission sets for system roles
+ * The single source of truth is `@/features/cro/constants/sponsorPermissionsSchema`
+ * (the CRO uses it to author sponsor roles; the sponsor workspace uses this
+ * adapter to author its own roles). Keeping both surfaces on the same schema
+ * prevents the actions / leaves drifting — the previous duplicate-tree setup
+ * left "subjects", "snapshot", "reject", "sla_settings" missing on one side
+ * or the other depending on which screen the user opened.
+ *
+ * The sponsor "Roles" page renders a flat checkbox grid (one row per leaf, one
+ * column per action) rather than the CRO's grouped Sponsor-Roles editor. The
+ * helpers below flatten the grouped schema into that shape on demand.
  */
 
-// ── Column definitions ────────────────────────────────────────────────────────
+import {
+  SPONSOR_PERMISSION_GROUPS,
+  buildPermissions as buildGroupedPermissions,
+  countPermissions as countGrouped,
+} from '@/features/cro/constants/sponsorPermissionsSchema';
 
-export const ALL_PERMS = [
-  'view', 'create', 'edit', 'delete', 'import', 'export', 'screenshot',
-  'verify', 'sign', 'freeze', 'lock',
-];
+// ── Flatten to (leaf-keyed) permissions tree ────────────────────────────────
 
-export const PERM_LABELS = {
-  view:       'View',
-  create:     'Create',
-  edit:       'Edit',
-  delete:     'Delete',
-  import:     'Import',
-  export:     'Export',
-  screenshot: 'Screenshot',
-  verify:     'Verify',
-  sign:       'Sign',
-  freeze:     'Freeze',
-  lock:       'Lock',
-};
-
-// ── Feature tree ──────────────────────────────────────────────────────────────
-// Each leaf node has: key, label, perms (subset of ALL_PERMS)
-// Group nodes have: key, label, children
-
-export const FEATURE_TREE = [
-  {
-    key:      'dashboard',
-    label:    'Dashboard',
-    perms:    ['view', 'export'],
-  },
-  {
-    key:      'data_capture',
-    label:    'Data Capture',
-    perms:    ['view', 'create', 'edit', 'delete', 'export', 'screenshot',
-               'verify', 'sign', 'freeze', 'lock'],
-  },
-  {
-    key:      'consent_management',
-    label:    'Consent Management',
-    isGroup:  true,
-    children: [
-      { key: 'consent_builder', label: 'Consent Builder',           perms: ['view', 'create', 'edit', 'delete', 'screenshot'] },
-      { key: 'consent_review',  label: 'Consent Review & Approval', perms: ['view', 'edit', 'export', 'screenshot'] },
-    ],
-  },
-  {
-    key:      'quality_management',
-    label:    'Quality Management',
-    isGroup:  true,
-    children: [
-      { key: 'query_manager',      label: 'Query Manager',              perms: ['view', 'create', 'edit', 'delete', 'export', 'screenshot'] },
-      { key: 'data_verification',  label: 'Data Verification Manager',  perms: ['view', 'create', 'edit', 'export', 'screenshot'] },
-    ],
-  },
-  {
-    key:      'site_management',
-    label:    'Site Management',
-    isGroup:  true,
-    children: [
-      { key: 'sites',          label: 'Sites',           perms: ['view', 'create', 'edit', 'delete', 'import', 'export', 'screenshot'] },
-      { key: 'site_personnel', label: 'Site Personnel',  perms: ['view', 'create', 'edit', 'delete', 'export', 'screenshot'] },
-      { key: 'site_roles',     label: 'Site Roles',      perms: ['view', 'create', 'edit', 'delete', 'export', 'screenshot'] },
-    ],
-  },
-  {
-    key:      'reports',
-    label:    'Reports',
-    perms:    ['view', 'create', 'export'],
-  },
-  {
-    key:      'masters',
-    label:    'Masters',
-    isGroup:  true,
-    children: [
-      { key: 'email_templates', label: 'Email Templates', perms: ['view', 'create', 'edit', 'delete'] },
-      { key: 'countries',       label: 'Country',         perms: ['view', 'create', 'edit', 'delete'] },
-      { key: 'locations',       label: 'Locations',       perms: ['view', 'create', 'edit', 'delete'] },
-      { key: 'regions',         label: 'Regions',         perms: ['view', 'create', 'edit', 'delete'] },
-    ],
-  },
-  {
-    key:      'activity_log',
-    label:    'Activity Log',
-    perms:    ['view', 'export', 'screenshot'],
-  },
-];
-
-// ── Leaf helpers ──────────────────────────────────────────────────────────────
-
-/** Returns flat array of all leaf nodes (non-group) with their keys + perms. */
-export function getLeaves() {
-  const leaves = [];
-  for (const node of FEATURE_TREE) {
-    if (node.isGroup) {
-      for (const child of node.children) leaves.push(child);
-    } else {
-      leaves.push(node);
+/** Build a zeroed permissions object keyed by leaf: { [leafKey]: { [perm]: false } }. */
+export function buildEmptyPermissions() {
+  const out = {};
+  for (const g of SPONSOR_PERMISSION_GROUPS) {
+    for (const f of g.features) {
+      out[f.key] = {};
+      for (const p of f.perms) out[f.key][p.key] = false;
     }
   }
-  return leaves;
-}
-
-/** Build a zeroed permissions object  { [moduleKey]: { [perm]: false } }. */
-export function buildEmptyPermissions() {
-  const obj = {};
-  for (const leaf of getLeaves()) {
-    obj[leaf.key] = {};
-    for (const p of leaf.perms) obj[leaf.key][p] = false;
-  }
-  return obj;
+  return out;
 }
 
 /** Build a full-access permissions object (all true). */
 export function buildFullPermissions() {
-  const obj = {};
-  for (const leaf of getLeaves()) {
-    obj[leaf.key] = {};
-    for (const p of leaf.perms) obj[leaf.key][p] = true;
+  const out = {};
+  for (const g of SPONSOR_PERMISSION_GROUPS) {
+    for (const f of g.features) {
+      out[f.key] = {};
+      for (const p of f.perms) out[f.key][p.key] = true;
+    }
   }
-  return obj;
+  return out;
 }
 
-// ── Default system role permissions ───────────────────────────────────────────
-
-function make(overrides) {
-  const base = buildEmptyPermissions();
-  for (const [key, perms] of Object.entries(overrides)) {
-    if (base[key]) {
-      for (const p of perms) {
-        if (base[key][p] !== undefined) base[key][p] = true;
+/** Count enabled / total individual permissions in a leaf-keyed tree. */
+export function countPermissions(permsObj) {
+  let total = 0;
+  let enabled = 0;
+  for (const g of SPONSOR_PERMISSION_GROUPS) {
+    for (const f of g.features) {
+      for (const p of f.perms) {
+        total += 1;
+        if (permsObj?.[f.key]?.[p.key]) enabled += 1;
       }
+    }
+  }
+  return { enabled, total };
+}
+
+// ── Feature tree (consumed by the sponsor Roles editor's grid renderer) ─────
+
+/**
+ * Render-friendly shape with the same nesting the editor expects.
+ * Group nodes have `children`; leaves have `perms` (array of action keys).
+ */
+export const FEATURE_TREE = SPONSOR_PERMISSION_GROUPS.map((g) => ({
+  key:      g.key,
+  label:    g.group,
+  isGroup:  true,
+  children: g.features.map((f) => ({
+    key:   f.key,
+    label: f.label,
+    desc:  f.desc,
+    perms: f.perms.map((p) => p.key),
+  })),
+}));
+
+/** Flat array of every leaf node, in render order. */
+export function getLeaves() {
+  return FEATURE_TREE.flatMap((g) => g.children);
+}
+
+// ── Action column metadata (union of every action used across leaves) ───────
+
+const ACTION_LABELS = (() => {
+  const labels = {};
+  for (const g of SPONSOR_PERMISSION_GROUPS) {
+    for (const f of g.features) {
+      for (const p of f.perms) labels[p.key] = p.label;
+    }
+  }
+  return labels;
+})();
+
+export const ALL_PERMS = Object.keys(ACTION_LABELS);
+export const PERM_LABELS = ACTION_LABELS;
+
+// ── Re-exports for callers that prefer the grouped shape ────────────────────
+
+export {
+  SPONSOR_PERMISSION_GROUPS,
+  buildGroupedPermissions,
+  countGrouped,
+};
+
+// ── Default system role permissions (preset starting points) ────────────────
+
+function preset(grants) {
+  const base = buildEmptyPermissions();
+  for (const [leafKey, perms] of Object.entries(grants)) {
+    if (!base[leafKey]) continue;
+    for (const p of perms) {
+      if (base[leafKey][p] !== undefined) base[leafKey][p] = true;
     }
   }
   return base;
@@ -150,42 +123,28 @@ function make(overrides) {
 export const DEFAULT_ROLE_PERMISSIONS = {
   'CRO Administrator': buildFullPermissions(),
 
-  'Data Manager': make({
-    dashboard:        ['view', 'export'],
-    data_capture:     ['view', 'create', 'edit', 'delete', 'export'],
-    query_manager:    ['view', 'create', 'edit', 'delete', 'export'],
-    data_verification:['view', 'create', 'edit', 'export'],
-    reports:          ['view', 'create', 'export'],
-    sites:            ['view'],
-    site_personnel:   ['view'],
+  'Data Manager': preset({
+    dashboard:         ['view', 'export'],
+    data_capture:      ['view', 'create', 'edit', 'delete', 'export', 'activity_log'],
+    subjects:          ['view', 'create', 'edit', 'data_capture', 'activity_log'],
+    query_manager:     ['view', 'create', 'edit', 'delete', 'export'],
+    data_verification: ['view', 'create', 'edit', 'export'],
+    reports:           ['view', 'create', 'export'],
+    sites:             ['view'],
+    site_personnel:    ['view'],
   }),
 
-  'Data Reviewer': make({
-    dashboard:        ['view', 'export'],
-    data_verification:['view', 'edit', 'export'],
-    query_manager:    ['view'],
-    reports:          ['view', 'export'],
+  'Data Reviewer': preset({
+    dashboard:         ['view', 'export'],
+    data_verification: ['view', 'edit', 'verify', 'export'],
+    query_manager:     ['view'],
+    reports:           ['view', 'export'],
   }),
 
-  'Site Monitor': make({
-    dashboard:        ['view', 'export'],
-    sites:            ['view'],
-    site_personnel:   ['view'],
-    reports:          ['view', 'export'],
+  'Site Monitor': preset({
+    dashboard:      ['view', 'export'],
+    sites:          ['view'],
+    site_personnel: ['view'],
+    reports:        ['view', 'export'],
   }),
 };
-
-// ── Utility: count enabled permissions ───────────────────────────────────────
-
-export function countPermissions(permsObj) {
-  let total = 0;
-  let enabled = 0;
-  for (const leaf of getLeaves()) {
-    const mod = permsObj?.[leaf.key] ?? {};
-    for (const p of leaf.perms) {
-      total++;
-      if (mod[p]) enabled++;
-    }
-  }
-  return { enabled, total };
-}

@@ -7,11 +7,10 @@ import {
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import Popover from './Popover';
 import { useFieldCapabilities } from './useFieldCapabilities';
+import { formatDateTime } from '@/utils/formatDate';
 import s from './runtime.module.css';
 
-function fmt(iso) {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
+const fmt = (iso) => formatDateTime(iso);
 
 export default function VerificationPanel({ fieldId, fieldLabel, fieldValue, anchorRect, onClose }) {
   const dispatch = useDispatch();

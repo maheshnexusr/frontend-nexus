@@ -14,6 +14,7 @@ import {
 import { selectStep1 }              from '@/features/cro/store/studyWizardSlice';
 import { studiesClient }            from '@/features/cro/api/studiesClient';
 import { addToast }                 from '@/app/notificationSlice';
+import { usePermissions }           from '@/features/auth/usePermissions';
 import SFBLeft                      from './SFBLeft';
 import SFBCanvas                    from './SFBCanvas';
 import SFBRight                     from './SFBRight';
@@ -88,12 +89,17 @@ export default function StudyFormBuilder({ formId, formTitle, onPrevious, onNext
     }
   };
 
+  // Each panel-switch tab is gated by the matching Studies permission. The
+  // Builder + Submission tabs are always available — only the per-feature
+  // panels (Triggers, Collaboration) and the in-panel Conditional Visibility
+  // editor are author-controlled.
+  const { has } = usePermissions();
   const TOOLBAR_TABS = [
-    { id: 'builder',       label: 'Builder',        Icon: LayoutTemplate },
-    { id: 'submission',    label: 'Submission',      Icon: Settings2 },
-    { id: 'triggers',      label: 'Triggers',        Icon: Zap },
-    { id: 'collaboration', label: 'Collaboration',   Icon: Users },
-  ];
+    { id: 'builder',       label: 'Builder',        Icon: LayoutTemplate, allowed: true },
+    { id: 'submission',    label: 'Submission',     Icon: Settings2,     allowed: true },
+    { id: 'triggers',      label: 'Triggers',       Icon: Zap,           allowed: has('studies', 'triggers')      },
+    { id: 'collaboration', label: 'Collaboration',  Icon: Users,         allowed: has('studies', 'collaboration') },
+  ].filter((t) => t.allowed);
 
   return (
     <div className={`${s.root} ${maximized ? s.rootMaximized : ''}`}>

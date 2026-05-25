@@ -182,6 +182,7 @@ export default function RuntimeFieldRenderer({
 
         <div className={s.fieldHeadActions}>
           <CollaborationChips
+            fieldId={field.id}
             collaboration={field.collaboration}
             capabilities={gate}
             onOpen={openWith}

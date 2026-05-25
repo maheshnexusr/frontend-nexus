@@ -4,6 +4,7 @@
  */
 
 import { X, Mail } from 'lucide-react';
+import { formatDate } from '@/utils/formatDate';
 import styles from './EmailPreviewModal.module.css';
 
 // ── Sample replacement data ───────────────────────────────────────────────────
@@ -18,7 +19,7 @@ const SAMPLE_DATA = {
   '{OTP}':         '847291',
   '{ExpiryDate}':  'March 28, 2026 at 11:59 PM',
   '{SystemName}':  'SclinNexus EDC',
-  '{Date}':        new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+  '{Date}':        formatDate(new Date()),
 };
 
 function replacePlaceholders(text = '') {

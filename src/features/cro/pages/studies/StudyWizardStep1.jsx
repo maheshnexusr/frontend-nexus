@@ -20,7 +20,8 @@ import { RefreshCw, Check, Database, ClipboardList, Smartphone } from 'lucide-re
 import { studyPhasesClient }   from '@/features/cro/api/studyPhasesClient';
 import { sponsorsClient }      from '@/features/cro/api/sponsorsClient';
 import { studiesClient }       from '@/features/cro/api/studiesClient';
-import { setStep1, selectStep1 } from '@/features/cro/store/studyWizardSlice';
+import { setStep1, selectStep1, selectStep3 } from '@/features/cro/store/studyWizardSlice';
+import DashboardWidgetPicker from '@/features/cro/components/sponsors/DashboardWidgetPicker';
 import { addToast }            from '@/app/notificationSlice';
 import FormField               from '@/components/form/FormField';
 import TextArea                from '@/components/form/TextArea';
@@ -29,8 +30,6 @@ import SponsorPermissionMatrix from '@/features/cro/components/sponsors/SponsorP
 import {
   buildPermissions,
   hasAnyPermission,
-  buildTemplatePermissions,
-  SPONSOR_ROLE_TEMPLATES,
 } from '@/features/cro/constants/sponsorPermissionsSchema';
 import styles from './StudyWizardStep1.module.css';
 
@@ -39,6 +38,19 @@ import styles from './StudyWizardStep1.module.css';
 const EDC_ONLY_FEATURES = ['sites', 'site_personnel', 'site_roles'];
 const hiddenForScope = (scope) =>
   (scope === 'Survey' || scope === 'ePRO') ? EDC_ONLY_FEATURES : [];
+
+// Step 3 module toggles drive whether the corresponding sponsor-permissions
+// leaf is even configurable on Step 1. If a CRO disables Query Manager /
+// Verification Manager on Step 3, hiding the leaf here prevents granting a
+// permission the study can never exercise (and matches the spec: "Sponsor
+// permissions – Query Manager shall be shown to configure it (Otherwise
+// hidden)").
+const hiddenForStep3 = (step3) => {
+  const hidden = [];
+  if (!step3?.queryManager)        hidden.push('query_manager');
+  if (!step3?.verificationManager) hidden.push('data_verification');
+  return hidden;
+};
 
 // Zero out the site-management group when the scope can't support it, so a
 // scope switch never leaves a stale, hidden grant behind.
@@ -78,6 +90,7 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const saved    = useSelector(selectStep1);
+  const step3    = useSelector(selectStep3);
 
   // Backwards-compat: older state may still hold scope as an array; coerce to string.
   const initialScope = Array.isArray(saved.scope)
@@ -97,6 +110,11 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
     sponsorFullName:  saved.sponsorFullName  ?? '',
     // Per-study sponsor workspace permissions (nested matrix shape).
     sponsorPermissions: saved.sponsorPermissions ?? buildPermissions(false),
+    // Per-study dashboard widget whitelist for the sponsor on this study.
+    // null = no per-study cap (sponsor's role-level whitelist applies as-is);
+    // array = explicit cap intersected with the role's whitelist by buildSponsorView.
+    sponsorDashboardWidgetKeys:
+      Array.isArray(saved.sponsorDashboardWidgetKeys) ? saved.sponsorDashboardWidgetKeys : null,
   });
 
   const [errors,          setErrors]          = useState({});
@@ -200,14 +218,6 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
     setErrors((prev) => ({ ...prev, sponsorPermissions: undefined }));
   };
 
-  const applyTemplate = (templateKey) => {
-    setForm((prev) => ({
-      ...prev,
-      sponsorPermissions: clearOutOfScope(buildTemplatePermissions(templateKey), prev.scope),
-    }));
-    setErrors((prev) => ({ ...prev, sponsorPermissions: undefined }));
-  };
-
   // Save current form state to Redux then navigate to Add Sponsor
   const handleAddSponsor = () => {
     dispatch(setStep1({
@@ -222,6 +232,7 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
       sponsorName:      form.sponsorName,
       sponsorFullName:  form.sponsorFullName,
       sponsorPermissions: form.sponsorPermissions,
+      sponsorDashboardWidgetKeys: form.sponsorDashboardWidgetKeys,
     }));
     navigate('/cro/sponsors/new');
   };
@@ -251,6 +262,7 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
       sponsorName:      form.sponsorName,
       sponsorFullName:  form.sponsorFullName,
       sponsorPermissions: form.sponsorPermissions,
+      sponsorDashboardWidgetKeys: form.sponsorDashboardWidgetKeys,
     };
 
     setSaving(true);
@@ -418,28 +430,26 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
           The sponsor can never exceed this grant — options are limited to the
           selected scope{form.scope ? ` (${form.scope})` : ''}.
         </p>
-        <div className={styles.templateRow}>
-          <span className={styles.templateLabel}>Quick start:</span>
-          {SPONSOR_ROLE_TEMPLATES.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              className={styles.templateBtn}
-              onClick={() => applyTemplate(t.key)}
-              title={t.description}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
         <SponsorPermissionMatrix
           value={form.sponsorPermissions}
           onChange={setPermissions}
           error={errors.sponsorPermissions}
           title="Workspace Access"
-          subtitle="Unselected actions are denied. Apply a quick-start template above, then fine-tune."
-          hiddenFeatures={hiddenForScope(form.scope)}
+          subtitle="Unselected actions are denied."
+          hiddenFeatures={[...hiddenForScope(form.scope), ...hiddenForStep3(step3)]}
         />
+
+        {/* Per-study dashboard whitelist — caps the sponsor's role-level
+            dashboard cards on this study. Leave the toggle off to apply the
+            sponsor role's default behavior unchanged. */}
+        <div style={{ marginTop: 18 }}>
+          <DashboardWidgetPicker
+            value={form.sponsorDashboardWidgetKeys}
+            onChange={(next) =>
+              setForm((prev) => ({ ...prev, sponsorDashboardWidgetKeys: next }))
+            }
+          />
+        </div>
       </div>
 
       {/* Footer */}
