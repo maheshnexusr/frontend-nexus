@@ -6,16 +6,17 @@ import {
 } from '@/features/cro/store/formRuntimeSlice';
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import Popover from './Popover';
+import { useFieldCapabilities } from './useFieldCapabilities';
+import { formatDateTime } from '@/utils/formatDate';
 import s from './runtime.module.css';
 
-function fmt(iso) {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
+const fmt = (iso) => formatDateTime(iso);
 
 export default function VerificationPanel({ fieldId, fieldLabel, fieldValue, anchorRect, onClose }) {
   const dispatch = useDispatch();
   const user     = useSelector(selectCurrentUser);
   const bucket   = useSelector(selectFieldBucket(fieldId));
+  const caps     = useFieldCapabilities();
   const v        = bucket?.verification ?? { verified: false };
 
   const me = {
@@ -44,7 +45,7 @@ export default function VerificationPanel({ fieldId, fieldLabel, fieldValue, anc
       footer={
         <>
           <button type="button" className={s.btnSecondary} onClick={onClose}>Close</button>
-          {v.verified ? (
+          {caps.canVerify && (v.verified ? (
             <button type="button" className={s.btnDanger} onClick={() => verify(false)}>
               <XCircle size={13} /> Unverify
             </button>
@@ -52,7 +53,7 @@ export default function VerificationPanel({ fieldId, fieldLabel, fieldValue, anc
             <button type="button" className={s.btnPrimary} onClick={() => verify(true)}>
               <CheckCircle2 size={13} /> Verify
             </button>
-          )}
+          ))}
         </>
       }
     >

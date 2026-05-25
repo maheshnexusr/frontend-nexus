@@ -1,13 +1,11 @@
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Mail, Phone, Building2, Globe, MapPin, Hash } from 'lucide-react';
+import { Pencil, Mail, Phone, Building2, Globe, MapPin, Hash, Lock } from 'lucide-react';
 import Modal       from '@/components/feedback/Modal';
 import StatusBadge from '@/components/feedback/StatusBadge';
+import { formatDate } from '@/utils/formatDate';
 import styles from './SponsorViewModal.module.css';
 
-function fmt(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-}
+const fmt = (iso) => formatDate(iso) || '—';
 
 function Avatar({ photo, name }) {
   if (photo) return <img src={photo} alt={name} className={styles.photo} />;
@@ -58,6 +56,9 @@ export default function SponsorViewModal({ sponsor, onClose }) {
           <DetailRow icon={<Mail size={14} />}     label="Email"               value={sponsor.email} />
           <DetailRow icon={<Phone size={14} />}    label="Contact Number"      value={sponsor.contactNumber} />
           <DetailRow icon={<Hash size={14} />}     label="Registration Number" value={sponsor.registrationNumber} />
+          <DetailRow icon={<Lock size={14} />}     label="Access Mode"
+            value={sponsor.isReadOnly ? 'Read-only (CRO enters data)' : 'Full Access'}
+          />
           {sponsor.website && (
             <DetailRow icon={<Globe size={14} />}  label="Website"
               value={<a href={sponsor.website} target="_blank" rel="noreferrer" className={styles.link}>{sponsor.website}</a>}

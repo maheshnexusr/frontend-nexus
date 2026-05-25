@@ -38,8 +38,28 @@ export const PERMISSION_GROUPS = [
       {
         label: 'Studies',
         key:   'studies',
-        perms: ['view', 'create', 'delete', 'edit', 'duplicate', 'locked', 'import', 'export', 'configuration', 'publish']
-          .map((k) => ({ key: k, label: cap(k) })),
+        // Granular per-action gates. Labels are friendly where the action key
+        // is awkward (snake_case or compound). Mapped to backend feature_name
+        // "ClinicalPrograms.Studies" with the same action keys.
+        perms: [
+          { key: 'view',                  label: 'View'                  },
+          { key: 'create',                label: 'Create'                },
+          { key: 'edit',                  label: 'Edit'                  },
+          { key: 'delete',                label: 'Delete'                },
+          { key: 'duplicate',             label: 'Duplicate'             },
+          { key: 'locked',                label: 'Lock'                  },
+          { key: 'export',                label: 'Export'                },
+          { key: 'configuration',         label: 'Configuration'         },
+          { key: 'publish_uat',           label: 'Publish UAT'           },
+          { key: 'publish_production',    label: 'Publish Production'    },
+          { key: 'stop_uat',              label: 'Stop UAT'              },
+          { key: 'stop_production',       label: 'Stop Production'       },
+          { key: 'approve_form',          label: 'Approve Form'          },
+          { key: 'freeze_form',           label: 'Freeze Form'           },
+          { key: 'conditional_visibility', label: 'Conditional Visibility' },
+          { key: 'triggers',              label: 'Triggers'              },
+          { key: 'collaboration',         label: 'Collaboration'         },
+        ],
       },
     ],
   },

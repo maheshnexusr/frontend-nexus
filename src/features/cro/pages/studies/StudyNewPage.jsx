@@ -1,38 +1,32 @@
 /**
  * StudyNewPage — /cro/studies/new
  *
- * Sequential tab wizard. Each tab is unlocked only after the previous step
- * calls onNext() (i.e. validates and saves successfully).
- * maxReachedTab tracks the highest tab the user has legitimately unlocked.
+ * Three-step wizard: Basic Info → Timeline → Study Configuration.
+ * After Step 3 saves, the user is returned to the Studies list. Form design
+ * and publish live on a dedicated /cro/studies/:id/design page reached from
+ * the list's action column.
  */
 
 import { useState }          from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch }       from 'react-redux';
 import { ArrowLeft, Lock }   from 'lucide-react';
+import { addToast }          from '@/app/notificationSlice';
 import { resetWizard }       from '@/features/cro/store/studyWizardSlice';
 import StudyWizardStep1      from './StudyWizardStep1';
 import StudyWizardStep2      from './StudyWizardStep2';
 import StudyWizardStep3      from './StudyWizardStep3';
-import StudyWizardStep4      from './StudyWizardStep4';
-import StudyWizardStep6      from './StudyWizardStep6';
 import styles from './StudyNewPage.module.css';
 
-// Note: there is no "Study Team" step — assignments are managed on the
-// team-member page. StudyWizardStep6 (file name kept for inertia) renders
-// the Publish step here as tab 5.
 const TABS = [
   { id: 1, label: 'Basic Info'          },
   { id: 2, label: 'Timeline'            },
   { id: 3, label: 'Study Configuration' },
-  { id: 4, label: 'Study Design'        },
-  { id: 5, label: 'Publish Study'       },
 ];
 
 export default function StudyNewPage() {
-  const [activeTab,      setActiveTab]      = useState(1);
-  // highest tab the user has unlocked by completing the previous step
-  const [maxReachedTab,  setMaxReachedTab]  = useState(1);
+  const [activeTab,     setActiveTab]     = useState(1);
+  const [maxReachedTab, setMaxReachedTab] = useState(1);
 
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -42,59 +36,38 @@ export default function StudyNewPage() {
     navigate('/cro/studies');
   };
 
-  /** Called by each step when it successfully validates + saves. */
   const goNext = (currentTab) => {
     const next = currentTab + 1;
-    if (next > TABS.length) return;
+    if (next > TABS.length) {
+      // Final step completed — return to the studies list.
+      dispatch(addToast({
+        type: 'success',
+        message: 'Study created. Open it from the list and click Design Study to build the form.',
+        duration: 4000,
+      }));
+      dispatch(resetWizard());
+      navigate('/cro/studies');
+      return;
+    }
     setMaxReachedTab((prev) => Math.max(prev, next));
     setActiveTab(next);
   };
 
-  /** Tab click — only allowed if tab.id <= maxReachedTab. */
   const handleTabClick = (tabId) => {
     if (tabId <= maxReachedTab) setActiveTab(tabId);
   };
 
   const renderTab = () => {
     switch (activeTab) {
-      case 1: return (
-        <StudyWizardStep1
-          onNext={() => goNext(1)}
-          onCancel={handleCancel}
-        />
-      );
-      case 2: return (
-        <StudyWizardStep2
-          onNext={() => goNext(2)}
-          onCancel={handleCancel}
-        />
-      );
-      case 3: return (
-        <StudyWizardStep3
-          onNext={() => goNext(3)}
-          onCancel={handleCancel}
-        />
-      );
-      case 4: return (
-        <StudyWizardStep4
-          onPrevious={() => setActiveTab(3)}
-          onNext={() => goNext(4)}
-        />
-      );
-      case 5: return (
-        <StudyWizardStep6
-          onPrevious={() => setActiveTab(4)}
-          onCancel={handleCancel}
-        />
-      );
+      case 1: return <StudyWizardStep1 onNext={() => goNext(1)} onCancel={handleCancel} />;
+      case 2: return <StudyWizardStep2 onNext={() => goNext(2)} onCancel={handleCancel} />;
+      case 3: return <StudyWizardStep3 onNext={() => goNext(3)} onCancel={handleCancel} />;
       default: return null;
     }
   };
 
   return (
     <div className={styles.page}>
-
-      {/* Back */}
       <Link
         to="/cro/studies"
         className={styles.backLink}
@@ -106,7 +79,6 @@ export default function StudyNewPage() {
 
       <h1 className={styles.title}>Create New Study</h1>
 
-      {/* ── Tab bar ────────────────────────────────────────────────────── */}
       <div className={styles.tabBar}>
         {TABS.map((tab) => {
           const unlocked = tab.id <= maxReachedTab;
@@ -128,11 +100,7 @@ export default function StudyNewPage() {
         })}
       </div>
 
-      {/* ── Tab content ────────────────────────────────────────────────── */}
-      <div
-        className={`${styles.tabContent} ${activeTab === 4 ? styles.tabContentBuilder : ''}`}
-        style={activeTab === 4 ? { maxWidth: '100%' } : {}}
-      >
+      <div className={styles.tabContent}>
         {renderTab()}
       </div>
     </div>

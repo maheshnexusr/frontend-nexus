@@ -1,32 +1,139 @@
 /**
  * SFBPreview — interactive participant-facing preview of the study form.
- * Collects real input, saves responses to localStorage on submit.
+ *
+ * Layout:
+ *   • Left rail   — outline navigator with COLLAPSIBLE blocks. Each block
+ *                   header expands/collapses its page list. Clicking a page
+ *                   jumps the main column to that page.
+ *   • Main column — sticky search bar + one page at a time (dense 2-col
+ *                   field grid) + Previous / Next / Submit footer.
+ *
+ * Search results auto-jump to the matching block/page and expand the
+ * parent block in the sidebar.
  */
 
-import { useState } from 'react';
-import { useSelector } from 'react-redux';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
 import {
-  ChevronLeft, ChevronRight, CheckCircle2,
+  ChevronLeft, ChevronRight, ChevronDown, CheckCircle2,
   UploadCloud, PenLine, Star, Layers,
+  Search, FileText, Type as TypeIcon, CornerDownRight,
 } from 'lucide-react';
 import { selectBlocks, selectFormMeta } from '@/features/cro/store/studyFormSlice';
 import { formResponsesClient } from '@/features/cro/api/formResponsesClient';
+import { addToast } from '@/app/notificationSlice';
+import { validateField, evaluateField } from './runtime/runtimeEngine';
 import RuntimeFieldRenderer from './runtime/RuntimeFieldRenderer';
+import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import s from './SFBPreview.module.css';
 
+/* ── Helpers ──────────────────────────────────────────────────────────── */
+function escapeRegExp(str) { return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+function Highlight({ text, needle }) {
+  if (!needle) return <>{text}</>;
+  const re = new RegExp(`(${escapeRegExp(needle)})`, 'ig');
+  const parts = String(text ?? '').split(re);
+  return parts.map((p, i) =>
+    p.toLowerCase() === needle.toLowerCase()
+      ? <mark key={i} className={s.mark}>{p}</mark>
+      : <span key={i}>{p}</span>
+  );
+}
+
 export default function SFBPreview({ onExitPreview }) {
+  const dispatch = useDispatch();
   const blocks = useSelector(selectBlocks);
   const meta   = useSelector(selectFormMeta);
 
+  // Active block / page indices for the main column stepper.
   const [blockIdx,  setBlockIdx]  = useState(0);
   const [pageIdx,   setPageIdx]   = useState(0);
   const [submitted, setSubmitted] = useState(false);
-  const [values,    setValues]    = useState({});   // { fieldId: value }
+  const [submitting, setSubmitting] = useState(false);
+  const [values,    setValues]    = useState({});       // { fieldId: { label, value } }
+
+  // Sidebar — which blocks are currently expanded (show their pages).
+  const [expanded,  setExpanded]  = useState({});       // { blockId: true }
+
+  // Search state — popover open / highlighted result.
+  const [search,    setSearch]    = useState('');
+  const [searchOpen,setSearchOpen]= useState(false);
+  const [hi,        setHi]        = useState(0);
+
+  const searchRef = useRef(null);
+  const popRef    = useRef(null);
+
+  /* Expand the active block in the sidebar by default. */
+  useEffect(() => {
+    if (blocks.length === 0) return;
+    setExpanded((p) => ({ ...p, [blocks[blockIdx]?.id]: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockIdx, blocks.length]);
+
+  /* Ctrl/⌘ + F focuses search; Esc closes popover. */
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+      if (e.key === 'Escape') setSearchOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  /* Close search popover when clicking outside. */
+  useEffect(() => {
+    if (!searchOpen) return;
+    const onDown = (e) => {
+      if (!popRef.current?.contains(e.target) && !searchRef.current?.contains(e.target)) {
+        setSearchOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [searchOpen]);
 
   const setValue = (fieldId, label, value) =>
     setValues((prev) => ({ ...prev, [fieldId]: { label, value } }));
 
-  // ── empty state ──────────────────────────────────────────────────────────
+  const toggleSidebarBlock = (id) =>
+    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  /* ── Search index ─────────────────────────────────────────────────────
+   * NOTE: this hook (and the useEffect below it) must run on every render,
+   * which is why they live ABOVE the early-return branches for "no blocks"
+   * and "submitted". Moving them below produced a hooks-order violation
+   * ("Rendered fewer hooks than expected") when `submitted` flipped true. */
+  const results = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return [];
+    const out = [];
+    for (const blk of blocks) {
+      if ((blk.title ?? '').toLowerCase().includes(needle)) {
+        out.push({ kind: 'block', id: blk.id, label: blk.title || 'Untitled Block', blockId: blk.id, path: 'Block' });
+      }
+      for (const pg of blk.pages ?? []) {
+        if ((pg.title ?? '').toLowerCase().includes(needle)) {
+          out.push({ kind: 'page', id: pg.id, label: pg.title || 'Untitled Page', blockId: blk.id, pageId: pg.id, path: `${blk.title || 'Block'} › Page` });
+        }
+        for (const fld of pg.fields ?? []) {
+          const hay = `${fld.label ?? ''} ${fld.key ?? ''}`.toLowerCase();
+          if (hay.includes(needle)) {
+            out.push({ kind: 'field', id: fld.id, label: fld.label || fld.key || '(unnamed field)', blockId: blk.id, pageId: pg.id, fieldId: fld.id, path: `${blk.title || 'Block'} › ${pg.title || 'Page'}` });
+          }
+        }
+      }
+    }
+    return out.slice(0, 30);
+  }, [search, blocks]);
+
+  useEffect(() => { setHi(0); }, [results]);
+
+  /* ── Empty / success states ──────────────────────────────────────── */
   if (blocks.length === 0) {
     return (
       <div className={s.emptyRoot} style={{ flex: 1 }}>
@@ -37,7 +144,6 @@ export default function SFBPreview({ onExitPreview }) {
     );
   }
 
-  // ── success screen ───────────────────────────────────────────────────────
   if (submitted) {
     return (
       <div className={s.successRoot}>
@@ -58,7 +164,7 @@ export default function SFBPreview({ onExitPreview }) {
     );
   }
 
-  // ── guard clamp ──────────────────────────────────────────────────────────
+  /* Guard clamp */
   const bi    = Math.min(blockIdx, blocks.length - 1);
   const block = blocks[bi];
   const pi    = Math.min(pageIdx, block.pages.length - 1);
@@ -67,7 +173,7 @@ export default function SFBPreview({ onExitPreview }) {
   const isFirstPage = bi === 0 && pi === 0;
   const isLastPage  = bi === blocks.length - 1 && pi === block.pages.length - 1;
 
-  // ── navigation ───────────────────────────────────────────────────────────
+  /* ── Navigation between pages/blocks ────────────────────────────── */
   const goNext = () => {
     if (pi < block.pages.length - 1) { setPageIdx(pi + 1); }
     else if (bi < blocks.length - 1) { setBlockIdx(bi + 1); setPageIdx(0); }
@@ -76,24 +182,116 @@ export default function SFBPreview({ onExitPreview }) {
     if (pi > 0) { setPageIdx(pi - 1); }
     else if (bi > 0) { const pb = blocks[bi - 1]; setBlockIdx(bi - 1); setPageIdx(pb.pages.length - 1); }
   };
-  const goBlock = (i) => { setBlockIdx(i); setPageIdx(0); };
-  const goPage  = (i) => setPageIdx(i);
+  const goToBlockPage = (blockId, pageId) => {
+    const targetBi = blocks.findIndex((b) => b.id === blockId);
+    if (targetBi < 0) return;
+    const targetPi = pageId
+      ? Math.max(0, blocks[targetBi].pages.findIndex((p) => p.id === pageId))
+      : 0;
+    setBlockIdx(targetBi);
+    setPageIdx(targetPi);
+    // Make sure the side rail shows the destination block expanded.
+    setExpanded((p) => ({ ...p, [blockId]: true }));
+  };
 
-  // ── progress ─────────────────────────────────────────────────────────────
+  const jumpTo = (r) => {
+    goToBlockPage(r.blockId, r.pageId);
+    setSearchOpen(false);
+    if (r.fieldId) {
+      requestAnimationFrame(() => {
+        const node = document.querySelector(`[data-field-id="${r.fieldId}"]`);
+        if (node?.scrollIntoView) {
+          node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          node.classList?.add(s.flash);
+          setTimeout(() => node.classList?.remove(s.flash), 1400);
+        }
+      });
+    }
+  };
+
+  const onSearchKey = (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setHi((i) => Math.min(i + 1, Math.max(results.length - 1, 0))); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((i) => Math.max(i - 1, 0)); }
+    else if (e.key === 'Enter')   { if (results[hi]) { e.preventDefault(); jumpTo(results[hi]); } }
+  };
+
+  /**
+   * Submit Form — preview submission.
+   *
+   * Walks every field across every block/page, evaluates conditional logic
+   * (so hidden/disabled fields are skipped), then validates the value. If
+   * anything fails, jump to the first offending page, surface a toast, and
+   * do NOT persist. Preview-only persistence is localStorage; the real
+   * backend submit happens from the site/data-capture flow.
+   */
+  const handleSubmit = async () => {
+    if (submitting) return;
+
+    // Build the flat value map runtimeEngine expects: { fieldId: value }.
+    const valueMap = Object.fromEntries(
+      Object.entries(values).map(([id, v]) => [id, v?.value]),
+    );
+
+    // Find the first field with an error (across all pages, in document order).
+    let firstError = null;
+    outer: for (let bi = 0; bi < blocks.length; bi += 1) {
+      const block = blocks[bi];
+      for (let pi = 0; pi < block.pages.length; pi += 1) {
+        const page = block.pages[pi];
+        for (const f of page.fields ?? []) {
+          const evalRes = evaluateField(f, valueMap);
+          if (evalRes.hidden || evalRes.disabled) continue;
+          const err = validateField({ ...f, required: evalRes.required }, valueMap[f.id]);
+          if (err) {
+            firstError = { blockIdx: bi, pageIdx: pi, fieldId: f.id, message: err };
+            break outer;
+          }
+        }
+      }
+    }
+
+    if (firstError) {
+      setBlockIdx(firstError.blockIdx);
+      setPageIdx(firstError.pageIdx);
+      dispatch(addToast({
+        type: 'error',
+        message: `Cannot submit — please fix: ${firstError.message}`,
+        duration: 5000,
+      }));
+      // Scroll the offending field into view after the page state settles.
+      setTimeout(() => {
+        const el = document.querySelector(`[data-field-id="${firstError.fieldId}"]`);
+        if (el?.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 60);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await formResponsesClient.create(meta.formId ?? null, meta.formTitle, values);
+      dispatch(addToast({ type: 'success', message: 'Form submitted successfully.' }));
+      setSubmitted(true);
+    } catch {
+      dispatch(addToast({ type: 'error', message: 'Failed to submit form. Please try again.' }));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /* ── Progress ─────────────────────────────────────────────────────── */
   const totalPages = blocks.reduce((acc, b) => acc + b.pages.length, 0);
   const donePages  = blocks.slice(0, bi).reduce((acc, b) => acc + b.pages.length, 0) + pi + 1;
   const pct        = Math.round((donePages / totalPages) * 100);
 
-  // ── submit ───────────────────────────────────────────────────────────────
-  const handleSubmit = async () => {
-    await formResponsesClient.create(meta.formId ?? null, meta.formTitle, values);
-    setSubmitted(true);
-  };
+  const iconFor = (kind) =>
+    kind === 'block' ? <Layers   size={13} />
+  : kind === 'page'  ? <FileText size={13} />
+  :                    <TypeIcon size={13} />;
 
   return (
     <div className={s.root}>
 
-      {/* ── Left rail: vertical block/page stepper ───────────────────────── */}
+      {/* ── Left rail: collapsible block outline ─────────────────────── */}
       <aside className={s.sidebar}>
         <div className={s.sidebarHead}>
           <span className={s.sidebarTitle}>{meta.formTitle || 'Study Form'}</span>
@@ -103,40 +301,35 @@ export default function SFBPreview({ onExitPreview }) {
           </div>
         </div>
 
-        <nav className={s.stepList} aria-label="Form sections">
+        <nav className={s.stepList} aria-label="Form outline">
           {blocks.map((blk, i) => {
-            const isPast    = i < bi;
+            const isOpen    = !!expanded[blk.id];
             const isCurrent = i === bi;
-            const isFuture  = i > bi;
             return (
               <div key={blk.id} className={s.stepBlock}>
                 <button
                   type="button"
-                  className={`${s.stepBlockHead} ${isCurrent ? s.stepBlockHeadActive : ''} ${isPast ? s.stepBlockHeadDone : ''}`}
-                  onClick={() => !isFuture && goBlock(i)}
-                  disabled={isFuture}
+                  className={`${s.stepBlockHead} ${isCurrent ? s.stepBlockHeadActive : ''}`}
+                  onClick={() => toggleSidebarBlock(blk.id)}
                   title={blk.title}
                 >
-                  <span className={`${s.stepBadge} ${isPast ? s.stepBadgeDone : ''} ${isCurrent ? s.stepBadgeActive : ''}`}>
-                    {isPast ? <CheckCircle2 size={12} strokeWidth={2.5} /> : i + 1}
+                  <span className={s.stepCaret}>
+                    {isOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                   </span>
                   <span className={s.stepBlockLabel}>{blk.title || `Block ${i + 1}`}</span>
                   <span className={s.stepBlockCount}>{blk.pages.length}</span>
                 </button>
 
-                {/* Pages — expanded for the current block; collapsed otherwise. */}
-                {isCurrent && (
+                {isOpen && (
                   <ol className={s.pageList}>
                     {blk.pages.map((pg, j) => {
-                      const pPast    = j < pi;
-                      const pCurrent = j === pi;
+                      const pCurrent = isCurrent && j === pi;
                       return (
                         <li key={pg.id}>
                           <button
                             type="button"
-                            className={`${s.pageItem} ${pCurrent ? s.pageItemActive : ''} ${pPast ? s.pageItemDone : ''}`}
-                            onClick={() => j <= pi && goPage(j)}
-                            disabled={j > pi}
+                            className={`${s.pageItem} ${pCurrent ? s.pageItemActive : ''}`}
+                            onClick={() => goToBlockPage(blk.id, pg.id)}
                           >
                             <span className={s.pageDot} />
                             <span className={s.pageItemLabel}>{pg.title || `Page ${j + 1}`}</span>
@@ -152,9 +345,53 @@ export default function SFBPreview({ onExitPreview }) {
         </nav>
       </aside>
 
-      {/* ── Main content panel ───────────────────────────────────────────── */}
+      {/* ── Main column ──────────────────────────────────────────────── */}
       <div className={s.mainCol}>
         <div className={s.contentShell}>
+
+          {/* Sticky search bar */}
+          <div className={s.searchBar}>
+            <Search size={14} className={s.searchIcon} />
+            <input
+              ref={searchRef}
+              type="text"
+              className={s.searchInput}
+              placeholder="Search blocks, pages, fields..."
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setSearchOpen(true); }}
+              onFocus={() => search && setSearchOpen(true)}
+              onKeyDown={onSearchKey}
+            />
+            <span className={s.searchKbd}>Ctrl + F</span>
+
+            {searchOpen && search && (
+              <div ref={popRef} className={s.searchPop}>
+                {results.length === 0 ? (
+                  <div className={s.searchEmpty}>No matches for &ldquo;{search}&rdquo;</div>
+                ) : (
+                  results.map((r, i) => (
+                    <button
+                      key={`${r.kind}-${r.id}`}
+                      type="button"
+                      className={`${s.searchRow} ${i === hi ? s.searchRowActive : ''}`}
+                      onMouseEnter={() => setHi(i)}
+                      onMouseDown={(e) => { e.preventDefault(); jumpTo(r); }}
+                    >
+                      <span className={`${s.kindBadge} ${s[`kind_${r.kind}`]}`}>
+                        {iconFor(r.kind)} {r.kind}
+                      </span>
+                      <span className={s.searchLabel}>
+                        <Highlight text={r.label} needle={search} />
+                      </span>
+                      <span className={s.searchPath}>
+                        <CornerDownRight size={11} /> {r.path}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Page heading */}
           <div className={s.pageHeading}>
@@ -167,80 +404,88 @@ export default function SFBPreview({ onExitPreview }) {
             </span>
           </div>
 
-          {/* Fields — wrapped in RuntimeFieldRenderer for collaboration stack. */}
+          {/* Fields (dense 2-col grid via SFBPreview.module.css) */}
           <div className={s.fields}>
-          {page.fields.length === 0 ? (
-            <div className={s.noFields}>
-              <p>This page has no fields yet.</p>
-            </div>
-          ) : (
-            page.fields.map((field) => {
-              const isLayout = ['h2', 'paragraph', 'divider'].includes(field.type);
-              if (isLayout) {
-                // Layout-only fields don't need the runtime stack.
+            {page.fields.length === 0 ? (
+              <div className={s.noFields}>
+                <p>This page has no fields yet.</p>
+              </div>
+            ) : (
+              page.fields.map((field) => {
+                const isLayout = ['h2', 'paragraph', 'divider'].includes(field.type);
+                if (isLayout) {
+                  return (
+                    <div
+                      key={field.id}
+                      className={`${s.fieldWrap} ${s.fieldWrapLayout}`}
+                      data-field-id={field.id}
+                    >
+                      <FieldInput
+                        field={field}
+                        value={values[field.id]?.value}
+                        onChange={(v) => setValue(field.id, field.label, v)}
+                      />
+                    </div>
+                  );
+                }
                 return (
-                  <div key={field.id} className={`${s.fieldWrap} ${s.fieldWrapLayout}`}>
-                    <FieldInput
+                  <div key={field.id} data-field-id={field.id} style={{ minWidth: 0 }}>
+                    <RuntimeFieldRenderer
                       field={field}
                       value={values[field.id]?.value}
                       onChange={(v) => setValue(field.id, field.label, v)}
-                    />
+                      allValues={Object.fromEntries(
+                        Object.entries(values).map(([k, e]) => [k, e?.value]),
+                      )}
+                    >
+                      {({ field: f, value: v, onChange, disabled }) => (
+                        <fieldset disabled={disabled} style={{ border: 0, padding: 0, margin: 0 }}>
+                          <FieldInput field={f} value={v} onChange={onChange} />
+                        </fieldset>
+                      )}
+                    </RuntimeFieldRenderer>
                   </div>
                 );
-              }
-              return (
-                <RuntimeFieldRenderer
-                  key={field.id}
-                  field={field}
-                  value={values[field.id]?.value}
-                  onChange={(v) => setValue(field.id, field.label, v)}
-                  allValues={Object.fromEntries(
-                    Object.entries(values).map(([k, e]) => [k, e?.value]),
-                  )}
-                >
-                  {({ field: f, value: v, onChange, disabled }) => (
-                    <fieldset disabled={disabled} style={{ border: 0, padding: 0, margin: 0 }}>
-                      <FieldInput field={f} value={v} onChange={onChange} />
-                    </fieldset>
-                  )}
-                </RuntimeFieldRenderer>
-              );
-            })
-          )}
-        </div>
+              })
+            )}
+          </div>
 
-        {/* Nav footer */}
-        <div className={s.navFooter}>
-          <button className={s.btnPrev} onClick={goPrev} disabled={isFirstPage}>
-            <ChevronLeft size={15} /> Previous
-          </button>
+          {/* Nav footer */}
+          <div className={s.navFooter}>
+            <button className={s.btnPrev} onClick={goPrev} disabled={isFirstPage}>
+              <ChevronLeft size={15} /> Previous
+            </button>
 
-          {block.pages.length > 1 && (
-            <div className={s.dots}>
-              {block.pages.map((_, i) => (
-                <span
-                  key={i}
-                  className={`${s.dot} ${i === pi ? s.dotActive : ''} ${i < pi ? s.dotDone : ''}`}
-                  onClick={() => i <= pi && goPage(i)}
-                />
-              ))}
-            </div>
-          )}
+            {block.pages.length > 1 && (
+              <div className={s.dots}>
+                {block.pages.map((_, i) => (
+                  <span
+                    key={i}
+                    className={`${s.dot} ${i === pi ? s.dotActive : ''} ${i < pi ? s.dotDone : ''}`}
+                    onClick={() => goToBlockPage(block.id, block.pages[i].id)}
+                  />
+                ))}
+              </div>
+            )}
 
-          {isLastPage ? (
-            <button className={s.btnSubmit} onClick={handleSubmit}>
-              Submit Form <CheckCircle2 size={14} />
-            </button>
-          ) : pi === block.pages.length - 1 ? (
-            <button className={s.btnNextBlock} onClick={goNext}>
-              Next: {blocks[bi + 1]?.title} <ChevronRight size={15} />
-            </button>
-          ) : (
-            <button className={s.btnNext} onClick={goNext}>
-              Next <ChevronRight size={15} />
-            </button>
-          )}
-        </div>
+            {isLastPage ? (
+              <button
+                className={s.btnSubmit}
+                onClick={handleSubmit}
+                disabled={submitting}
+              >
+                {submitting ? 'Submitting…' : 'Submit Form'} <CheckCircle2 size={14} />
+              </button>
+            ) : pi === block.pages.length - 1 ? (
+              <button className={s.btnNextBlock} onClick={goNext}>
+                Next: {blocks[bi + 1]?.title} <ChevronRight size={15} />
+              </button>
+            ) : (
+              <button className={s.btnNext} onClick={goNext}>
+                Next <ChevronRight size={15} />
+              </button>
+            )}
+          </div>
 
         </div>{/* /contentShell */}
       </div>{/* /mainCol */}
@@ -276,12 +521,9 @@ function FieldInput({ field, value, onChange }) {
           onChange={(e) => onChange(e.target.value)}
         />
       );
-    case 'date':
-      return <input type="date" className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
-    case 'datetime':
-      return <input type="datetime-local" className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
-    case 'time':
-      return <input type="time" className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
+    case 'date':     return <PlatformDatePicker value={v ?? ''} onChange={onChange} />;
+    case 'datetime': return <input type="datetime-local" className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
+    case 'time':     return <input type="time"           className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
     case 'select': {
       if (field.multiple) {
         const selected = Array.isArray(v) ? v.map(String) : (v ? [String(v)] : []);

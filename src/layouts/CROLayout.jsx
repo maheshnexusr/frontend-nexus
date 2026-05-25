@@ -26,7 +26,7 @@ import {
   selectSidebarCollapsed,
   toggleSidebar,
 } from '@/features/workspace/store/workspaceSlice';
-import { selectPermissions } from '@/features/auth/authSlice';
+import { selectPermissions, selectPermissionsTree } from '@/features/auth/authSlice';
 import Sidebar                 from '@/components/layout/Sidebar';
 import WorkspaceHeader         from './WorkspaceHeader';
 import SponsorWorkspacePicker  from '@/features/workspace/components/SponsorWorkspacePicker';
@@ -34,25 +34,38 @@ import styles                  from './CROLayout.module.css';
 
 const clx = (...a) => a.filter(Boolean).join(' ');
 
-/* ── Nav definitions ──────────────────────────────────────────────────────── */
+/* ── Nav definitions ──────────────────────────────────────────────────────
+ *
+ * `permission` values are snake_case `{leaf}.{action}` keys that match the
+ * backend's resolved permission tree from /api/v1/profile/me/permissions
+ * exactly. Do NOT use the canonical PUT-side feature_name keys (e.g.
+ * "Dashboard.StudyPortfolioOverview") here — that vocabulary is only for
+ * the role-editor's PUT body. The consumer side reads the snake_case tree.
+ *
+ * Dashboard sub-pages (Study Portfolio Overview, CRO Team Utilization)
+ * both collapse into ONE leaf `dashboard` on the consumer side — there's
+ * no per-sub-feature gating from /profile/me/permissions.
+ *
+ * Activity Log and Workspace are top-level leaves (no group prefix). */
 const NAV_ITEMS = [
   {
     key:        'dashboard',
     label:      'Dashboard',
     icon:       LayoutDashboard,
     path:       '/cro/dashboard',
-    permission: 'dashboard.studyPortfolio.view',
+    permission: 'dashboard.view',
   },
   {
     key:   'masters',
     label: 'Masters',
     icon:  Layers,
     children: [
-      { key: 'email-templates', label: 'Email Templates', path: '/cro/masters/email-templates', permission: 'masters.emailTemplates.view' },
-      { key: 'study-phases',    label: 'Study Phases',    path: '/cro/masters/study-phases',    permission: 'masters.studyPhases.view'    },
-      { key: 'country',         label: 'Country',         path: '/cro/masters/country',         permission: 'masters.country.view'        },
-      { key: 'locations',       label: 'Locations',       path: '/cro/masters/locations',       permission: 'masters.locations.view'      },
-      { key: 'regions',         label: 'Regions',         path: '/cro/masters/regions'                                                   },
+      { key: 'email-templates', label: 'Email Templates', path: '/cro/masters/email-templates', permission: 'email_templates.view' },
+      { key: 'study-phases',    label: 'Study Phases',    path: '/cro/masters/study-phases',    permission: 'study_phases.view'    },
+      { key: 'country',         label: 'Country',         path: '/cro/masters/country',         permission: 'countries.view'       },
+      { key: 'locations',       label: 'Locations',       path: '/cro/masters/locations',       permission: 'locations.view'       },
+      { key: 'regions',         label: 'Regions',         path: '/cro/masters/regions',         permission: 'regions.view'         },
+      { key: 'annotations',     label: 'Annotations',     path: '/cro/masters/annotations',     permission: 'annotations.view'     },
     ],
   },
   {
@@ -60,8 +73,8 @@ const NAV_ITEMS = [
     label: 'Clinical Programs',
     icon:  FlaskConical,
     children: [
-      { key: 'sponsors', label: 'Sponsors', path: '/cro/sponsors', permission: 'clinicalPrograms.sponsors.view' },
-      { key: 'studies',  label: 'Studies',  path: '/cro/studies',  permission: 'clinicalPrograms.studies.view'  },
+      { key: 'sponsors', label: 'Sponsors', path: '/cro/sponsors', permission: 'sponsors.view' },
+      { key: 'studies',  label: 'Studies',  path: '/cro/studies',  permission: 'studies.view'  },
     ],
   },
   {
@@ -69,8 +82,8 @@ const NAV_ITEMS = [
     label: 'CRO Team Administration',
     icon:  Users,
     children: [
-      { key: 'team-members', label: 'Team Members',        path: '/cro/team/members', permission: 'teamAdmin.teamMembers.view'      },
-      { key: 'team-roles',   label: 'Roles & Permissions', path: '/cro/team/roles',   permission: 'teamAdmin.rolesPermissions.view' },
+      { key: 'team-members',  label: 'Team Members',        path: '/cro/team/members',  permission: 'team_members.view' },
+      { key: 'team-roles',    label: 'Roles & Permissions', path: '/cro/team/roles',    permission: 'roles.view'        },
     ],
   },
   {
@@ -78,7 +91,7 @@ const NAV_ITEMS = [
     label:      'Activity Log',
     icon:       Activity,
     path:       '/cro/activity-log',
-    permission: 'masters.activityLog.view',
+    permission: 'activity_log.view',
   },
 ];
 
@@ -98,19 +111,39 @@ const BOTTOM_NAV = [
 export default function CROLayout() {
   const dispatch    = useAppDispatch();
   const collapsed   = useAppSelector(selectSidebarCollapsed);
-  const permissions = useAppSelector(selectPermissions);
-  const isAdmin     = permissions.includes('*');
+  const permsArr    = useAppSelector(selectPermissions);
+  const permsTree   = useAppSelector(selectPermissionsTree);
+  const isAdmin     = permsTree === '*' || (Array.isArray(permsArr) && permsArr.includes('*'));
 
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  /* Permission-filter a flat or nested items array */
+  /* Permission check — read directly from the backend's leaf tree.
+     `permission` strings are "leaf.action" snake_case (e.g. "dashboard.view"),
+     matching the shape of /api/v1/profile/me/permissions. Missing keys are
+     treated as false (deny by default). */
+  const can = (permissionStr) => {
+    if (!permissionStr)   return true;       // unrestricted item
+    if (isAdmin)          return true;       // super-admin
+    if (!permsTree)       return false;      // logged out / not loaded
+    const [leaf, action] = permissionStr.split('.');
+    const node = permsTree[leaf];
+    if (!node) return false;
+    if (node === true || node === '*') return true;
+    return Boolean(node[action]);
+  };
+
+  /* Permission-filter a flat or nested items array.
+     A group (item with `children`) is dropped if filtering empties it out —
+     otherwise we'd render orphan group headers (Masters, Clinical Programs…)
+     even when the user has no permission for any item underneath them. */
   const filterItems = (items) =>
     items
-      .filter((item) => isAdmin || !item.permission || permissions.includes(item.permission))
+      .filter((item) => can(item.permission))
       .map((item) => ({
         ...item,
         children: item.children ? filterItems(item.children) : undefined,
-      }));
+      }))
+      .filter((item) => !item.children || item.children.length > 0);
 
   const navItems    = filterItems(NAV_ITEMS);
   const bottomItems = filterItems(BOTTOM_NAV);

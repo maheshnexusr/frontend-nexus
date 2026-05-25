@@ -84,8 +84,11 @@ export default function SiteLayout() {
   const perms   = context?.permissions ?? {};
   const allowed = (leafKey) => canViewLeaf(perms, leafKey);
 
-  /* ── Item 2 varies by study scope; gated by dataManager + data_capture ── */
-  const captureItem = cfg.dataManager && allowed('data_capture')
+  /* ── Item 2 varies by study scope; gated by data_capture leaf only.
+        The legacy `dataManager` toggle was removed (EDC studies always need
+        capture). `cfg.dataManager` is undefined now and would otherwise null
+        this out. ────────────────────────────────────────────────────────── */
+  const captureItem = allowed('data_capture')
     ? (scope === 'EPRO'
         ? { key: 'diary',   label: 'My Diary',    icon: Notebook,      path: '/site/capture' }
         : scope === 'SURVEY'

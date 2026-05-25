@@ -13,7 +13,7 @@
  */
 
 import store from '@/app/store';
-import { setRolePermissions, clearCroPermissions } from '@/features/auth/authSlice';
+import { setRolePermissions, setAssignedStudies, clearCroPermissions } from '@/features/auth/authSlice';
 import { mergeSiteStudyContext } from '@/features/site/authStore';
 
 function writeSponsorAuthUser(payload) {
@@ -33,6 +33,16 @@ function writeSponsorAuthUser(payload) {
     };
     localStorage.setItem('sponsorAuthUser', JSON.stringify(merged));
   } catch { /* ignore quota / parse errors */ }
+}
+
+/**
+ * True when a live CRO session token is present. A CRO user who entered a
+ * sponsor/site workspace still holds this — their CRO permissions must NOT be
+ * wiped, or the CRO sidebar breaks when they switch back.
+ */
+function hasCroSession() {
+  try { return !!localStorage.getItem('accessToken'); }
+  catch { return false; }
 }
 
 /**
@@ -57,16 +67,23 @@ export function applyPermissions(payload) {
       siteId:       payload.siteId,
       environment:  payload.environment,
     });
-    // Site user — wipe any stray CRO permissions so the CRO sidebar shows
-    // nothing if they ever wander onto /cro/*.
-    store.dispatch(clearCroPermissions());
+    // Wipe stray CRO permissions ONLY for a genuine site-only login — never
+    // for a CRO user who merely entered a site/sponsor workspace (they still
+    // hold a CRO accessToken and need their CRO sidebar intact on switch-back).
+    if (!hasCroSession()) store.dispatch(clearCroPermissions());
     return;
   }
 
   if (scope === 'sponsor') {
     writeSponsorAuthUser(payload);
-    // Sponsor user — same cleanup as above.
-    store.dispatch(clearCroPermissions());
+    // CRO viewer: keep the per-study assignedStudies fresh so the sponsor
+    // sidebar + gates (useSiteRolePermissions) resolve identically on a
+    // refresh as on a switch — the sponsor-scope response now carries them.
+    if (Array.isArray(payload.assignedStudies) && payload.assignedStudies.length) {
+      store.dispatch(setAssignedStudies(payload.assignedStudies));
+    }
+    // Same as the site branch — only wipe for a genuine sponsor-only login.
+    if (!hasCroSession()) store.dispatch(clearCroPermissions());
     return;
   }
 

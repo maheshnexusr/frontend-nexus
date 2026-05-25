@@ -19,6 +19,7 @@ import {
 } from '@/features/cro/store/studyWizardSlice';
 import { studiesClient }    from '@/features/cro/api/studiesClient';
 import { addToast }         from '@/app/notificationSlice';
+import { formatDateTime }   from '@/utils/formatDate';
 import styles from './StudyWizardStep6.module.css';
 
 const STATUSES = ['Published', 'Active', 'Inactive', 'Locked'];
@@ -277,10 +278,7 @@ export default function StudyWizardStep6({ onPrevious, onCancel }) {
                     </td>
                     <td className={styles.descCell}>{rel.description || '—'}</td>
                     <td className={styles.dateCell}>
-                      {new Date(rel.publishedAt).toLocaleString('en-US', {
-                        day: '2-digit', month: 'short', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit',
-                      })}
+                      {formatDateTime(rel.publishedAt)}
                     </td>
                     <td className={styles.byCell}>{rel.publishedBy}</td>
                     <td>

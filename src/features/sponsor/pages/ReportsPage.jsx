@@ -20,7 +20,25 @@ import {
 import axiosClient  from '@/api/sponsorAxiosClient';
 import { addToast } from '@/app/notificationSlice';
 import ConfirmDialog from '@/components/feedback/ConfirmDialog';
+import { formatDateTime } from '@/utils/formatDate';
+import PlatformDatePicker from '@/components/form/PlatformDatePicker';
+import { usePermissions } from '@/features/auth/usePermissions';
 import css from './ReportsPage.module.css';
+
+/**
+ * Map a report row's `reportType` to the action key on the `reports` permission
+ * leaf that gates its Download button. The five spec'd download permissions
+ * cover the five named reports; anything outside that list falls back to the
+ * blanket `reports.export` permission so unknown / future report types stay
+ * gateable by the existing role catalogue.
+ */
+const REPORT_DOWNLOAD_ACTION = {
+  enrollment:        'download_enrollment',
+  data_completeness: 'download_data_completeness',
+  query_summary:     'download_queries',
+  site_performance:  'download_sites',
+  audit_trail:       'download_audit',
+};
 
 /* ── Report type catalogue ───────────────────────────────────────────────── */
 const REPORT_TYPES = [
@@ -83,13 +101,7 @@ const STATUS_META = {
 };
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
-function fmtDate(ts) {
-  if (!ts) return '—';
-  return new Date(ts).toLocaleString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  });
-}
+const fmtDate = (ts) => formatDateTime(ts) || '—';
 
 function fmtSize(bytes) {
   if (!bytes) return '—';
@@ -147,13 +159,13 @@ function GenerateDialog({ reportType, studyId, onClose, onGenerated, dispatch })
           <div className={css.dGrid}>
             <div className={css.df}>
               <label className={css.dlabel}>Date From</label>
-              <input type="date" className={css.dinput} value={dateFrom}
-                max={dateTo} onChange={(e) => setDateFrom(e.target.value)} />
+              <PlatformDatePicker className={css.dinput} value={dateFrom}
+                max={dateTo} onChange={setDateFrom} />
             </div>
             <div className={css.df}>
               <label className={css.dlabel}>Date To</label>
-              <input type="date" className={css.dinput} value={dateTo}
-                min={dateFrom} max={today} onChange={(e) => setDateTo(e.target.value)} />
+              <PlatformDatePicker className={css.dinput} value={dateTo}
+                min={dateFrom} max={today} onChange={setDateTo} />
             </div>
             <div className={css.df}>
               <label className={css.dlabel}>Format</label>
@@ -181,6 +193,16 @@ function GenerateDialog({ reportType, studyId, onClose, onGenerated, dispatch })
 export default function ReportsPage() {
   const { studyId } = useParams();
   const dispatch    = useDispatch();
+  const { has }     = usePermissions();
+  // Per-report download gate. Each report type has its own permission key on
+  // the `reports` leaf; if a role lacks the specific download for a report,
+  // we also accept the blanket `reports.export` as a fallback so legacy roles
+  // that only got the blanket permission continue to work.
+  const canDownload = (reportType) => {
+    const action = REPORT_DOWNLOAD_ACTION[reportType];
+    if (action && has('reports', action)) return true;
+    return has('reports', 'export');
+  };
 
   const [tab,          setTab]          = useState('catalogue');
   const [reports,      setReports]      = useState([]);
@@ -369,7 +391,7 @@ export default function ReportsPage() {
                       </div>
                     </div>
                     <div className={css.reportRowActions}>
-                      {r.status === 'Ready' && (
+                      {r.status === 'Ready' && canDownload(r.reportType) && (
                         <button className={`${css.rowBtn} ${css.rowBtnDownload}`} title="Download" onClick={() => handleDownload(r)}>
                           <Download size={14} />
                         </button>

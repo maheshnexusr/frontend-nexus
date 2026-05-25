@@ -59,10 +59,13 @@ function readJSON(key) {
 
 /** Pure resolver — same logic without React, for non-component callers.
  *
- *  Direct sponsor users are intentionally NOT gated by their role's
- *  permission tree — they always see every menu leaf (filtered only by
- *  study.config). Their sponsorAuthUser.permissions is skipped here on
- *  purpose. Site users and per-study-assigned CRO viewers are still gated.
+ *  Resolution order: site auth → direct sponsor (per-study grant) → CRO
+ *  viewer (per-study assignment) → unrestricted.
+ *
+ *  Direct sponsor users ARE gated by the per-study permission tree the CRO
+ *  assigned in Study Wizard Step 1 — POST /sponsor/studies/choose returns it
+ *  and it is persisted in `sponsorStudyContext`. A study with no per-study
+ *  grant (legacy) resolves to unrestricted (null).
  */
 export function resolveRolePermissions(studyId) {
   // 1. Direct site auth scope wins — but ONLY when a site token is actually
@@ -72,7 +75,30 @@ export function resolveRolePermissions(studyId) {
   //    earlier PI session leaking into a later sponsor session's menu.
   if (typeof window !== 'undefined' && localStorage.getItem('siteAccessToken')) {
     const ctx = readJSON('siteStudyContext');
-    if (ctx?.permissions && Object.keys(ctx.permissions).length) return ctx.permissions;
+    // Fail CLOSED for site sessions: return the tree even when empty so
+    // hasPerm denies (instead of falling through to null = ALLOW_ALL). The
+    // fall-through made Raise/Close Query leak on stale site sessions whose
+    // siteStudyContext.permissions wasn't yet populated by /site/studies/choose.
+    if (ctx?.permissions && typeof ctx.permissions === 'object') return ctx.permissions;
+    return {};
+  }
+
+  // 1b. Sponsor workspace session — gate by the per-study permission tree
+  //     returned by POST /sponsor/studies/choose (buildSponsorView projects
+  //     the study's Step-1 grant). Stored in `sponsorStudyContext`, keyed by
+  //     studyId. Applies to BOTH a direct sponsor login (`sponsorAccessToken`)
+  //     and a CRO operator viewing the sponsor workspace (`sponsorViewToken`).
+  //     `'*'` (system admin on a study with no grant) → null = unrestricted.
+  if (
+    typeof window !== 'undefined' &&
+    (localStorage.getItem('sponsorAccessToken') || localStorage.getItem('sponsorViewToken'))
+  ) {
+    const ctx = readJSON('sponsorStudyContext');
+    const perms = ctx?.permissions;
+    if (ctx?.studyId && (!studyId || ctx.studyId === studyId)) {
+      if (perms === '*' || perms === true) return null;
+      if (perms && typeof perms === 'object' && Object.keys(perms).length) return perms;
+    }
   }
 
   // 2. CRO team member viewing a sponsor workspace — find the assigned
@@ -82,6 +108,23 @@ export function resolveRolePermissions(studyId) {
     const list = Array.isArray(croUser?.assignedStudies) ? croUser.assignedStudies : [];
     const match = list.find((s) => s.studyId === studyId);
     if (match?.sponsorPermissions) return match.sponsorPermissions;
+
+    // Diagnostic: this is the single most common cause of "menu doesn't
+    // reflect my permissions" — the URL studyId doesn't match any of the
+    // user's assignedStudies, so the layout falls back to "unrestricted"
+    // (canViewLeaf returns true for everything → full default menu).
+    if (typeof window !== 'undefined' && window.__AUTH_DEBUG !== false) {
+      console.warn(
+        '[perms] useSiteRolePermissions falling back to unrestricted (default menu) — no assignedStudies match.',
+        {
+          urlStudyId:                 studyId,
+          authUserAssignedStudyIds:   list.map((s) => s.studyId),
+          hint: list.length === 0
+            ? 'authUser.assignedStudies is EMPTY — likely a cached pre-fix session. Sign out + sign in to refresh.'
+            : 'URL studyId is not in the list. Check that the route uses the DB id (e.g. "2yqpkim154kxjfl1"), not the protocol number.',
+        },
+      );
+    }
   }
 
   // Direct sponsor users + everyone else → unrestricted.

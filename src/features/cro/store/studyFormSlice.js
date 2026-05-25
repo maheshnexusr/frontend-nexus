@@ -286,8 +286,35 @@ const studyFormSlice = createSlice({
     },
 
     markSaved(state) { state.isDirty = false; },
+
+    /**
+     * Set the single master annotation chosen for a field.
+     *   payload: { fieldId, annotationId: string | null }
+     * The annotation row itself (annotation/full_form/description) lives in
+     * the Annotations master; the field only stores the ID it references.
+     * Pass `null` to clear the selection.
+     */
+    setFieldAnnotationId(state, { payload }) {
+      const { fieldId, annotationId } = payload;
+      const field = findFieldAcrossBlocks(state.blocks, fieldId);
+      if (!field) return;
+      field.annotationId = annotationId || null;
+      state.isDirty = true;
+    },
   },
 });
+
+/** Walk every block/page and return the field whose id matches, or null. */
+// eslint-disable-next-line no-unused-vars
+function findFieldAcrossBlocks(blocks, fieldId) {
+  for (const blk of blocks) {
+    for (const pg of blk.pages ?? []) {
+      const fld = pg.fields?.find((f) => f.id === fieldId);
+      if (fld) return fld;
+    }
+  }
+  return null;
+}
 
 export const {
   initForm, resetStudyForm, setActivePanel,
@@ -298,6 +325,7 @@ export const {
   addTrigger, updateTrigger, removeTrigger,
   addComment, resolveComment,
   markSaved,
+  setFieldAnnotationId,
 } = studyFormSlice.actions;
 
 export default studyFormSlice.reducer;
@@ -330,3 +358,7 @@ export const selectActiveField = (s) => {
 // Flat list of all fields in all blocks/pages (for condition target selection)
 export const selectAllFields = (s) =>
   s.studyForm.blocks.flatMap((b) => b.pages.flatMap((p) => p.fields));
+
+/** Find one field by id across the whole form. */
+export const selectFieldById = (fieldId) => (s) =>
+  findFieldAcrossBlocks(s.studyForm.blocks, fieldId);

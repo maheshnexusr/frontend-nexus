@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { X, Plus, Trash2, Bell, Mail, Zap, ClipboardList, ChevronDown, ChevronUp } from 'lucide-react';
 import { formResponsesClient } from '@/features/cro/api/formResponsesClient';
+import { formatDateTime } from '@/utils/formatDate';
 import {
   selectSubmissionCtrl, selectTriggers, selectComments,
   updateSubmissionControls, addTrigger, updateTrigger, removeTrigger,
@@ -122,7 +123,7 @@ function ResponsesSection() {
                   <div className={s.responseCardMeta}>
                     <span className={s.responseCardTitle}>Submission #{r.id.slice(-4).toUpperCase()}</span>
                     <span className={s.responseCardDate}>
-                      {new Date(r.submittedAt).toLocaleString()}
+                      {formatDateTime(r.submittedAt)}
                     </span>
                     <span className={s.responseCardCount}>{entries.length} field{entries.length !== 1 ? 's' : ''}</span>
                   </div>
@@ -301,7 +302,7 @@ function CollaborationPanel() {
               <div key={c.id} className={`${s.commentCard} ${c.resolved ? s.commentResolved : ''}`}>
                 <div className={s.commentCardMeta}>
                   <strong>{c.author}</strong>
-                  <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{new Date(c.timestamp).toLocaleString()}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{formatDateTime(c.timestamp)}</span>
                   {c.resolved && <span className={s.resolvedTag}>Resolved</span>}
                 </div>
                 <p className={s.commentCardText}>{c.text}</p>

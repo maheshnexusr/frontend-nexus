@@ -51,6 +51,19 @@ const VARIANT_CLASS = {
   default: styles.default,
 };
 
+// Backend stores statuses lowercase ('published', 'active', 'on hold' …); the
+// badge always renders Title Case so callers don't have to format upstream.
+// Preserves any token that is fully UPPERCASE (UAT, LIVE) so acronyms survive.
+const titleCase = (s) =>
+  String(s ?? '')
+    .split(/(\s+)/)
+    .map((tok) => {
+      if (/^\s+$/.test(tok) || !tok) return tok;
+      if (tok === tok.toUpperCase() && /[A-Z]/.test(tok)) return tok;
+      return tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
+    })
+    .join('');
+
 /**
  * StatusBadge — small pill badge for entity statuses.
  *
@@ -68,7 +81,7 @@ export default function StatusBadge({ status, variant }) {
   return (
     <span className={clx(styles.badge, VARIANT_CLASS[resolved] ?? styles.default)}>
       <span className={styles.dot} aria-hidden="true" />
-      {status}
+      {titleCase(status)}
     </span>
   );
 }

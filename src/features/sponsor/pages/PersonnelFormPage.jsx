@@ -10,13 +10,12 @@
  * matching the SiteFormPage / SiteRoleFormPage layout.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { ArrowLeft, FileText, ExternalLink } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
 import FormField           from '@/components/form/FormField';
-import TextArea            from '@/components/form/TextArea';
 import SearchableDropdown  from '@/components/form/SearchableDropdown';
 import { sponsorPersonnelClient } from '@/features/sponsor/api/sponsorPersonnelClient';
 import { sponsorSitesClient }     from '@/features/sponsor/api/sponsorSitesClient';
@@ -29,15 +28,6 @@ import styles from './PersonnelFormPage.module.css';
 // Role dropdown is populated entirely from the Site Roles master
 // (sponsorRolesClient.list). No hardcoded defaults — if the master is empty,
 // the user must create roles under "Site Management → Site Role" first.
-
-// Fallback consent-template label for well-known role names, used only when
-// the backend hasn't returned any templates yet (purely cosmetic).
-const ROLE_TEMPLATE_HINT = {
-  'Principal Investigator': 'PI Consent Template',
-  'Site Coordinator':       'Site Coordinator Consent Template',
-  'Study Nurse':            'Site Personnel Consent Template',
-  'Subject/Patient':        'Subject Consent Template',
-};
 
 const COMP_TYPES    = ['None', 'Per Study', 'Per Subject', 'Per Visit', 'Milestone Based'];
 const CURRENCIES    = ['USD', 'EUR', 'GBP', 'INR', 'AUD', 'CAD', 'JPY', 'CHF'];
@@ -54,15 +44,25 @@ const EMPTY_COMP = {
 };
 
 const EMPTY = {
-  fullName:          '',
-  email:             '',
-  role:              '',   // role_name — drives consent-template lookup
-  roleId:            '',   // site_roles.role_id — what the API expects
-  siteId:            '',
-  status:            'Active',
-  consentRequired:   true,
-  consentTemplateId: '',
-  compensation:      { ...EMPTY_COMP },
+  fullName:       '',
+  email:          '',
+  role:           '',   // role_name (for display)
+  roleId:         '',   // site_roles.role_id — what the API expects
+  // Multi-site assignment. `assignAllSites=true` posts every active site;
+  // otherwise `siteIds` is the explicit subset the user picked.
+  assignAllSites: false,
+  siteIds:        [],
+  status:         'Active',
+  compensation:   { ...EMPTY_COMP },
+};
+
+// "S001 — Main Hospital" — site code first, name after the em-dash. Either may
+// be missing; fall back to whichever is present.
+const formatSiteLabel = (s) => {
+  const code = (s.siteCode ?? '').trim();
+  const name = (s.siteName ?? '').trim();
+  if (code && name) return `${code} — ${name}`;
+  return code || name || '(unnamed site)';
 };
 
 function ic(s, err) { return err ? `${s.input} ${s.inputError}` : s.input; }
@@ -76,7 +76,10 @@ function validate(form, isEdit) {
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email    = 'Email Address must be valid.';
   }
   if (!form.role)                                           e.role     = 'Role is required.';
-  if (!form.siteId)                                         e.siteId   = 'Site Name is required.';
+  // Either "All Sites" is chosen OR at least one specific site is selected.
+  if (!form.assignAllSites && (!Array.isArray(form.siteIds) || form.siteIds.length === 0)) {
+    e.siteIds = 'Pick at least one site, or choose "All Sites".';
+  }
   if (form.compensation.type !== 'None') {
     const amt = Number(form.compensation.amount);
     if (!form.compensation.amount || Number.isNaN(amt) || amt <= 0) {
@@ -99,23 +102,27 @@ export default function PersonnelFormPage() {
   const [saving,     setSaving]     = useState(false);
   const [apiError,   setApiError]   = useState('');
 
-  const [siteOpts,   setSiteOpts]   = useState([]);
-  const [roleOpts,   setRoleOpts]   = useState([]);     // pulled from Site Roles master
+  // The full active-site list — kept around so "All Sites" can expand to the
+  // explicit array of site_ids at submit time.
+  const [allActiveSites, setAllActiveSites] = useState([]);
+  const [siteOpts,    setSiteOpts]   = useState([]);
+  const [roleOpts,    setRoleOpts]   = useState([]);     // pulled from Site Roles master
   const [rolesLoaded, setRolesLoaded] = useState(false);
-  const [templates,  setTemplates]  = useState([]);
-  const [tmplLoading, setTmplLoading] = useState(false);
 
   // ── Load active sites + Site Roles master ─────────────────────────────────
+  // Both use the auth-only lookup endpoints — populating these dropdowns must
+  // not require the `sites` / `site_roles` permissions.
   useEffect(() => {
-    sponsorSitesClient.list(studyId)
+    sponsorSitesClient.lookup(studyId)
       .then((all) => {
         const active = all.filter((s) => s.status !== 'Inactive');
-        setSiteOpts(active.map((s) => ({ value: s.id, label: s.siteName || s.siteCode || '(unnamed site)' })));
+        setAllActiveSites(active);
+        setSiteOpts(active.map((s) => ({ value: s.id, label: formatSiteLabel(s) })));
       })
-      .catch(() => setSiteOpts([]));
+      .catch(() => { setAllActiveSites([]); setSiteOpts([]); });
 
     // Role dropdown comes ONLY from the Site Roles master — no hardcoded list.
-    sponsorRolesClient.list(studyId, { status: 'Active' })
+    sponsorRolesClient.lookup(studyId, { status: 'Active' })
       .then((all) => {
         setRoleOpts(
           all
@@ -135,37 +142,22 @@ export default function PersonnelFormPage() {
     sponsorPersonnelClient.getById?.(studyId, personnelId)
       ?.then((p) => {
         if (!p) return;
+        // Legacy records store a single `siteId`; new ones may return
+        // `siteIds` directly. Normalize into the array form the page uses.
+        const seeded = Array.isArray(p.siteIds) && p.siteIds.length
+          ? p.siteIds
+          : (p.siteId ? [p.siteId] : []);
         setForm({
           ...EMPTY,
           ...p,
+          siteIds: seeded,
+          assignAllSites: false,
           compensation: { ...EMPTY_COMP, ...(p.compensation ?? {}) },
         });
       })
       .catch(() => dispatch(addToast({ type: 'error', message: 'Failed to load personnel record.' })))
       .finally(() => setLoading(false));
   }, [isEdit, studyId, personnelId, dispatch]);
-
-  // ── Load consent templates whenever the role changes ─────────────────────
-  const loadTemplates = useCallback(async (role) => {
-    if (!role) return;
-    setTmplLoading(true);
-    try {
-      const list = await sponsorPersonnelClient.getConsentTemplates(studyId, role);
-      setTemplates(list);
-      if (list.length > 0) {
-        setForm((prev) => prev.consentTemplateId ? prev : { ...prev, consentTemplateId: list[0].id });
-      }
-    } catch {
-      setTemplates([]);
-    } finally {
-      setTmplLoading(false);
-    }
-  }, [studyId]);
-
-  useEffect(() => {
-    if (form.role) loadTemplates(form.role);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.role]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const set = (field) => (val) => {
@@ -183,9 +175,13 @@ export default function PersonnelFormPage() {
     // API gets the id it expects (the backend also accepts the name as a
     // fallback, but sending the id is the contract).
     const roleId = roleOpts.find((o) => o.value === role)?._id ?? '';
-    setForm((prev) => ({ ...prev, role: role ?? '', roleId, consentTemplateId: '' }));
+    setForm((prev) => ({ ...prev, role: role ?? '', roleId }));
     setErrors((prev) => { const e = { ...prev }; delete e.role; return e; });
-    setTemplates([]);
+  };
+
+  const handleAssignModeChange = (allSites) => {
+    setForm((prev) => ({ ...prev, assignAllSites: allSites }));
+    setErrors((prev) => { const e = { ...prev }; delete e.siteIds; return e; });
   };
 
   // ── Submit ────────────────────────────────────────────────────────────────
@@ -194,12 +190,19 @@ export default function PersonnelFormPage() {
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setApiError('');
     setSaving(true);
+    // "All Sites" expands to every active site_id at submit time. Service
+    // accepts the array; the primary site (first element) is what site-scoped
+    // queries pin to, and the rest land in additional_site_ids.
+    const resolvedSiteIds = form.assignAllSites
+      ? allActiveSites.map((s) => s.id).filter(Boolean)
+      : form.siteIds;
+    const payload = { ...form, siteIds: resolvedSiteIds };
     try {
       if (isEdit) {
-        const updated = await sponsorPersonnelClient.update(studyId, personnelId, form);
+        const updated = await sponsorPersonnelClient.update(studyId, personnelId, payload);
         dispatch(addToast({ type: 'success', message: `'${updated.fullName ?? form.fullName}' updated successfully.` }));
       } else {
-        const created = await sponsorPersonnelClient.invite(studyId, form);
+        const created = await sponsorPersonnelClient.invite(studyId, payload);
         dispatch(addToast({
           type:     'success',
           message:  `'${created.fullName ?? form.fullName}' invited. Invitation email sent to ${created.email ?? form.email}.`,
@@ -244,7 +247,7 @@ export default function PersonnelFormPage() {
       <p className={styles.sub}>
         {isEdit
           ? 'Update this user\'s details. Email address is fixed.'
-          : 'Invite a user to this study. They\'ll receive an email with login instructions and a consent form to complete.'}
+          : 'Invite a user to this study. They\'ll receive an email with login instructions to get started.'}
       </p>
 
       {apiError && <div className={styles.apiError}>{apiError}</div>}
@@ -301,18 +304,6 @@ export default function PersonnelFormPage() {
               searchPlaceholder="Search roles…"
             />
           </FormField>
-          <FormField label="Site Name" name="siteId" required error={errors.siteId}>
-            <SearchableDropdown
-              options={siteOpts}
-              value={form.siteId}
-              onChange={set('siteId')}
-              placeholder={siteOpts.length === 0 ? 'No active sites' : 'Select site…'}
-              searchPlaceholder="Search sites…"
-            />
-          </FormField>
-        </div>
-
-        <div className={styles.row2}>
           <FormField label="Status" name="status">
             <SearchableDropdown
               options={asOpt(['Active', 'Inactive'])}
@@ -320,66 +311,43 @@ export default function PersonnelFormPage() {
               onChange={set('status')}
             />
           </FormField>
-          <div /> {/* spacer for grid balance */}
         </div>
-      </section>
 
-      {/* ── Consent ──────────────────────────────────────────────────────── */}
-      <section className={styles.card}>
-        <h2 className={styles.cardHeading}>Consent</h2>
-
-        <label className={styles.checkboxRow}>
-          <input
-            type="checkbox"
-            checked={form.consentRequired}
-            onChange={(e) => set('consentRequired')(e.target.checked)}
-          />
-          <span>
-            <strong>Consent required</strong>
-            <span className={styles.helpText}>
-              {' '}— if unchecked, this user can access the workspace immediately without submitting a consent form.
-            </span>
-          </span>
-        </label>
-
-        {form.consentRequired && (
-          <div className={styles.row2}>
-            <FormField label="Consent Template" name="consentTemplateId">
-              {templates.length > 0 ? (
-                <SearchableDropdown
-                  options={templates.map((t) => ({
-                    value: t.id,
-                    label: `${t.name}${t.version ? ` · v${t.version}` : ''}`,
-                  }))}
-                  value={form.consentTemplateId}
-                  onChange={set('consentTemplateId')}
-                  placeholder="Select template…"
-                />
-              ) : (
-                <div className={styles.templateHint}>
-                  <FileText size={14} className={styles.templateIcon} />
-                  <span>
-                    {tmplLoading
-                      ? 'Loading templates…'
-                      : form.role
-                        ? `Default: ${ROLE_TEMPLATE_HINT[form.role] ?? 'Site Personnel Consent Template'}`
-                        : 'Select a role to see available templates.'}
-                  </span>
-                </div>
-              )}
-            </FormField>
-            {form.consentTemplateId && (
-              <a
-                href={`/sponsor/${studyId}/consent/config?templateId=${form.consentTemplateId}`}
-                className={styles.previewLink}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <ExternalLink size={13} /> Preview consent template
-              </a>
-            )}
+        {/* Site Details — assign to ALL active sites, or pick a SPECIFIC subset
+            (single or multi). The All radio expands to every active site_id at
+            submit time so the backend always receives the explicit list. */}
+        <FormField label="Site Details" name="siteIds" required error={errors.siteIds}>
+          <div className={styles.assignModeRow}>
+            <label className={styles.radioLabel}>
+              <input
+                type="radio"
+                name="assignMode"
+                checked={form.assignAllSites === true}
+                onChange={() => handleAssignModeChange(true)}
+              />
+              <span>All Sites <span className={styles.helpText}>({allActiveSites.length})</span></span>
+            </label>
+            <label className={styles.radioLabel}>
+              <input
+                type="radio"
+                name="assignMode"
+                checked={form.assignAllSites === false}
+                onChange={() => handleAssignModeChange(false)}
+              />
+              <span>Specific Sites</span>
+            </label>
           </div>
-        )}
+          {!form.assignAllSites && (
+            <SearchableDropdown
+              multiple
+              options={siteOpts}
+              value={form.siteIds}
+              onChange={set('siteIds')}
+              placeholder={siteOpts.length === 0 ? 'No active sites' : 'Select one or more sites…'}
+              searchPlaceholder="Search by site code or name…"
+            />
+          )}
+        </FormField>
       </section>
 
       {/* ── Compensation ─────────────────────────────────────────────────── */}

@@ -66,6 +66,23 @@ function sp(C) {
   );
 }
 
+/**
+ * Suspense helper + CRO permission gate. Renders the route only when the
+ * logged-in CRO user holds `requiredPermission` (a `{leaf}.{action}` key,
+ * e.g. "studies.create") — otherwise ProtectedRoute shows the 403 page.
+ * @param {React.LazyExoticComponent} C
+ * @param {string} requiredPermission
+ */
+function spp(C, requiredPermission) {
+  return (
+    <ProtectedRoute requiredPermission={requiredPermission}>
+      <Suspense fallback={<PageLoader />}>
+        <C />
+      </Suspense>
+    </ProtectedRoute>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Lazy page imports — Public
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,6 +102,8 @@ const AuthLayout               = lazy(() => import('@/layouts/AuthLayout'));
 const SignInPage               = lazy(() => import('@/features/auth/pages/SignInPage'));
 const ForgotPasswordPage       = lazy(() => import('@/features/auth/pages/ForgotPasswordPage'));
 const AccountActivationPage    = lazy(() => import('@/features/auth/pages/AccountActivationPage'));
+const SponsorActivationPage    = lazy(() => import('@/features/auth/pages/SponsorActivationPage'));
+const SignUpPage               = lazy(() => import('@/features/auth/pages/SignUpPage'));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lazy page imports — Workspace selector
@@ -109,6 +128,7 @@ const SponsorEditPage    = lazy(() => import('@/features/cro/pages/sponsors/Spon
 const StudyListPage      = lazy(() => import('@/features/cro/pages/studies/StudyListPage'));
 const StudyNewPage       = lazy(() => import('@/features/cro/pages/studies/StudyNewPage'));
 const StudyEditPage      = lazy(() => import('@/features/cro/pages/studies/StudyEditPage'));
+const StudyDesignPage    = lazy(() => import('@/features/cro/pages/studies/StudyDesignPage'));
 const TeamMembersPage    = lazy(() => import('@/features/cro/pages/team/TeamMembersPage'));
 const TeamMemberNewPage  = lazy(() => import('@/features/cro/pages/team/TeamMemberNewPage'));
 const TeamRolesPage      = lazy(() => import('@/features/cro/pages/team/TeamRolesPage'));
@@ -118,6 +138,7 @@ const StudyPhasesPage    = lazy(() => import('@/features/cro/pages/masters/Study
 const CountryPage        = lazy(() => import('@/features/cro/pages/masters/CountryPage'));
 const LocationsPage      = lazy(() => import('@/features/cro/pages/masters/LocationsPage'));
 const RegionsPage        = lazy(() => import('@/features/cro/pages/masters/RegionsPage'));
+const AnnotationsPage    = lazy(() => import('@/features/cro/pages/masters/AnnotationsPage'));
 const CROActivityLogPage = lazy(() => import('@/features/cro/pages/activity-log/ActivityLogPage'));
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -131,6 +152,7 @@ const CapturePage            = lazy(() => import('@/features/sponsor/pages/Captu
 const CaptureFormPage        = lazy(() => import('@/features/sponsor/pages/CaptureFormPage'));
 const ConsentConfigPage      = lazy(() => import('@/features/sponsor/pages/ConsentConfigPage'));
 const ConsentReviewPage      = lazy(() => import('@/features/sponsor/pages/ConsentReviewPage'));
+const ConsentSubmissionPage  = lazy(() => import('@/features/sponsor/pages/ConsentSubmissionPage'));
 const QueriesPage            = lazy(() => import('@/features/sponsor/pages/QueriesPage'));
 const VerificationPage       = lazy(() => import('@/features/sponsor/pages/VerificationPage'));
 const SitesPage              = lazy(() => import('@/features/sponsor/pages/SitesPage'));
@@ -146,6 +168,7 @@ const SiteCapturePage                = lazy(() => import('@/features/site/pages/
 const SiteCaptureFormPage            = lazy(() => import('@/features/site/pages/SiteCaptureFormPage'));
 const SiteSubjectFormPage            = lazy(() => import('@/features/site/pages/SiteSubjectFormPage'));
 const SitePersonnelPage              = lazy(() => import('@/features/site/pages/SitePersonnelPage'));
+const SiteQueriesPage                = lazy(() => import('@/features/site/pages/SiteQueriesPage'));
 const SiteFeaturePlaceholderPage     = lazy(() => import('@/features/site/pages/SiteFeaturePlaceholderPage'));
 const RolesPage              = lazy(() => import('@/features/sponsor/pages/RolesPage'));
 const ReportsPage            = lazy(() => import('@/features/sponsor/pages/ReportsPage'));
@@ -263,8 +286,12 @@ export const router = createBrowserRouter([
         element: sp(AuthLayout),
         children: [
           { path: 'signin',            element: sp(SignInPage) },
+          { path: 'signup',            element: sp(SignUpPage) },
           { path: 'forgot-password',   element: sp(ForgotPasswordPage) },
           { path: 'activate',          element: sp(AccountActivationPage) },
+          // Sponsor activation — the invite email links here. Static path
+          // outranks the protected /sponsor/:studyId route in React Router.
+          { path: 'sponsor/activate',  element: sp(SponsorActivationPage) },
         ],
       },
 
@@ -297,9 +324,14 @@ export const router = createBrowserRouter([
           { path: 'capture',                                element: sp(SiteCapturePage) },
           { path: 'capture/subjects/new',                   element: sp(SiteSubjectFormPage) },
           { path: 'capture/subjects/:subjectId/edit',       element: sp(SiteSubjectFormPage) },
-          { path: 'capture/form',                           element: sp(SiteCaptureFormPage) },
-          { path: 'queries',                 element: sp(SiteFeaturePlaceholderPage) },
-          { path: 'verification',            element: sp(SiteFeaturePlaceholderPage) },
+          // 'capture/form' is registered as a top-level standalone route
+          // (see below) so the runner fills the entire viewport, matching
+          // the form-builder Preview's full-screen experience.
+          { path: 'queries',                 element: sp(SiteQueriesPage) },
+          // Site verification reuses the sponsor VerificationPage. The page's
+          // fail-soft loadData() means even if some site endpoints aren't
+          // fully implemented yet the list still renders.
+          { path: 'verification',            element: sp(VerificationPage) },
           { path: 'consent/config',          element: sp(SiteFeaturePlaceholderPage) },
           { path: 'consent/review',          element: sp(SiteFeaturePlaceholderPage) },
           { path: 'reports',                 element: sp(SiteFeaturePlaceholderPage) },
@@ -329,6 +361,46 @@ export const router = createBrowserRouter([
         ],
       },
 
+      // ── CRO Form Builder (standalone — full screen, no CRO sidebar) ──────
+      // Lives outside the CROLayout shell so the builder takes over the
+      // entire viewport. Reached from the "Design Study" action on the
+      // studies list (StudyListPage). Exit returns to /cro/studies.
+      {
+        path: 'cro/studies/:studyId/design',
+        element: (
+          <ProtectedRoute requiredPermission="studies.configure">
+            <Suspense fallback={<PageLoader />}>
+              <StudyDesignPage />
+            </Suspense>
+          </ProtectedRoute>
+        ),
+      },
+
+      // ── Data Capture (sponsor + site, full-screen) ───────────────────────
+      // Both portals open the actual CRF form in a viewport-filling shell so
+      // the runner mirrors the CRO form-builder Preview's full-screen mode
+      // (no sidebar, no topbar). Exit returns to the workspace.
+      {
+        path: 'sponsor/:studyId/capture/form',
+        element: (
+          <ProtectedRoute>
+            <Suspense fallback={<PageLoader />}>
+              <CaptureFormPage />
+            </Suspense>
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: 'site/capture/form',
+        element: (
+          <ProtectedRoute>
+            <Suspense fallback={<PageLoader />}>
+              <SiteCaptureFormPage />
+            </Suspense>
+          </ProtectedRoute>
+        ),
+      },
+
       // ── CRO routes ───────────────────────────────────────────────────────
       {
         path: 'cro',
@@ -350,12 +422,12 @@ export const router = createBrowserRouter([
           { path: 'sponsors/new',          element: sp(SponsorNewPage) },
           { path: 'sponsors/:sponsorId',   element: sp(SponsorEditPage) },
 
-          // Studies list + edit
-          { path: 'studies',               element: sp(StudyListPage) },
-          { path: 'studies/:studyId/edit', element: sp(StudyEditPage) },
+          // Studies list + edit (design is a top-level standalone route — see below)
+          { path: 'studies',                 element: spp(StudyListPage, 'studies.view') },
+          { path: 'studies/:studyId/edit',   element: spp(StudyEditPage, 'studies.edit') },
 
           // Study creation wizard — tab-based, no sub-routes
-          { path: 'studies/new', element: sp(StudyNewPage) },
+          { path: 'studies/new', element: spp(StudyNewPage, 'studies.create') },
 
           // Team
           { path: 'team/members',              element: sp(TeamMembersPage) },
@@ -371,6 +443,7 @@ export const router = createBrowserRouter([
           { path: 'masters/country',         element: sp(CountryPage) },
           { path: 'masters/locations',       element: sp(LocationsPage) },
           { path: 'masters/regions',         element: sp(RegionsPage) },
+          { path: 'masters/annotations',     element: sp(AnnotationsPage) },
 
           // Form builder
           { path: 'forms',           element: sp(FormsListPage) },
@@ -415,8 +488,11 @@ export const router = createBrowserRouter([
 
           { path: 'dashboard',      element: sp(SponsorDashboardPage) },
           { path: 'capture',        element: sp(CapturePage) },
-          { path: 'capture/form',   element: sp(CaptureFormPage) },
+          // 'capture/form' is registered as a top-level standalone route
+          // (see below) so the runner fills the entire viewport, matching
+          // the form-builder Preview's full-screen experience.
           { path: 'consent/config', element: sp(ConsentConfigPage) },
+          { path: 'consent/submit', element: sp(ConsentSubmissionPage) },
           { path: 'consent/review', element: sp(ConsentReviewPage) },
           { path: 'queries',        element: sp(QueriesPage) },
           { path: 'verification',   element: sp(VerificationPage) },

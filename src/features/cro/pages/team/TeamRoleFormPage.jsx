@@ -8,6 +8,7 @@ import { useNavigate, useParams, Link }      from 'react-router-dom';
 import { useDispatch }                       from 'react-redux';
 import { ArrowLeft, ChevronDown, ChevronUp } from 'lucide-react';
 import { rolesClient }   from '@/features/cro/api/rolesClient';
+import DashboardWidgetPicker from '@/features/cro/components/sponsors/DashboardWidgetPicker';
 import { addToast }      from '@/app/notificationSlice';
 import FormField         from '@/components/form/FormField';
 import TextArea          from '@/components/form/TextArea';
@@ -66,6 +67,9 @@ export default function TeamRoleFormPage() {
 
   const [form,        setForm]        = useState(EMPTY_FORM);
   const [permissions, setPermissions] = useState(buildPermissions(false));
+  // Per-role dashboard widget whitelist. null = default (category-leaf
+  // gating); array (possibly empty) = explicit whitelist of widget IDs.
+  const [widgetKeys,  setWidgetKeys]  = useState(null);
   const [errors,      setErrors]      = useState({});
   const [saving,      setSaving]      = useState(false);
   const [loading,     setLoading]     = useState(isEdit);
@@ -80,6 +84,7 @@ export default function TeamRoleFormPage() {
       if (r) {
         setForm({ name: r.name, description: r.description ?? '' });
         setPermissions(r.permissions ?? buildPermissions(false));
+        setWidgetKeys(Array.isArray(r.dashboardWidgetKeys) ? r.dashboardWidgetKeys : null);
       }
       setLoading(false);
     });
@@ -137,6 +142,7 @@ export default function TeamRoleFormPage() {
         name:        form.name.trim(),
         description: form.description.trim(),
         permissions,
+        dashboardWidgetKeys: widgetKeys,
       };
 
       if (isEdit) {
@@ -328,6 +334,11 @@ export default function TeamRoleFormPage() {
             );
           })}
         </div>
+      </div>
+
+      {/* ── Dashboard Cards card ─────────────────────────────────────────── */}
+      <div className={styles.card}>
+        <DashboardWidgetPicker value={widgetKeys} onChange={setWidgetKeys} />
       </div>
 
       {/* ── Footer ───────────────────────────────────────────────────────── */}

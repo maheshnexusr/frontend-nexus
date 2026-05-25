@@ -23,6 +23,8 @@ import NotesPopover        from './runtime/NotesPopover';
 import QueryDrawer         from './runtime/QueryDrawer';
 import AttachmentDrawer    from './runtime/AttachmentDrawer';
 import VerificationPanel   from './runtime/VerificationPanel';
+import ConfirmDialog       from '@/components/feedback/ConfirmDialog';
+import { activityLogService } from '@/services/activityLogService';
 import s from './SFBCanvas.module.css';
 
 const COLLAB_ICONS = [
@@ -192,6 +194,20 @@ function FieldCard({ fld, idx, blockId, pageId, selected }) {
   // Which workflow popover is open for this field, anchored to the icon clicked.
   const [active, setActive] = useState(null); // 'annotations' | 'notes' | 'queries' | 'attachments' | 'verification' | null
   const [anchorRect, setAnchorRect] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const handleDelete = () => {
+    dispatch(removeField({ blockId, pageId, fieldId: fld.id }));
+    activityLogService.record({
+      actionType:  'DELETE',
+      module:      'Study Form Builder',
+      entityType:  'Control',
+      entityId:    fld.id,
+      entityName:  fld.label || fld.type,
+      description: `Deleted ${fld.type} control "${fld.label || fld.id}" from the form canvas.`,
+      beforeValue: { type: fld.type, label: fld.label, required: fld.required ?? false },
+    });
+  };
 
   const openCollab = (key, e) => {
     e.stopPropagation();
@@ -256,11 +272,21 @@ function FieldCard({ fld, idx, blockId, pageId, selected }) {
           <button
             className={`${s.fieldAction} ${s.fieldActionDanger}`}
             title="Delete"
-            onClick={(e) => { e.stopPropagation(); dispatch(removeField({ blockId, pageId, fieldId: fld.id })); }}
+            onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
           >
             <Trash2 size={13} />
           </button>
         </div>
+
+        <ConfirmDialog
+          open={confirmDelete}
+          onClose={() => setConfirmDelete(false)}
+          onConfirm={handleDelete}
+          title="Delete control?"
+          message={`This will permanently remove the "${fld.label || fld.type}" control. Any data or queries already captured for this control will be inaccessible. This action cannot be undone.`}
+          confirmLabel="Delete control"
+          variant="danger"
+        />
 
         {/* Field preview */}
         <FieldPreviewRow fld={fld} />

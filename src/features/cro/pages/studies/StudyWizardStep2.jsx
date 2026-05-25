@@ -17,6 +17,7 @@ import { countriesClient }      from '@/features/cro/api/countriesClient';
 import { studiesClient }        from '@/features/cro/api/studiesClient';
 import { setStep2, selectStep1, selectStep2 } from '@/features/cro/store/studyWizardSlice';
 import { addToast }             from '@/app/notificationSlice';
+import { formatDate }           from '@/utils/formatDate';
 import FormField                from '@/components/form/FormField';
 import FormattedDatePicker      from '@/components/form/FormattedDatePicker';
 import SearchableDropdown       from '@/components/form/SearchableDropdown';
@@ -34,13 +35,7 @@ const CURRENCY_OPTIONS = [
   { value: 'AED', label: 'AED — UAE Dirham' },
 ];
 
-function formatDisplayDate(iso) {
-  if (!iso) return '—';
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!m) return iso;
-  const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-  return `${m[3]}-${months[parseInt(m[2], 10) - 1]}-${m[1]}`;
-}
+const formatDisplayDate = (iso) => formatDate(iso) || '—';
 
 function newMilestoneId() {
   return `ms_${Date.now()}_${Math.floor(Math.random() * 1000)}`;

@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 import {
   Eye, MessageSquare, CheckCircle, AlertTriangle,
   RotateCcw, Download, Filter, Search, X as XIcon,
   RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown,
-  MessageSquareWarning,
+  MessageSquareWarning, FileText, Clock,
 } from 'lucide-react';
 import { sponsorQueryClient }   from '@/features/sponsor/api/sponsorQueryClient';
+import sponsorAxiosClient       from '@/api/sponsorAxiosClient';
 import { addToast }             from '@/app/notificationSlice';
+import { selectCurrentUser }    from '@/features/auth/authSlice';
 import SearchableDropdown       from '@/components/form/SearchableDropdown';
 import QueryDetailsModal        from '@/features/sponsor/components/query/QueryDetailsModal';
 import RespondModal             from '@/features/sponsor/components/query/RespondModal';
@@ -16,11 +18,18 @@ import CloseReopenModal         from '@/features/sponsor/components/query/CloseR
 import EscalateModal            from '@/features/sponsor/components/query/EscalateModal';
 import ConfirmDialog            from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }      from '@/features/workspace/hooks/useReadOnlyView';
+import { formatDate }           from '@/utils/formatDate';
+import PlatformDatePicker       from '@/components/form/PlatformDatePicker';
+import SlaSettingsModal         from '@/features/sponsor/components/sla/SlaSettingsModal';
+import SnapshotButton           from '@/components/feedback/SnapshotButton';
+import { usePermissions }       from '@/features/auth/usePermissions';
 import styles from './QueriesPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS   = ['All', 'Raised', 'Answered', 'Resolved', 'Overdue'];
+// Status quick-filter options — the new spec palette. `All` shows everything;
+// `Overdue` is computed (slaRemaining < 0 OR status === 'Overdue').
+const STATUS_OPTIONS   = ['All', 'Open', 'In Progress', 'Resolved', 'Closed', 'Overdue'];
 const PRIORITY_OPTIONS = ['All', 'High', 'Medium', 'Low'];
 
 const PRIORITY_META = {
@@ -28,37 +37,38 @@ const PRIORITY_META = {
   Medium: { color: '#f59e0b', bg: '#fffbeb', dot: '#f59e0b' },
   Low:    { color: '#3b82f6', bg: '#eff6ff', dot: '#3b82f6' },
 };
-// Query status palette (per requirement):
-//   Raised   #F59E0B (Amber)  — warning / pending action
-//   Answered #2563EB (Blue)   — informational / under review
-//   Resolved #16A34A (Green)  — success / completed
+// Query status palette per spec:
+//   Open         Yellow
+//   In Progress  Blue
+//   Resolved     Green
+//   Closed       Gray
+//   Overdue      Red
+// `Raised` and `Answered` are legacy server values mapped onto Open / In
+// Progress respectively so existing data renders with the spec palette.
 const STATUS_META = {
-  Raised:       { color: '#92400e', bg: '#fef3c7', accent: '#F59E0B' },
-  Answered:     { color: '#1d4ed8', bg: '#dbeafe', accent: '#2563EB' },
-  Resolved:     { color: '#166534', bg: '#dcfce7', accent: '#16A34A' },
-  Open:         { color: '#92400e', bg: '#fef3c7', accent: '#F59E0B' },
-  'In Progress':{ color: '#1d4ed8', bg: '#dbeafe', accent: '#2563EB' },
-  Closed:       { color: '#166534', bg: '#dcfce7', accent: '#16A34A' },
-  Overdue:      { color: '#dc2626', bg: '#fef2f2', accent: '#dc2626' },
+  Open:          { color: '#92400e', bg: '#fef3c7', accent: '#F59E0B' }, // Yellow
+  'In Progress': { color: '#1d4ed8', bg: '#dbeafe', accent: '#2563EB' }, // Blue
+  Resolved:      { color: '#166534', bg: '#dcfce7', accent: '#16A34A' }, // Green
+  Closed:        { color: '#475569', bg: '#f1f5f9', accent: '#94A3B8' }, // Gray
+  Overdue:       { color: '#b91c1c', bg: '#fef2f2', accent: '#DC2626' }, // Red
+  Raised:        { color: '#92400e', bg: '#fef3c7', accent: '#F59E0B' }, // alias → Open
+  Answered:      { color: '#1d4ed8', bg: '#dbeafe', accent: '#2563EB' }, // alias → In Progress
 };
 
-// Map legacy server statuses onto the 3-state palette for display.
-const STATUS_DISPLAY = { Open: 'Raised', 'In Progress': 'Answered', Closed: 'Resolved' };
-const toDisplayStatus = (st) => STATUS_DISPLAY[st] ?? st ?? 'Raised';
+// Map legacy / server alias statuses onto the spec's 4-state palette.
+const STATUS_DISPLAY = { Raised: 'Open', Answered: 'In Progress' };
+const toDisplayStatus = (st) => STATUS_DISPLAY[st] ?? st ?? 'Open';
 
+// Spec: aging is always rendered as `<n>d`. We used to collapse multi-week
+// values into "Nw Md" for compactness; reverted to plain days so the column
+// is one consistent unit and easy to sort visually.
 function fmtAging(days) {
   if (days == null || Number.isNaN(days)) return '—';
-  if (days === 0) return 'Today';
-  if (days < 7)  return `${days}d`;
-  const wk = Math.floor(days / 7);
-  const rem = days % 7;
-  return rem ? `${wk}w ${rem}d` : `${wk}w`;
+  if (days <= 0) return '0d';
+  return `${days}d`;
 }
 
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
-}
+const fmtDate = (iso) => formatDate(iso) || '—';
 
 function SortIcon({ col, sortKey, sortDir }) {
   if (col !== sortKey) return <ChevronsUpDown size={12} style={{ opacity: 0.4 }} />;
@@ -70,13 +80,27 @@ function SortIcon({ col, sortKey, sortDir }) {
 
 export default function QueriesPage() {
   const { studyId } = useParams();
+  const navigate    = useNavigate();
   const dispatch    = useDispatch();
   const ro          = useReadOnlyView();
+  const currentUser = useSelector(selectCurrentUser);
+  // Phase 2 — "My Queries" toggle (filters to queries assigned to me).
+  const [onlyMine, setOnlyMine] = useState(false);
+
+  // SLA Settings modal — open from the header. Visible to any role that can
+  // VIEW queries; edits are gated server-side AND client-side by the discrete
+  // `query_manager.sla_settings` permission.
+  const { has } = usePermissions();
+  const canEditSla = has('query_manager', 'sla_settings');
+  const [slaOpen,  setSlaOpen]  = useState(false);
 
   // ── Data ─────────────────────────────────────────────────────────────────
   const [queries,   setQueries]   = useState([]);
   const [siteOpts,  setSiteOpts]  = useState([]);
   const [loading,   setLoading]   = useState(true);
+  // Study's form id — fallback for opening the form from a query whose row
+  // doesn't carry one (single-form studies).
+  const [studyFormId, setStudyFormId] = useState(null);
 
   // ── Filters ──────────────────────────────────────────────────────────────
   const [statusFilter,   setStatusFilter]   = useState('Open');
@@ -101,7 +125,10 @@ export default function QueriesPage() {
   const [closeTarget,    setClose]     = useState(null);
   const [reopenTarget,   setReopen]    = useState(null);
   const [escalateTarget, setEscalate]  = useState(null);
-  const [bulkCloseOpen,  setBulkClose] = useState(false);
+  const [bulkCloseOpen,    setBulkClose]    = useState(false);
+  // Phase 2 — additional bulk actions
+  const [bulkReassignOpen, setBulkReassign] = useState(false);
+  const [bulkEscalateOpen, setBulkEscalate] = useState(false);
   const [exporting,      setExporting] = useState(false);
 
   // ── Load ──────────────────────────────────────────────────────────────────
@@ -129,11 +156,62 @@ export default function QueriesPage() {
   }, [studyId, statusFilter, priorityFilter, siteFilter, dateFrom, dateTo]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); setSelected(new Set()); }, [statusFilter, priorityFilter, siteFilter, query, dateFrom, dateTo]);
+
+  // Resolve the study's form id once, so the "Open Form" action works even
+  // for query rows that don't carry a form id.
+  useEffect(() => {
+    if (!studyId) return undefined;
+    let cancelled = false;
+    sponsorAxiosClient.get('/api/v1/sponsor/workspace/forms')
+      .then((res) => {
+        if (cancelled) return;
+        const items = res?.items ?? res ?? [];
+        if (items.length) setStudyFormId(items[0].formId ?? items[0].form_id ?? null);
+      })
+      .catch(() => { /* leave null — the action falls back to a toast */ });
+    return () => { cancelled = true; };
+  }, [studyId]);
+
+  // Open the study form for a query's subject, so the Query Manager can review
+  // the data the query was raised against.
+  const openStudyForm = (q) => {
+    const formId = q.formId || studyFormId;
+    if (!formId || !q.subjectId) {
+      dispatch(addToast({ type: 'error', message: 'Cannot open the form — no form or subject for this query.' }));
+      return;
+    }
+    navigate(`/sponsor/${studyId}/capture/form?formId=${formId}&subjectId=${q.subjectId}`);
+  };
+  useEffect(() => { setPage(1); setSelected(new Set()); }, [statusFilter, priorityFilter, siteFilter, query, dateFrom, dateTo, onlyMine]);
 
   // ── Local filter & sort ───────────────────────────────────────────────────
+  const meAssigneeKeys = useMemo(() => new Set(
+    [currentUser?.id, currentUser?.email, currentUser?.username, currentUser?.fullName]
+      .filter(Boolean)
+      .map((s) => String(s).toLowerCase()),
+  ), [currentUser]);
+
+  // Per-study sequential Query ID (1, 2, 3, …) computed from the unfiltered
+  // result set so the same query keeps the same number regardless of the
+  // active filter. Sorted ASC by raised date so #1 is always the oldest.
+  // Shifts on delete; if you need an immutable number, surface it from the BE.
+  const sequenceById = useMemo(() => {
+    const sorted = [...queries].sort((a, b) => {
+      const av = a.raisedDate ?? '';
+      const bv = b.raisedDate ?? '';
+      return av < bv ? -1 : av > bv ? 1 : 0;
+    });
+    const map = new Map();
+    sorted.forEach((q, idx) => map.set(q.id, idx + 1));
+    return map;
+  }, [queries]);
+
   const filtered = useMemo(() => {
-    let rows = queries.filter((q) => {
+    let rows = queries;
+    if (onlyMine) {
+      rows = rows.filter((q) => meAssigneeKeys.has(String(q.assignedTo ?? '').toLowerCase()));
+    }
+    rows = rows.filter((q) => {
       if (!query) return true;
       const s = query.toLowerCase();
       return [q.id, q.queryText, q.fieldName, q.subjectId, q.formName, q.raisedBy]
@@ -154,7 +232,7 @@ export default function QueriesPage() {
       });
     }
     return rows;
-  }, [queries, query, sortKey, sortDir]);
+  }, [queries, query, sortKey, sortDir, onlyMine, meAssigneeKeys]);
 
   const pageData   = useMemo(() => filtered.slice((page - 1) * pageSize, page * pageSize), [filtered, page, pageSize]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -164,15 +242,17 @@ export default function QueriesPage() {
     else { setSortKey(key); setSortDir('desc'); }
   };
 
-  // ── Stats ─────────────────────────────────────────────────────────────────
+  // ── Stats — keyed to the new spec palette. ───────────────────────────────
   const stats = useMemo(() => {
     const byDisplay = (label) => queries.filter((q) => toDisplayStatus(q.status) === label).length;
     return {
-      total:    queries.length,
-      raised:   byDisplay('Raised'),
-      answered: byDisplay('Answered'),
-      resolved: byDisplay('Resolved'),
-      overdue:  queries.filter((q) => q.status === 'Overdue' || (q.slaRemaining < 0 && toDisplayStatus(q.status) !== 'Resolved')).length,
+      total:      queries.length,
+      open:       byDisplay('Open'),
+      inProgress: byDisplay('In Progress'),
+      resolved:   byDisplay('Resolved'),
+      closed:     byDisplay('Closed'),
+      overdue:    queries.filter((q) => q.status === 'Overdue'
+        || (q.slaRemaining < 0 && toDisplayStatus(q.status) !== 'Resolved' && toDisplayStatus(q.status) !== 'Closed')).length,
     };
   }, [queries]);
 
@@ -256,6 +336,49 @@ export default function QueriesPage() {
     }
   };
 
+  // Phase 2 — Bulk Reassign / Bulk Escalate.
+  // Each loops over selected IDs and hits the per-query endpoint (no
+  // dedicated bulk API yet — falls back gracefully and is replaced with a
+  // single batched endpoint when the backend ships).
+  const handleBulkReassign = async (data) => {
+    const ids = [...selected];
+    let ok = 0;
+    for (const id of ids) {
+      try {
+        await sponsorQueryClient.reassign?.(studyId, id, data)
+          ?? await sponsorQueryClient.respond(studyId, id, { responseText: '', assignedTo: data.assignedTo });
+        ok += 1;
+      } catch { /* keep going */ }
+    }
+    if (ok > 0) {
+      dispatch(addToast({ type: 'success', message: `${ok} of ${ids.length} queries reassigned to ${data.assignedTo}.` }));
+      setBulkReassign(false);
+      setSelected(new Set());
+      load();
+    } else {
+      dispatch(addToast({ type: 'error', message: 'Failed to reassign queries.' }));
+    }
+  };
+
+  const handleBulkEscalate = async (data) => {
+    const ids = [...selected];
+    let ok = 0;
+    for (const id of ids) {
+      try {
+        await sponsorQueryClient.escalate(studyId, id, data);
+        ok += 1;
+      } catch { /* keep going */ }
+    }
+    if (ok > 0) {
+      dispatch(addToast({ type: 'success', message: `${ok} of ${ids.length} queries escalated.` }));
+      setBulkEscalate(false);
+      setSelected(new Set());
+      load();
+    } else {
+      dispatch(addToast({ type: 'error', message: 'Failed to escalate queries.' }));
+    }
+  };
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -296,6 +419,14 @@ export default function QueriesPage() {
           <p className={styles.sub}>Track and resolve data queries for this study.</p>
         </div>
         <div className={styles.headerActions}>
+          <button
+            className={styles.btnSecondary}
+            onClick={() => setSlaOpen(true)}
+            title={canEditSla ? 'Configure SLA' : 'View SLA settings'}
+          >
+            <Clock size={13} /> SLA Settings
+          </button>
+          <SnapshotButton leaf="query_manager" filename="queries" className={styles.btnSecondary} />
           <button className={styles.btnSecondary} onClick={handleExport} disabled={exporting}>
             <Download size={13} /> {exporting ? 'Exporting…' : 'Export'}
           </button>
@@ -305,21 +436,32 @@ export default function QueriesPage() {
         </div>
       </div>
 
-      {/* Counts banner — Minimal Dashboard style */}
+      <SlaSettingsModal
+        open={slaOpen}
+        kind="query_manager"
+        canEdit={canEditSla}
+        onClose={() => setSlaOpen(false)}
+      />
+
+      {/* Counts banner — new spec palette. */}
       <div className={styles.statsBar}>
         {[
-          { label: 'Total Queries', value: stats.total,    color: '#0f172a', bg: '#f1f5f9' },
-          { label: 'Raised',        value: stats.raised,   color: '#F59E0B', bg: '#fef3c7' },
-          { label: 'Answered',      value: stats.answered, color: '#2563EB', bg: '#dbeafe' },
-          { label: 'Resolved',      value: stats.resolved, color: '#16A34A', bg: '#dcfce7' },
-          { label: 'Overdue',       value: stats.overdue,  color: '#dc2626', bg: '#fee2e2' },
+          { label: 'Total Queries', value: stats.total,      color: '#0f172a', bg: '#f1f5f9' },
+          { label: 'Open',          value: stats.open,       color: '#92400e', bg: '#fef3c7' },
+          { label: 'In Progress',   value: stats.inProgress, color: '#1d4ed8', bg: '#dbeafe' },
+          { label: 'Resolved',      value: stats.resolved,   color: '#166534', bg: '#dcfce7' },
+          { label: 'Closed',        value: stats.closed,     color: '#475569', bg: '#f1f5f9' },
+          { label: 'Overdue',       value: stats.overdue,    color: '#b91c1c', bg: '#fef2f2' },
         ].map(({ label, value, color, bg }) => (
           <div key={label} className={styles.statCard}>
-            <div className={styles.statCardInner}>
+            <div className={styles.statText}>
               <span className={styles.statValue} style={{ color }}>{value}</span>
               <span className={styles.statLabel}>{label}</span>
             </div>
-            <span className={styles.statIcon} style={{ background: bg, color }}>
+            <span
+              className={styles.statBadge}
+              style={{ background: bg, color }}
+            >
               {label.charAt(0)}
             </span>
           </div>
@@ -329,6 +471,27 @@ export default function QueriesPage() {
       {/* Toolbar */}
       <div className={styles.toolbar}>
         <div className={styles.toolbarLeft}>
+          {/* All Queries / My Queries toggle (Phase 2). */}
+          <div className={styles.filterWrap}>
+            <button
+              type="button"
+              className={`${styles.filterBtn} ${!onlyMine ? styles.filterBtnActive : ''}`}
+              onClick={() => setOnlyMine(false)}
+              title="Show every query in this study"
+            >
+              All Queries
+            </button>
+            <button
+              type="button"
+              className={`${styles.filterBtn} ${onlyMine ? styles.filterBtnActive : ''}`}
+              onClick={() => setOnlyMine(true)}
+              title="Show only queries assigned to me"
+              disabled={meAssigneeKeys.size === 0}
+            >
+              My Queries
+            </button>
+          </div>
+
           {/* Status pills */}
           <div className={styles.filterWrap}>
             <Filter size={13} className={styles.filterIcon} />
@@ -375,9 +538,9 @@ export default function QueriesPage() {
 
           {/* Date range */}
           <div className={styles.dateRange}>
-            <input type="date" className={styles.dateInput} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} title="From" />
+            <PlatformDatePicker className={styles.dateInput} value={dateFrom} onChange={setDateFrom} placeholder="From" />
             <span className={styles.dateSep}>–</span>
-            <input type="date" className={styles.dateInput} value={dateTo}   onChange={(e) => setDateTo(e.target.value)}   title="To"   />
+            <PlatformDatePicker className={styles.dateInput} value={dateTo}   onChange={setDateTo}   placeholder="To" />
           </div>
         </div>
 
@@ -394,6 +557,49 @@ export default function QueriesPage() {
         </div>
       </div>
 
+      {/* Active-filter chips — quick-dismiss for every non-default filter the
+          user has applied. Status / All-vs-My are intentionally NOT shown as
+          chips since they're always-visible pills above. */}
+      {(() => {
+        const chips = [];
+        if (priorityFilter && priorityFilter !== 'All') {
+          chips.push({ key: 'priority', label: `Priority: ${priorityFilter}`, clear: () => setPriorityFilter('All') });
+        }
+        if (siteFilter) {
+          const opt = siteOpts.find((o) => o.value === siteFilter);
+          chips.push({ key: 'site', label: `Site: ${opt?.label ?? siteFilter}`, clear: () => setSiteFilter('') });
+        }
+        if (dateFrom) chips.push({ key: 'from',  label: `From: ${formatDate(dateFrom)}`, clear: () => setDateFrom('') });
+        if (dateTo)   chips.push({ key: 'to',    label: `To: ${formatDate(dateTo)}`,     clear: () => setDateTo('')   });
+        if (query)    chips.push({ key: 'query', label: `Search: "${query}"`,            clear: () => setQuery('')    });
+        if (chips.length === 0) return null;
+        return (
+          <div className={styles.filterChips}>
+            {chips.map((c) => (
+              <span key={c.key} className={styles.filterChip}>
+                {c.label}
+                <button type="button" className={styles.filterChipClear} onClick={c.clear} aria-label={`Clear ${c.key} filter`}>
+                  <XIcon size={11} />
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              className={styles.filterChipsClearAll}
+              onClick={() => {
+                setPriorityFilter('All');
+                setSiteFilter('');
+                setDateFrom('');
+                setDateTo('');
+                setQuery('');
+              }}
+            >
+              Clear all
+            </button>
+          </div>
+        );
+      })()}
+
       {/* Bulk bar */}
       {selectedCount > 0 && (
         <div className={styles.bulkBar}>
@@ -404,6 +610,22 @@ export default function QueriesPage() {
             {...ro.disabledProps('Bulk close queries')}
           >
             <CheckCircle size={13} /> Bulk Close
+          </button>
+          <button
+            className={styles.bulkExport}
+            onClick={() => setBulkReassign(true)}
+            {...ro.disabledProps('Bulk reassign queries')}
+            title="Reassign selected queries to a different user"
+          >
+            <MessageSquare size={13} /> Bulk Reassign
+          </button>
+          <button
+            className={styles.bulkExport}
+            onClick={() => setBulkEscalate(true)}
+            {...ro.disabledProps('Bulk escalate queries')}
+            title="Escalate selected queries"
+          >
+            <AlertTriangle size={13} /> Bulk Escalate
           </button>
           <button className={styles.bulkExport} onClick={handleExport}>
             <Download size={13} /> Export Selected
@@ -482,15 +704,15 @@ export default function QueriesPage() {
                                   : display === 'Answered' ? (q.responseDate || q.raisedDate)
                                   : q.raisedDate;
 
-              const siteLabel = q.siteId
-                ? `${q.siteId}${q.siteName ? ` — ${q.siteName}` : ''}`
-                : (q.siteName || '—');
+              // Site column shows both the code and the name. Either may be
+              // missing depending on what the backend joined in — fall back to
+              // siteId only as a last resort.
+              const siteCode = q.siteCode || '';
+              const siteName = q.siteName || '';
               const subjectLabel = q.subjectId
                 ? `${q.subjectId}${q.subjectInitials ? ` (${q.subjectInitials})` : ''}`
                 : '—';
-              const blockPageLabel = q.blockName && q.pageName
-                ? `${q.blockName} / ${q.pageName}`
-                : (q.pageName || q.blockName || q.formName || '—');
+              const sequenceLabel = sequenceById.get(q.id) ?? '—';
 
               return (
                 <tr
@@ -502,10 +724,35 @@ export default function QueriesPage() {
                       <input type="checkbox" checked={selected.has(q.id)} onChange={() => toggleRow(q.id)} />
                     )}
                   </td>
-                  <td className={styles.td}><code className={styles.qid}>{q.id}</code></td>
-                  <td className={styles.td} title={q.siteName || ''}>{siteLabel}</td>
+                  <td className={styles.td}>
+                    {/* Sequential per-study Query ID — backed by sequenceById.
+                        Hover the cell to see the underlying random id for
+                        support/debugging. */}
+                    <code className={styles.qid} title={q.id}>{sequenceLabel}</code>
+                  </td>
+                  <td className={styles.td} title={[siteCode, siteName].filter(Boolean).join(' — ')}>
+                    {siteCode || siteName ? (
+                      <>
+                        <span className={styles.siteCode}>{siteCode || '—'}</span>
+                        {siteName && (
+                          <span className={styles.siteName}>{siteName}</span>
+                        )}
+                      </>
+                    ) : '—'}
+                  </td>
                   <td className={styles.td}><span className={styles.pill}>{subjectLabel}</span></td>
-                  <td className={styles.td}>{blockPageLabel}</td>
+                  <td className={styles.td}>
+                    {/* Block in grey, Page in black per spec. Either may be
+                        empty depending on the form schema — show only what
+                        the row carries. */}
+                    {(q.blockName || q.pageName) ? (
+                      <>
+                        {q.blockName && <span className={styles.blockName}>{q.blockName}</span>}
+                        {q.blockName && q.pageName && <span className={styles.blockPageSep}> / </span>}
+                        {q.pageName && <span className={styles.pageName}>{q.pageName}</span>}
+                      </>
+                    ) : (q.formName || '—')}
+                  </td>
                   <td className={styles.td}><span className={styles.fieldName}>{q.fieldName || '—'}</span></td>
                   <td className={styles.td}>
                     <span className={styles.queryText} title={q.queryText}>
@@ -541,6 +788,9 @@ export default function QueriesPage() {
                   <td className={styles.tdActions}>
                     <button className={styles.actionBtn} title="View Details" onClick={() => setDetails(q)}>
                       <Eye size={12} />
+                    </button>
+                    <button className={styles.actionBtn} title="Open Study Form" onClick={() => openStudyForm(q)}>
+                      <FileText size={12} />
                     </button>
                     {isActive && (
                       <>
@@ -667,6 +917,83 @@ export default function QueriesPage() {
           onClose={() => setBulkClose(false)}
         />
       )}
+
+      {bulkReassignOpen && (
+        <BulkSimplePrompt
+          title={`Reassign ${selectedCount} quer${selectedCount !== 1 ? 'ies' : 'y'}`}
+          fieldLabel="Assign to (email or username) *"
+          placeholder="user@org.com"
+          submitLabel="Reassign"
+          onSubmit={(value) => handleBulkReassign({ assignedTo: value })}
+          onClose={() => setBulkReassign(false)}
+        />
+      )}
+
+      {bulkEscalateOpen && (
+        <BulkSimplePrompt
+          title={`Escalate ${selectedCount} quer${selectedCount !== 1 ? 'ies' : 'y'}`}
+          fieldLabel="Escalation reason *"
+          placeholder="Reason for escalation…"
+          submitLabel="Escalate"
+          isTextarea
+          onSubmit={(value) => handleBulkEscalate({ escalationReason: value })}
+          onClose={() => setBulkEscalate(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Tiny inline prompt used by Bulk Reassign / Bulk Escalate ──────────── */
+function BulkSimplePrompt({ title, fieldLabel, placeholder, submitLabel, isTextarea, onSubmit, onClose }) {
+  const [value, setValue] = useState('');
+  const Input = isTextarea ? 'textarea' : 'input';
+  return (
+    <div
+      role="dialog"
+      aria-label={title}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 1100, padding: 16,
+      }}
+    >
+      <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 420, boxShadow: '0 18px 40px rgba(15,23,42,0.25)' }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', fontWeight: 700, color: '#0f172a' }}>{title}</div>
+        <div style={{ padding: '16px 18px' }}>
+          <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
+            {fieldLabel}
+          </label>
+          <Input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={placeholder}
+            rows={isTextarea ? 3 : undefined}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: 10, fontSize: 13, color: '#0f172a',
+              border: '1px solid #e2e8f0', borderRadius: 8, outline: 'none',
+              resize: isTextarea ? 'vertical' : 'none',
+            }}
+            autoFocus
+          />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 18px', borderTop: '1px solid #f1f5f9', background: '#fafbff', borderRadius: '0 0 12px 12px' }}>
+          <button type="button" onClick={onClose} style={{ padding: '6px 14px', background: '#fff', color: '#475569', border: '1px solid #cbd5e1', borderRadius: 7, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+          <button
+            type="button"
+            onClick={() => onSubmit(value.trim())}
+            disabled={!value.trim()}
+            style={{
+              padding: '6px 14px', background: '#2563eb', color: '#fff',
+              border: 'none', borderRadius: 7, fontSize: 12.5, fontWeight: 600,
+              cursor: value.trim() ? 'pointer' : 'not-allowed', opacity: value.trim() ? 1 : 0.55,
+            }}
+          >
+            {submitLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

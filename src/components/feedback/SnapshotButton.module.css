@@ -1,0 +1,30 @@
+/* SnapshotButton — neutral secondary button that slots into any toolbar.
+   The host page can override with its own className for visual consistency
+   with the surrounding header buttons (Export, Refresh, etc.). */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-medium, #cbd5e1);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text-primary, #0f172a);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.spin { animation: snap-spin 0.7s linear infinite; }
+@keyframes snap-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

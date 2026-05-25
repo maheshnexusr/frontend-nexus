@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { selectElements, selectFormSettings } from '@/features/form-builder/store/formSlice';
+import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import s from './PreviewMode.module.css';
 
 function evalConditions(element, formData, allElements) {
@@ -151,14 +152,16 @@ function PreviewField({ element, value, onChange, error }) {
       );
     case 'tags':
       return <Wrap><TagInput value={Array.isArray(value)?value:[]} onChange={onChange} placeholder={element.placeholder} /></Wrap>;
-    case 'date': case 'datetime': case 'time':
-      return <Wrap><input className={inputCls} type={type==='time'?'time':type==='datetime'?'datetime-local':'date'} value={value||''} onChange={e=>onChange(e.target.value)} /></Wrap>;
+    case 'date':
+      return <Wrap><PlatformDatePicker className={inputCls} value={value || ''} onChange={onChange} /></Wrap>;
+    case 'datetime': case 'time':
+      return <Wrap><input className={inputCls} type={type==='time'?'time':'datetime-local'} value={value||''} onChange={e=>onChange(e.target.value)} /></Wrap>;
     case 'dates': case 'daterange':
       return (
         <Wrap>
           <div className={s.dateRow}>
-            <input className={inputCls} type="date" value={(Array.isArray(value)?value[0]:'')||''} onChange={e=>onChange([e.target.value,Array.isArray(value)?value[1]:''])} />
-            {type==='daterange'&&<><span className={s.dateSep}>to</span><input className={inputCls} type="date" value={(Array.isArray(value)?value[1]:'')||''} onChange={e=>onChange([Array.isArray(value)?value[0]:'',e.target.value])} /></>}
+            <PlatformDatePicker className={inputCls} value={(Array.isArray(value)?value[0]:'')||''} onChange={(iso)=>onChange([iso, Array.isArray(value)?value[1]:''])} />
+            {type==='daterange'&&<><span className={s.dateSep}>to</span><PlatformDatePicker className={inputCls} value={(Array.isArray(value)?value[1]:'')||''} onChange={(iso)=>onChange([Array.isArray(value)?value[0]:'', iso])} /></>}
           </div>
         </Wrap>
       );

@@ -20,6 +20,8 @@
 import sponsorAxiosClient from '@/api/sponsorAxiosClient';
 
 const BASE = '/api/v1/sponsor/workspace/sites';
+// Auth-only reference list for form dropdowns — no `sites` permission needed.
+const LOOKUP = '/api/v1/sponsor/workspace/lookups/sites';
 
 // ── Normalizers ────────────────────────────────────────────────────────────────
 
@@ -163,6 +165,17 @@ export const sponsorSitesClient = {
     return arr.map(normalizeSite);
   },
 
+  /** GET /lookups/sites — auth-only reference list for form dropdowns
+   *  (site picker on the subject / personnel / query forms). */
+  async lookup(_studyId, filters = {}) {
+    const params = {};
+    if (filters.status && filters.status !== 'All') params.status = filters.status;
+    const res = await sponsorAxiosClient.get(LOOKUP, { params });
+    const arr = Array.isArray(res) ? res
+            : (res?.sites ?? res?.items ?? res?.data ?? []);
+    return arr.map(normalizeSite);
+  },
+
   /** GET /sites/:siteId — detail. */
   async getById(_studyId, siteId) {
     const res = await sponsorAxiosClient.get(`${BASE}/${siteId}`);
@@ -242,10 +255,10 @@ export const sponsorSitesClient = {
     };
   },
 
-  /** GET /sites/countries — non-spec helper for the filter dropdown. */
+  /** GET /lookups/countries — auth-only country list for the filter dropdown. */
   async getCountries(_studyId) {
     try {
-      const res = await sponsorAxiosClient.get(`${BASE}/countries`);
+      const res = await sponsorAxiosClient.get('/api/v1/sponsor/workspace/lookups/countries');
       const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
       return arr.map((c) => (typeof c === 'string' ? c : (c.name ?? c.country ?? '')));
     } catch { return []; }

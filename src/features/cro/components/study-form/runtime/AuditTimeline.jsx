@@ -1,5 +1,6 @@
 import { useSelector } from 'react-redux';
 import { selectAuditForField } from '@/features/cro/store/formRuntimeSlice';
+import { formatDateTime } from '@/utils/formatDate';
 import Popover from './Popover';
 import s from './runtime.module.css';
 
@@ -19,11 +20,20 @@ const ACTION_LABELS = {
   'attachment.removed':      'Attachment removed',
   'verification.verified':   'Field verified',
   'verification.unverified': 'Verification removed',
+  // Phase 1 — form status workflow
+  'form.statusChanged':      'Form status changed',
+  'field.locked':            'Field locked',
+  'field.unlocked':          'Field unlocked',
+  'field.frozen':            'Field frozen',
+  'field.unfrozen':          'Field unfrozen',
+  // Phase 3 — signature + approval
+  'form.signed':             'Form signed',
+  'form.signatureRevoked':   'Signature revoked',
+  'form.approved':           'Form approved',
+  'form.approvalRevoked':    'Approval revoked',
 };
 
-function fmt(iso) {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
+const fmt = (iso) => formatDateTime(iso);
 
 function detailFor(entry) {
   const m = entry.meta ?? {};
@@ -41,6 +51,11 @@ function detailFor(entry) {
     case 'annotation.added':    return m.comment;
     case 'attachment.added':
     case 'attachment.removed':  return m.fileName;
+    case 'form.statusChanged':  return `${m.from} → ${m.to}${m.reason ? ` · "${m.reason}"` : ''}`;
+    case 'field.locked':
+    case 'field.unlocked':
+    case 'field.frozen':
+    case 'field.unfrozen':      return m.reason ?? null;
     default:                    return null;
   }
 }

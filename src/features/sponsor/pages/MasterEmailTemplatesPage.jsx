@@ -12,6 +12,7 @@ import { addToast } from '@/app/notificationSlice';
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import { useReadOnlyView } from '@/features/workspace/hooks/useReadOnlyView';
 import { emailTemplateService } from '@/services/emailTemplateService';
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 import styles from './MasterEmailTemplatesPage.module.css';
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
@@ -100,7 +101,7 @@ const SAMPLE_VALUES = {
   '{ActivationLink}':        'https://app.example.com/activate/def456',
   '{DeviceInfo}':            'Chrome on Windows 11',
   '{DeviceLocation}':        'Chennai, India',
-  '{LoginTime}':             new Date().toLocaleString(),
+  '{LoginTime}':             formatDateTime(new Date()),
   '{AdverseEventID}':        'AE-2026-042',
   '{AdverseEventDescription}': 'Mild headache reported after dose 2.',
   '{Severity}':              'Mild',
@@ -119,7 +120,7 @@ const SAMPLE_VALUES = {
   '{ReviewerName}':          'Dr. Sarah Kim',
   '{RejectionReason}':       'Incomplete CRF data on Visit 3.',
   '{SupportEmail}':          'support@sclin.com',
-  '{CurrentDate}':           new Date().toLocaleDateString(),
+  '{CurrentDate}':           formatDate(new Date()),
   '{CurrentTime}':           new Date().toLocaleTimeString(),
 };
 

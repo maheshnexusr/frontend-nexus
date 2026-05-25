@@ -53,10 +53,15 @@ export const sponsorStudyContextStore = {
     try { return JSON.parse(localStorage.getItem(SPONSOR_CONTEXT_KEY) ?? 'null'); }
     catch { return null; }
   },
-  set: ({ studyId, environment, studyContextToken }) => {
+  set: ({ studyId, environment, studyContextToken, permissions }) => {
     if (!studyId || !environment) return;
     localStorage.setItem(SPONSOR_CONTEXT_KEY, JSON.stringify({
-      studyId, environment, studyContextToken: studyContextToken ?? null,
+      studyId,
+      environment,
+      studyContextToken: studyContextToken ?? null,
+      // Per-study sponsor permission tree from POST /sponsor/studies/choose —
+      // consumed by useSiteRolePermissions to gate the workspace menu/buttons.
+      permissions: permissions ?? null,
     }));
   },
   clear: () => localStorage.removeItem(SPONSOR_CONTEXT_KEY),
@@ -180,7 +185,12 @@ function normalizeStudyAssignment(raw) {
     sponsorName:     raw.sponsorName      ?? raw.sponsor_name      ?? '',
     accessStartsAt:  raw.accessStartsAt   ?? raw.access_starts_at  ?? null,
     accessEndsAt:    raw.accessEndsAt     ?? raw.access_ends_at    ?? null,
-    config:          null,
+    // Step 3 module toggles from the wizard. The backend now joins
+    // cro_study_configuration and emits these on every list row. SponsorLayout
+    // reads this to gate Consent / Query Manager / Verification Manager menu
+    // entries. Falls back to null only when the wire shape doesn't include
+    // it (legacy responses) — resolveStudyConfig handles null safely.
+    config:          raw.config ?? null,
   };
 }
 
@@ -217,6 +227,10 @@ export const sponsorStudiesService = {
       studyId:           id,
       environment,
       studyContextToken: res?.studyContextToken ?? res?.study_context_token,
+      // The choose response carries the sponsor's per-study permission tree
+      // (buildSponsorView). Persist it so the workspace menu + in-page gating
+      // reflect exactly what the CRO granted for this study in Step 1.
+      permissions:       res?.permissions ?? res?.permission ?? null,
     });
     return res;
   },

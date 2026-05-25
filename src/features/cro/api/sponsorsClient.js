@@ -27,6 +27,7 @@ function normalize(raw) {
     countryId:          raw.country_id           ?? raw.countryId ?? '',
     countryName:        raw.country_name         ?? raw.countryName ?? '',
     status:             raw.status               ?? 'Active',
+    isReadOnly:         raw.is_read_only          ?? raw.isReadOnly ?? false,
     createdAt:          raw.created_at           ?? raw.createdAt,
     updatedAt:          raw.updated_at           ?? raw.updatedAt,
   };
@@ -61,6 +62,8 @@ function toFormData(form) {
   add('state',               form.state);
   add('postal_code',         form.zipcode);
   add('status',              form.status);
+  // Always sent (even when false) so an edit can clear the flag.
+  fd.append('is_read_only',  form.isReadOnly ? 'true' : 'false');
 
   if (form.photograph) {
     if (form.photograph instanceof File || form.photograph instanceof Blob) {

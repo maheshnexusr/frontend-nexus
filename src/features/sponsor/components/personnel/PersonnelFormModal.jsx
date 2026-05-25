@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
-import { FileText, ExternalLink } from 'lucide-react';
+import { useState } from 'react';
 import Modal from '@/components/feedback/Modal';
-import { sponsorPersonnelClient } from '../../api/sponsorPersonnelClient';
+import SearchableDropdown from '@/components/form/SearchableDropdown';
 import css from './PersonnelFormModal.module.css';
 
 /**
@@ -27,14 +26,6 @@ const ROLES = [
   'Other',
 ];
 
-// Role → default template label (used as hint when no templates load)
-const ROLE_TEMPLATE_HINT = {
-  'Principal Investigator': 'PI Consent Template',
-  'Site Coordinator':       'Site Coordinator Consent Template',
-  'Study Nurse':            'Site Personnel Consent Template',
-  'Subject/Patient':        'Subject Consent Template',
-};
-
 const COMP_TYPES      = ['None', 'Per Study', 'Per Subject', 'Per Visit', 'Milestone Based'];
 const CURRENCIES      = ['USD', 'EUR', 'GBP', 'INR', 'AUD', 'CAD', 'JPY', 'CHF'];
 const PAY_SCHEDULES   = ['One-time', 'Monthly', 'Quarterly', 'Upon Completion', 'Milestone-based'];
@@ -50,14 +41,17 @@ const EMPTY_COMP = {
 };
 
 const EMPTY = {
-  fullName:          '',
-  email:             '',
-  role:              '',
-  siteId:            '',
-  status:            'Active',
-  consentRequired:   true,
-  consentTemplateId: '',
-  compensation:      { ...EMPTY_COMP },
+  fullName:     '',
+  email:        '',
+  role:         '',
+  // Multi-site assignment: `siteIds` is the authoritative list. First entry
+  // becomes the primary `site_id` on the backend; rest land in
+  // `additional_site_ids`. `siteId` is kept in the form state for back-compat
+  // and is always derived from `siteIds[0]`.
+  siteIds:      [],
+  allSites:     false,
+  status:       'Active',
+  compensation: { ...EMPTY_COMP },
 };
 
 function validate(form, isEdit) {
@@ -67,8 +61,10 @@ function validate(form, isEdit) {
     if (!form.email.trim())                                 e.email = 'Email Address is required.';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'Email Address must be valid.';
   }
-  if (!form.role)                                           e.role    = 'Role is required.';
-  if (!form.siteId)                                         e.siteId  = 'Site Name is required.';
+  if (!form.role)                                                  e.role    = 'Role is required.';
+  if (!form.allSites && (!form.siteIds || form.siteIds.length === 0)) {
+    e.siteIds = 'Select at least one site (or tick All sites).';
+  }
   if (form.compensation.type !== 'None') {
     const amt = Number(form.compensation.amount);
     if (!form.compensation.amount || isNaN(amt) || amt <= 0)
@@ -82,43 +78,30 @@ function validate(form, isEdit) {
 export default function PersonnelFormModal({ studyId, personnel, sites, onSave, onClose }) {
   const isEdit = !!personnel;
 
-  const [form,       setForm]       = useState(() =>
-    personnel
-      ? { ...EMPTY, ...personnel, compensation: { ...EMPTY_COMP, ...(personnel.compensation ?? {}) } }
-      : { ...EMPTY },
-  );
+  const [form,       setForm]       = useState(() => {
+    if (!personnel) return { ...EMPTY };
+    // Hydrate siteIds from whichever shape the personnel record carries.
+    // Newer backend rows surface `site_ids` (array); legacy rows only have
+    // a single `siteId`. The `allSites` flag is implicit — set if the
+    // hydrated list covers every site in the study.
+    const hydratedSiteIds =
+         (Array.isArray(personnel.siteIds)  && personnel.siteIds)
+      ?? (Array.isArray(personnel.site_ids) && personnel.site_ids)
+      ?? (personnel.siteId ? [personnel.siteId] : []);
+    const allSites = hydratedSiteIds.length > 0
+      && sites?.length > 0
+      && hydratedSiteIds.length === sites.length;
+    return {
+      ...EMPTY,
+      ...personnel,
+      siteIds:  hydratedSiteIds,
+      allSites,
+      compensation: { ...EMPTY_COMP, ...(personnel.compensation ?? {}) },
+    };
+  });
   const [errors,     setErrors]     = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [apiError,   setApiError]   = useState('');
-
-  // Consent templates
-  const [templates,    setTemplates]    = useState([]);
-  const [tmplLoading,  setTmplLoading]  = useState(false);
-
-  // ── Load templates when role changes ──────────────────────────────────────
-
-  const loadTemplates = useCallback(async (role) => {
-    if (!role) return;
-    setTmplLoading(true);
-    try {
-      const list = await sponsorPersonnelClient.getConsentTemplates(studyId, role);
-      setTemplates(list);
-      // auto-select first template if none selected
-      if (list.length > 0 && !form.consentTemplateId) {
-        setForm((prev) => ({ ...prev, consentTemplateId: list[0].id }));
-      }
-    } catch {
-      setTemplates([]);
-    } finally {
-      setTmplLoading(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studyId]);
-
-  useEffect(() => {
-    if (form.role) loadTemplates(form.role);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.role]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -134,8 +117,6 @@ export default function PersonnelFormModal({ studyId, personnel, sites, onSave, 
 
   function handleRoleChange(role) {
     set('role', role);
-    set('consentTemplateId', '');
-    setTemplates([]);
   }
 
   // ── Submit ────────────────────────────────────────────────────────────────
@@ -156,10 +137,6 @@ export default function PersonnelFormModal({ studyId, personnel, sites, onSave, 
       setSubmitting(false);
     }
   }
-
-  // ── Selected template metadata ────────────────────────────────────────────
-
-  const selectedTemplate = templates.find((t) => t.id === form.consentTemplateId);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -213,15 +190,36 @@ export default function PersonnelFormModal({ studyId, personnel, sites, onSave, 
                 {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </Field>
-            <Field label="Site" req error={errors.siteId}>
-              <select
-                className={`${css.input} ${errors.siteId ? css.inputError : ''}`}
-                value={form.siteId}
-                onChange={(e) => set('siteId', e.target.value)}
-              >
-                <option value="">— Select Site —</option>
-                {sites.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-              </select>
+            <Field label="Sites" req error={errors.siteIds}>
+              {/* Multi-site assignment. "All sites" is a shortcut that snaps
+                  siteIds to every site in the study; toggling it off restores
+                  the previous selection. The first selected site becomes the
+                  primary on the backend. */}
+              <div className={css.multiSiteWrap}>
+                <label className={css.allSitesRow}>
+                  <input
+                    type="checkbox"
+                    checked={!!form.allSites}
+                    onChange={(e) => {
+                      const all = e.target.checked;
+                      set('allSites', all);
+                      if (all) set('siteIds', sites.map((s) => s.id));
+                    }}
+                  />
+                  <span>Assign to <strong>all sites</strong> in this study</span>
+                </label>
+                {!form.allSites && (
+                  <SearchableDropdown
+                    options={sites.map((s) => ({ value: s.id, label: s.label }))}
+                    value={form.siteIds}
+                    onChange={(val) => set('siteIds', Array.isArray(val) ? val : (val ? [val] : []))}
+                    multiple
+                    placeholder="Select one or more sites…"
+                    searchPlaceholder="Search sites…"
+                    clearable
+                  />
+                )}
+              </div>
             </Field>
             <Field label="Status">
               <select
@@ -236,66 +234,10 @@ export default function PersonnelFormModal({ studyId, personnel, sites, onSave, 
           </div>
         </div>
 
-        {/* ── B: Consent Template ──────────────────────────────────────── */}
-        <div className={css.section}>
-          <h3 className={css.sectionTitle}>Consent Template</h3>
-
-          <div className={css.consentRequiredRow}>
-            <label className={css.checkLabel}>
-              <input
-                type="checkbox"
-                checked={form.consentRequired}
-                onChange={(e) => set('consentRequired', e.target.checked)}
-              />
-              <span>Consent Required</span>
-            </label>
-            <span className={css.consentHint}>
-              {form.consentRequired
-                ? 'User must complete consent before accessing the system.'
-                : 'User can access system without completing consent.'}
-            </span>
-          </div>
-
-          {form.consentRequired && (
-            <>
-              {!form.role ? (
-                <p className={css.tmplNote}>Select a role to load applicable consent templates.</p>
-              ) : tmplLoading ? (
-                <p className={css.tmplNote}>Loading templates…</p>
-              ) : templates.length > 0 ? (
-                <div className={css.tmplList}>
-                  {templates.map((t) => (
-                    <label key={t.id} className={`${css.tmplOption} ${form.consentTemplateId === t.id ? css.tmplOptionActive : ''}`}>
-                      <input
-                        type="radio"
-                        name="consentTemplate"
-                        value={t.id}
-                        checked={form.consentTemplateId === t.id}
-                        onChange={() => set('consentTemplateId', t.id)}
-                      />
-                      <div className={css.tmplInfo}>
-                        <span className={css.tmplName}>{t.name}</span>
-                        <span className={css.tmplMeta}>
-                          v{t.version || '1.0'}
-                          {t.updatedAt && ` · Updated ${new Date(t.updatedAt).toLocaleDateString()}`}
-                        </span>
-                      </div>
-                      <ExternalLink size={12} className={css.tmplPreview} title="Preview template" />
-                    </label>
-                  ))}
-                </div>
-              ) : (
-                <div className={css.tmplFallback}>
-                  <FileText size={14} />
-                  <span>
-                    Default template: <strong>{ROLE_TEMPLATE_HINT[form.role] ?? 'Site Personnel Consent Template'}</strong>
-                    {' '}(will be applied automatically)
-                  </span>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+        {/* Consent Template section removed per spec — consent management
+            lives entirely in the dedicated Consent Builder / Submission /
+            Review pages now; personnel records no longer carry consent
+            requirements or template selection. */}
 
         {/* ── C: Compensation ──────────────────────────────────────────── */}
         <div className={css.section}>

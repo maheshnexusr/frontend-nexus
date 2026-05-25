@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import Modal from '@/components/feedback/Modal';
 import { sponsorConsentReviewClient } from '@/features/sponsor/api/sponsorConsentReviewClient';
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 import styles from './ConsentDetailsModal.module.css';
 
 const STATUS_META = {
@@ -23,16 +24,8 @@ const TABS = [
   { key: 'audit',      label: 'Audit Trail',     icon: Clock     },
 ];
 
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: 'medium', timeStyle: 'short',
-  });
-}
-function fmtDateShort(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
-}
+const fmtDate      = (iso) => formatDateTime(iso) || '—';
+const fmtDateShort = (iso) => formatDate(iso)     || '—';
 function fmtSize(bytes) {
   if (!bytes) return '';
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

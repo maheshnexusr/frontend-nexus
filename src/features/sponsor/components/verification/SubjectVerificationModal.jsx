@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import Modal from '@/components/feedback/Modal';
 import { sponsorVerificationClient } from '@/features/sponsor/api/sponsorVerificationClient';
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 import styles from './SubjectVerificationModal.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -31,10 +32,7 @@ const QC_META = {
   info:    { color: '#2563eb', Icon: Info          },
 };
 
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
-}
+const fmtDate = (iso) => formatDate(iso) || '—';
 
 const TABS = [
   { key: 'forms',  label: 'Forms & Fields', icon: ShieldCheck },
@@ -310,7 +308,7 @@ export default function SubjectVerificationModal({ studyId, subject, onClose, on
               <span className={styles.timelineAction}>{e.action}</span>
               <div className={styles.timelineMeta}>
                 {e.performedBy && <span>by <strong>{e.performedBy}</strong></span>}
-                <span>{e.timestamp ? new Date(e.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : ''}</span>
+                <span>{formatDateTime(e.timestamp)}</span>
               </div>
               {e.details && <p className={styles.timelineDetails}>{e.details}</p>}
             </div>

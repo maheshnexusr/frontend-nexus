@@ -5,6 +5,7 @@ import {
   selectFieldBucket, addAttachment, removeAttachment,
 } from '@/features/cro/store/formRuntimeSlice';
 import { selectCurrentUser } from '@/features/auth/authSlice';
+import { formatDateTime } from '@/utils/formatDate';
 import Popover from './Popover';
 import s from './runtime.module.css';
 
@@ -15,9 +16,7 @@ function fmtSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function fmt(iso) {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
+const fmt = (iso) => formatDateTime(iso);
 
 export default function AttachmentDrawer({ fieldId, fieldLabel, anchorRect, onClose }) {
   const dispatch = useDispatch();

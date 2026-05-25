@@ -110,9 +110,7 @@ export default function TeamMemberViewModal({ member, onClose, onEdit }) {
         {/* Footer */}
         <div className={styles.footer}>
           <span className={styles.createdAt}>
-            {member.createdAt
-              ? `Added ${new Date(member.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}`
-              : ''}
+            {member.createdAt ? `Added ${formatDate(member.createdAt)}` : ''}
           </span>
           <button className={styles.btnClose} onClick={onClose}>Close</button>
         </div>

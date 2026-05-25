@@ -62,10 +62,28 @@ export const locationsClient = {
     return axiosClient.delete(`/api/v1/masters/locations/${id}`);
   },
 
-  async bulkImport(file) {
+  /**
+   * Bulk-import locations from a CSV or XLSX file.
+   *
+   * Backend contract:
+   *   - File: `Locations.csv` or `Locations.xlsx` (sheet name `Locations`)
+   *   - Columns: Country Name, State/Province, District/County, City,
+   *              Postal Code, Status
+   *   - Duplicates are matched on (Country, State/Province, City, Postal Code).
+   *   - Rows whose Country Name doesn't exist in the master Countries table
+   *     are rejected (not added) and counted as "skipped".
+   *   - Successful imports are recorded in the master Activity Log.
+   *
+   * `onProgress` is invoked with a percentage (0–100) as the file uploads.
+   */
+  async bulkImport(file, { onProgress } = {}) {
     const fd = new FormData();
     fd.append('file', file);
     return axiosClient.post('/api/v1/masters/locations/import', fd, {
+      onUploadProgress: (evt) => {
+        if (!onProgress || !evt?.total) return;
+        onProgress(Math.round((evt.loaded * 100) / evt.total));
+      },
     });
   },
 

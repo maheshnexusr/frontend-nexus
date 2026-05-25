@@ -1,31 +1,50 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams }    from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch }  from 'react-redux';
 import {
   CheckCircle, Clock, AlertTriangle, XCircle, BarChart2,
   Search, X, RefreshCw, Download, Filter, ChevronUp, ChevronDown,
-  ChevronsUpDown, Eye, Shield, ThumbsUp, ThumbsDown,
+  ChevronsUpDown, Eye, Shield, ThumbsUp, ThumbsDown, FileText,
 } from 'lucide-react';
 
 import { addToast }                   from '@/app/notificationSlice';
 import { sponsorVerificationClient }  from '../api/sponsorVerificationClient';
+import sponsorAxiosClient             from '@/api/sponsorAxiosClient';
 import SubjectVerificationModal       from '../components/verification/SubjectVerificationModal';
 import VerifyActionModal              from '../components/verification/VerifyActionModal';
 import { useReadOnlyView }            from '@/features/workspace/hooks/useReadOnlyView';
+import { formatDate }                 from '@/utils/formatDate';
+import PlatformDatePicker             from '@/components/form/PlatformDatePicker';
+import SlaSettingsModal               from '@/features/sponsor/components/sla/SlaSettingsModal';
+import SnapshotButton                 from '@/components/feedback/SnapshotButton';
+import { usePermissions }             from '@/features/auth/usePermissions';
 import css from './VerificationPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// Verification status palette per spec:
+//   Not Verified         Gray   ○
+//   In Verification      Blue   ◔
+//   Partially Verified   Amber  ◑  (spec doesn't list a colour, but logically between In Verification and Verified)
+//   Verified             Green  ✔
+//   Overdue              Red    ⚠
+// Legacy server statuses (Pending / In Review / Approved / Rejected /
+// Queried) map onto the new palette so existing data still renders.
 const STATUS_META = {
-  Pending:    { color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
-  'In Review':{ color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' },
-  Verified:   { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0' },
-  Approved:   { color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
-  Rejected:   { color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
-  Queried:    { color: '#f59e0b', bg: '#fffbeb', border: '#fde68a' },
+  'Not Verified':       { color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' }, // Gray
+  'In Verification':    { color: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe' }, // Blue
+  'Partially Verified': { color: '#b45309', bg: '#fef3c7', border: '#fcd34d' }, // Amber
+  Verified:             { color: '#15803d', bg: '#dcfce7', border: '#a7f3d0' }, // Green
+  Overdue:              { color: '#b91c1c', bg: '#fef2f2', border: '#fecaca' }, // Red
+  // Legacy aliases
+  Pending:    { color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' },   // → Not Verified
+  'In Review':{ color: '#1d4ed8', bg: '#dbeafe', border: '#bfdbfe' },   // → In Verification
+  Approved:   { color: '#15803d', bg: '#dcfce7', border: '#a7f3d0' },   // → Verified
+  Rejected:   { color: '#b91c1c', bg: '#fef2f2', border: '#fecaca' },   // surfaces as a separate state today
+  Queried:    { color: '#b45309', bg: '#fef3c7', border: '#fcd34d' },   // → Partially Verified
 };
 
-const ALL_STATUSES = ['Pending', 'In Review', 'Verified', 'Approved', 'Rejected', 'Queried'];
+const ALL_STATUSES = ['Not Verified', 'In Verification', 'Partially Verified', 'Verified', 'Overdue'];
 
 const COLS = [
   { key: 'id',               label: 'Subject ID',       sortable: true  },
@@ -43,11 +62,7 @@ const PAGE_SIZES = [20, 50, 100];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtDate(str) {
-  if (!str) return '—';
-  try { return new Date(str).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); }
-  catch { return str; }
-}
+const fmtDate = (str) => formatDate(str) || '—';
 
 function progressColor(pct) {
   if (pct >= 80) return '#10b981';
@@ -64,8 +79,15 @@ function SortIcon({ colKey, sort }) {
 
 export default function VerificationPage() {
   const { studyId } = useParams();
+  const navigate    = useNavigate();
   const dispatch    = useDispatch();
   const ro          = useReadOnlyView();
+
+  // SLA Settings modal — same pattern as QueriesPage but for the
+  // data_verification leaf.
+  const { has } = usePermissions();
+  const canEditSla = has('data_verification', 'sla_settings');
+  const [slaOpen,  setSlaOpen]  = useState(false);
 
   // Data
   const [metrics,   setMetrics]   = useState(null);
@@ -73,6 +95,8 @@ export default function VerificationPage() {
   const [sites,     setSites]     = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [refreshing,setRefreshing]= useState(false);
+  // Study's form id — used to open the study form from a subject row.
+  const [studyFormId, setStudyFormId] = useState(null);
 
   // Filters
   const [activeStatuses, setActiveStatuses] = useState(['Pending', 'In Review']);
@@ -108,16 +132,23 @@ export default function VerificationPage() {
         ...(dateTo       ? { dateTo }                    : {}),
         ...(minComplete  ? { minComplete: Number(minComplete) } : {}),
       };
+      // Each fetch is wrapped in `.catch` so the page survives even when the
+      // backend hasn't implemented every endpoint yet. The list endpoint is
+      // load-bearing — if it fails we surface the error; metrics + sites are
+      // best-effort enrichment that falls back to safe defaults.
       const [m, s, siteList] = await Promise.all([
-        sponsorVerificationClient.getMetrics(studyId),
+        sponsorVerificationClient.getMetrics(studyId).catch(() => null),
         sponsorVerificationClient.list(studyId, filters),
-        sites.length ? Promise.resolve(sites) : sponsorVerificationClient.getSites(studyId),
+        sites.length
+          ? Promise.resolve(sites)
+          : sponsorVerificationClient.getSites(studyId).catch(() => []),
       ]);
       setMetrics(m);
       setSubjects(s);
       if (!sites.length) setSites(siteList);
       setSelected(new Set());
     } catch (e) {
+      // Only fired if the LIST endpoint itself failed (the core data).
       dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to load verification data.' }));
     } finally {
       setLoading(false);
@@ -127,6 +158,29 @@ export default function VerificationPage() {
   }, [studyId, activeStatuses, siteFilter, dateFrom, dateTo, minComplete]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Resolve the study's form id once so a subject row can open the study form.
+  useEffect(() => {
+    if (!studyId) return undefined;
+    let cancelled = false;
+    sponsorAxiosClient.get('/api/v1/sponsor/workspace/forms')
+      .then((res) => {
+        if (cancelled) return;
+        const items = res?.items ?? res ?? [];
+        if (items.length) setStudyFormId(items[0].formId ?? items[0].form_id ?? null);
+      })
+      .catch(() => { /* leave null — the action falls back to a toast */ });
+    return () => { cancelled = true; };
+  }, [studyId]);
+
+  // Open the study form for a subject so the verifier can review its data.
+  const openStudyForm = (subject) => {
+    if (!studyFormId || !subject?.id) {
+      dispatch(addToast({ type: 'error', message: 'Cannot open the form — no study form found.' }));
+      return;
+    }
+    navigate(`/sponsor/${studyId}/capture/form?formId=${studyFormId}&subjectId=${subject.id}`);
+  };
 
   // ── Filter + Sort + Search (client-side) ─────────────────────────────────
 
@@ -280,6 +334,14 @@ export default function VerificationPage() {
           <p  className={css.sub}>Review and verify subject CRF data against source documents.</p>
         </div>
         <div className={css.headerActions}>
+          <button
+            className={css.btnSecondary}
+            onClick={() => setSlaOpen(true)}
+            title={canEditSla ? 'Configure SLA' : 'View SLA settings'}
+          >
+            <Clock size={14} /> SLA Settings
+          </button>
+          <SnapshotButton leaf="data_verification" filename="verification" className={css.btnSecondary} />
           <button className={css.btnSecondary} onClick={() => handleExport('csv')}>
             <Download size={14} /> Export CSV
           </button>
@@ -296,6 +358,13 @@ export default function VerificationPage() {
           </button>
         </div>
       </div>
+
+      <SlaSettingsModal
+        open={slaOpen}
+        kind="data_verification"
+        canEdit={canEditSla}
+        onClose={() => setSlaOpen(false)}
+      />
 
       {/* Metrics */}
       {metrics && (
@@ -355,20 +424,18 @@ export default function VerificationPage() {
 
           {/* Date range */}
           <div className={css.dateRange}>
-            <input
-              type="date"
+            <PlatformDatePicker
               className={css.dateInput}
               value={dateFrom}
-              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-              title="Enrolled from"
+              onChange={(iso) => { setDateFrom(iso); setPage(1); }}
+              placeholder="Enrolled from"
             />
             <span className={css.dateSep}>–</span>
-            <input
-              type="date"
+            <PlatformDatePicker
               className={css.dateInput}
               value={dateTo}
-              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-              title="Enrolled to"
+              onChange={(iso) => { setDateTo(iso); setPage(1); }}
+              placeholder="Enrolled to"
             />
           </div>
 
@@ -560,6 +627,14 @@ export default function VerificationPage() {
                         onClick={() => setDetailSubject(s)}
                       >
                         <Eye size={13} />
+                      </button>
+                      {/* Open the study form for this subject */}
+                      <button
+                        className={css.actionBtn}
+                        title="Open Study Form"
+                        onClick={() => openStudyForm(s)}
+                      >
+                        <FileText size={13} />
                       </button>
                       {/* Approve */}
                       {['Verified', 'In Review', 'Pending'].includes(s.status) && (

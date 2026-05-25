@@ -1,0 +1,234 @@
+/* ═════════════════════════════════════════════════════════════════════════
+   StudyDesignPage — new EDC Form Builder chrome (light/modern).
+   The builder body (StudyFormBuilder + its SFB* sub-components) is untouched
+   and sits inside .builderHost.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  background: #f8fafc;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  color: #0f172a;
+}
+
+/* ── Sticky top header ─────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  height: 60px;
+  flex: 0 0 auto;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 1;
+  min-width: 0;
+}
+.brandLogo {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  background: #2563eb;
+  display: grid; place-items: center;
+  color: #fff;
+  font-weight: 700; font-size: 14px;
+  flex-shrink: 0;
+}
+.brandText {
+  display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+}
+.brandTitle { font-weight: 700; font-size: 16px; color: #0f172a; }
+.brandSub   { font-weight: 500; font-size: 14px; color: #475569; }
+
+.crumbSep {
+  color: #cbd5e1;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.studyChip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  font-size: 12px;
+  min-width: 0;
+  max-width: 360px;
+}
+.studyChipKey   { color: #64748b; font-weight: 500; }
+.studyChipValue { color: #1d4ed8; font-weight: 700; }
+.studyChipDot   { color: #94a3b8; }
+.studyChipTitle {
+  color: #334155;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── Global search ─────────────────────────────────────────────────────── */
+.searchWrap {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+.search {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+}
+.searchInput {
+  width: 100%;
+  height: 36px;
+  padding: 0 60px 0 36px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  font-size: 13px;
+  color: #0f172a;
+  outline: none;
+}
+.searchInput::placeholder { color: #94a3b8; }
+.searchInput:focus { border-color: #2563eb; background: #fff; }
+.searchIcon {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  color: #94a3b8;
+  pointer-events: none;
+}
+.searchKbd {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  font-size: 11px; color: #64748b;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+
+/* ── Header actions ────────────────────────────────────────────────────── */
+.headerActions {
+  display: flex; align-items: center; gap: 8px;
+}
+.headerBtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px; color: #334155;
+  cursor: pointer;
+}
+.headerBtn:hover { background: #f1f5f9; }
+
+.publishBtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+}
+.publishBtn:hover { background: #1d4ed8; }
+
+.notif {
+  position: relative;
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  display: grid; place-items: center;
+  cursor: pointer;
+}
+.notifBadge {
+  position: absolute; top: -6px; right: -6px;
+  min-width: 18px; height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px; font-weight: 600;
+  display: grid; place-items: center;
+}
+
+.user {
+  display: flex; align-items: center; gap: 10px;
+  padding-left: 8px;
+  border-left: 1px solid #e2e8f0;
+}
+.userAvatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: #c4b5fd; color: #4c1d95;
+  display: grid; place-items: center;
+  font-weight: 700; font-size: 12px;
+}
+.userMeta { display: flex; flex-direction: column; }
+.userName { font-size: 13px; font-weight: 600; color: #0f172a; line-height: 1.2; }
+.userRole { font-size: 11px; color: #64748b; line-height: 1.2; }
+
+.btnExit {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  background: #fff;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-left: 4px;
+}
+.btnExit:hover {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+/* ── Builder host (StudyFormBuilder + SFB* untouched) ──────────────────── */
+.builderHost {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+.builderHost > * { flex: 1; min-width: 0; }
+
+/* ── Loading / not-found ───────────────────────────────────────────────── */
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100vh;
+  color: #64748b;
+  background: #f8fafc;
+}
+.backBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}

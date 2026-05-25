@@ -24,7 +24,9 @@ import useDashboardData        from './dashboard/useDashboardData';
 import DashboardToolbar        from './dashboard/DashboardToolbar';
 import ConfigureWidgetsModal   from './dashboard/ConfigureWidgetsModal';
 import { exportDashboardSnapshot } from './dashboard/exportDashboardPdf';
-import { WIDGETS_BY_ID, CATEGORY_ORDER } from './dashboard/widgetRegistry';
+import { WIDGETS_BY_ID, CATEGORY_ORDER, isWidgetPermitted } from './dashboard/widgetRegistry';
+import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
+import { selectCurrentUser } from '@/features/auth/authSlice';
 
 import styles from './dashboard/dashboard.module.css';
 
@@ -43,6 +45,16 @@ export default function SponsorDashboardPage() {
   const error       = useAppSelector(selectStudyError);
   const studyConfig = study?.config;
   const gridRef     = useRef(null);
+  // Per-study permission tree for the active user (null = unrestricted) — the
+  // same resolver the sidebar menu uses. Drives which dashboard widgets show.
+  const perms       = useSiteRolePermissions(studyId);
+  // Per-role dashboard whitelist (migration 023). Either snake or camel key
+  // can come back from the backend depending on the codepath. null = use
+  // category-leaf gating; array (possibly empty) = explicit whitelist.
+  const currentUser = useAppSelector(selectCurrentUser);
+  const dashboardWidgetKeys =
+    currentUser?.dashboard_widget_keys ?? currentUser?.dashboardWidgetKeys ?? null;
+  const whitelist = Array.isArray(dashboardWidgetKeys) ? new Set(dashboardWidgetKeys) : null;
 
   const {
     filters, setFilter, resetFilters,
@@ -72,19 +84,27 @@ export default function SponsorDashboardPage() {
     [navigate, studyId],
   );
 
-  // Grouped visible widgets by category, in user-chosen order.
+  // Grouped visible widgets by category, in user-chosen order. Three gates:
+  //   1. user's personal widget config (visible flag in their saved layout)
+  //   2. role-level whitelist (dashboardWidgetKeys) — if set on the role
+  //   3. category-leaf permission gate (canViewLeaf)
+  //   4. study Step-3 config (requires fn on each widget)
   const visibleByCategory = useMemo(() => {
     const groups = CATEGORY_ORDER.reduce((acc, cat) => { acc[cat] = []; return acc; }, {});
     for (const id of orderedWidgetIds) {
       const meta = WIDGETS_BY_ID[id];
       const cfg  = widgets[id];
       if (!meta || !cfg?.visible) continue;
+      // Per-role whitelist — only show widgets explicitly granted on the role.
+      if (whitelist && !whitelist.has(id)) continue;
+      // Permission gate — a role only sees widgets its permissions allow.
+      if (!isWidgetPermitted(meta, perms)) continue;
       const gatedOut = meta.requires ? !meta.requires(study, studyConfig) : false;
       if (gatedOut) continue;
       groups[meta.category].push(meta);
     }
     return groups;
-  }, [orderedWidgetIds, widgets, study, studyConfig]);
+  }, [orderedWidgetIds, widgets, study, studyConfig, perms, whitelist]);
 
   const anyVisible = Object.values(visibleByCategory).some((arr) => arr.length > 0);
 
@@ -228,6 +248,7 @@ export default function SponsorDashboardPage() {
         resetWidgets={resetWidgets}
         study={study}
         studyConfig={studyConfig}
+        perms={perms}
       />
     </div>
   );

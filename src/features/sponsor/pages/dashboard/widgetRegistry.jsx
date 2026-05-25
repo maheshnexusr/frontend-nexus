@@ -3,7 +3,7 @@ import BarWidget     from './widgets/BarWidget';
 import DonutWidget   from './widgets/DonutWidget';
 import HeatmapWidget from './widgets/HeatmapWidget';
 import AlertsWidget  from './widgets/AlertsWidget';
-import { resolveStudyConfig } from '@/features/cro/utils/studyConfigGating';
+import { resolveStudyConfig, canViewLeaf } from '@/features/cro/utils/studyConfigGating';
 
 const fmtPct  = (v) => (v != null ? `${Math.round(v)}%` : '—');
 const fmtDays = (v) => (v != null ? `${Number(v).toFixed(1)} days` : '—');
@@ -376,3 +376,32 @@ export const CATEGORY_ORDER = [
   'Lock & Data Control',
   'Alerts',
 ];
+
+// ── Permission-driven visibility ──────────────────────────────────────────────
+// Each analytics category maps to the sponsor-workspace permission leaf that
+// justifies seeing it — so a role only sees the widgets its permissions allow
+// (a Query Manager sees Query Analytics; not Consent or Verification widgets).
+// `null` = always visible (the basic overview + alerts). Nothing is gated by a
+// role NAME — purely by the granted permission, resolved the same way the
+// sidebar menu is (useSiteRolePermissions → canViewLeaf).
+const CATEGORY_LEAF = {
+  'Study Summary':         null,
+  'EDC Analytics':         'data_capture',
+  'Query Analytics':       'query_manager',
+  'Consent Analytics':     'consent_review',
+  'Data Verification':     'data_verification',
+  'Site & Risk Analytics': 'sites',
+  'Lock & Data Control':   'data_capture',
+  'Alerts':                null,
+};
+
+/**
+ * Whether the active user may see a widget, given their permission tree.
+ * `perms` is the tree from useSiteRolePermissions (null = unrestricted).
+ * A widget can override its category default with an explicit `permLeaf`.
+ */
+export function isWidgetPermitted(meta, perms) {
+  const leaf = meta?.permLeaf ?? CATEGORY_LEAF[meta?.category];
+  if (!leaf) return true;
+  return canViewLeaf(perms, leaf);
+}

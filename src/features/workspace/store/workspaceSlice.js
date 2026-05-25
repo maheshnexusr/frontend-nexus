@@ -80,7 +80,12 @@ const initialState = {
 export const fetchStudyAsync = createAsyncThunk(
   'workspace/fetchStudy',
   async (studyId, { rejectWithValue }) => {
-    const hasSponsorToken = !!localStorage.getItem('sponsorAccessToken');
+    // A CRO user who entered a sponsor workspace via /enter holds a
+    // sponsorViewToken (not sponsorAccessToken) — treat that as sponsor scope
+    // too, otherwise this falls through to the CRO /studies/:id endpoint and
+    // 403s for roles without ClinicalPrograms.Studies.view.
+    const hasSponsorToken = !!localStorage.getItem('sponsorAccessToken')
+      || !!localStorage.getItem('sponsorViewToken');
 
     if (hasSponsorToken) {
       try {

@@ -21,6 +21,13 @@ const STATUS_OPTIONS = [
   { value: 'Inactive', label: 'Inactive' },
 ];
 
+// A read-only sponsor can view its workspace but cannot make any changes —
+// the CRO enters data on its behalf.
+const ACCESS_OPTIONS = [
+  { value: 'full',      label: 'Full Access' },
+  { value: 'read_only', label: 'Read-only (CRO enters data)' },
+];
+
 const EMPTY = {
   photograph:         null,
   fullName:           '',
@@ -38,6 +45,7 @@ const EMPTY = {
   countryId:          '',
   countryName:        '',
   status:             'Active',
+  isReadOnly:         false,
 };
 
 export default function SponsorForm({ mode, sponsorId }) {
@@ -207,6 +215,19 @@ export default function SponsorForm({ mode, sponsorId }) {
             </FormField>
             <FormField label="Status" name="status">
               <SearchableDropdown options={STATUS_OPTIONS} value={form.status} onChange={set('status')} placeholder="Select status" />
+            </FormField>
+          </div>
+          <div className={styles.row2}>
+            <FormField label="Access Mode" name="isReadOnly">
+              <SearchableDropdown
+                options={ACCESS_OPTIONS}
+                value={form.isReadOnly ? 'read_only' : 'full'}
+                onChange={(v) => {
+                  setForm((prev) => ({ ...prev, isReadOnly: v === 'read_only' }));
+                  setErrors((prev) => ({ ...prev, isReadOnly: undefined }));
+                }}
+                placeholder="Select access mode"
+              />
             </FormField>
           </div>
         </section>

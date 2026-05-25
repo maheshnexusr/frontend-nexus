@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useDispatch } from 'react-redux';
-import { Plus, Pencil, Trash2, Globe, Filter, Upload, Download } from 'lucide-react';
+import { Plus, Pencil, Trash2, Globe, Filter, Upload, Download, FileDown } from 'lucide-react';
 import { countriesClient } from '@/features/cro/api/countriesClient';
 import { addToast }        from '@/app/notificationSlice';
 import DataTable           from '@/components/data-table/DataTable';
@@ -11,6 +11,15 @@ import styles from './CountryPage.module.css';
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────
 
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a   = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function exportCSV(data) {
   const headers = ['Country Name', 'Description', 'Status'];
   const rows    = data.map((c) => [
@@ -19,13 +28,24 @@ function exportCSV(data) {
     `"${(c.status       ?? '').replace(/"/g, '""')}"`,
   ]);
   const csv  = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = `countries_${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }),
+               `countries_${new Date().toISOString().slice(0, 10)}.csv`);
+}
+
+/**
+ * Build and download a sample template matching the documented format:
+ *   File: Countries.csv  (Sheet: Countries when saved as XLSX)
+ *   Columns: Country Name, Description, Status
+ */
+function downloadSampleCSV() {
+  const sample = [
+    ['Country Name', 'Description', 'Status'],
+    ['India',         'South Asian country',  'Active'],
+    ['United States', 'North American country', 'Active'],
+    ['Brazil',        '',                       'Inactive'],
+  ];
+  const csv = sample.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), 'Countries.csv');
 }
 
 
@@ -43,6 +63,8 @@ export default function CountryPage() {
   const [selected, setSelected]   = useState(null);
   const [deleteTarget, setDelete] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importFileName, setImportFileName] = useState('');
 
   // pagination / sort
   const [page, setPage]         = useState(1);
@@ -134,9 +156,28 @@ export default function CountryPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = '';   // allow re-selecting same file
+
+    // Basic client-side validation: only CSV / XLSX per the documented format.
+    const name = file.name.toLowerCase();
+    const isCsv  = name.endsWith('.csv')  || file.type === 'text/csv';
+    const isXlsx = name.endsWith('.xlsx') || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (!isCsv && !isXlsx) {
+      dispatch(addToast({
+        type: 'error',
+        message: 'Unsupported file. Please upload a CSV (Countries.csv) or Excel (Countries.xlsx) file.',
+      }));
+      return;
+    }
+
     setImporting(true);
+    setImportFileName(file.name);
+    setImportProgress(0);
     try {
-      const { imported, skipped } = await countriesClient.bulkImport(file);
+      const { imported = 0, skipped = 0 } = await countriesClient.bulkImport(file, {
+        onProgress: setImportProgress,
+      });
+      // Once upload completes, leave the bar at 100 briefly before closing.
+      setImportProgress(100);
       dispatch(addToast({
         type:    imported > 0 ? 'success' : 'warning',
         message: `${imported} countr${imported !== 1 ? 'ies' : 'y'} imported successfully.${skipped > 0 ? ` ${skipped} record${skipped !== 1 ? 's' : ''} skipped (duplicate or missing name).` : ''}`,
@@ -146,7 +187,21 @@ export default function CountryPage() {
     } catch {
       dispatch(addToast({ type: 'error', message: 'Failed to import countries. Please check file format and try again.' }));
     } finally {
-      setImporting(false);
+      // Small hold so the user can see 100% before the modal disappears.
+      setTimeout(() => {
+        setImporting(false);
+        setImportProgress(0);
+        setImportFileName('');
+      }, 400);
+    }
+  };
+
+  const handleSampleDownload = () => {
+    try {
+      downloadSampleCSV();
+      dispatch(addToast({ type: 'info', message: 'Sample template downloaded (Countries.csv).' }));
+    } catch {
+      dispatch(addToast({ type: 'error', message: 'Failed to download sample template.' }));
     }
   };
 
@@ -206,17 +261,25 @@ export default function CountryPage() {
         <div className={styles.headerActions}>
           <button
             className={styles.btnSecondary}
+            onClick={handleSampleDownload}
+            title="Download sample template (Countries.csv)"
+          >
+            <FileDown size={14} />
+            Sample Template
+          </button>
+          <button
+            className={styles.btnSecondary}
             onClick={() => fileRef.current?.click()}
             disabled={importing}
-            title="Import from CSV"
+            title="Import from CSV or Excel"
           >
             <Upload size={14} />
-            {importing ? 'Importing…' : 'Import CSV'}
+            {importing ? 'Importing…' : 'Import'}
           </button>
           <input
             ref={fileRef}
             type="file"
-            accept=".csv"
+            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             style={{ display: 'none' }}
             onChange={handleFileChange}
           />
@@ -288,6 +351,31 @@ export default function CountryPage() {
         message={`Are you sure you want to delete '${deleteTarget?.countryName}'? This action cannot be undone.`}
         confirmLabel="Delete"
       />
+
+      {/* Import progress overlay */}
+      {importing && (
+        <div className={styles.importBackdrop} role="dialog" aria-label="Importing countries">
+          <div className={styles.importDialog}>
+            <div className={styles.importIcon}>
+              <Upload size={18} />
+            </div>
+            <h3 className={styles.importTitle}>Importing countries…</h3>
+            <p className={styles.importSub}>
+              {importFileName ? `Uploading ${importFileName}` : 'Processing your file.'} Please don&apos;t close this window.
+            </p>
+            <div className={styles.progressTrack}>
+              <div
+                className={styles.progressFill}
+                style={{ width: `${Math.max(2, Math.min(100, importProgress))}%` }}
+              />
+            </div>
+            <div className={styles.progressRow}>
+              <span>{importProgress < 100 ? 'Uploading' : 'Saving records'}</span>
+              <span className={styles.progressPct}>{importProgress}%</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { addToast }              from '@/app/notificationSlice';
 import { studiesClient }         from '@/features/cro/api/studiesClient';
 import { setStep3, selectStep1, selectStep3 } from '@/features/cro/store/studyWizardSlice';
+import { usePermissions }         from '@/features/auth/usePermissions';
 import styles from './StudyWizardStep3.module.css';
 
 const ALL_CONFIGS = [
@@ -30,22 +31,9 @@ const ALL_CONFIGS = [
     scopes:  ['EDC', 'Survey', 'ePRO'],
   },
   {
-    key:     'dataManager',
-    label:   'Enable Data Manager',
-    info:    'Enables data validation and cleaning tools.',
-    scopes:  ['EDC'],                     // NOT shown for Survey/ePRO
-    edcOnly: true,
-  },
-  {
     key:     'verificationManager',
     label:   'Enable Verification Manager',
     info:    'Enables source data verification and approval workflows for entered data.',
-    scopes:  ['EDC', 'Survey', 'ePRO'],
-  },
-  {
-    key:     'navigationBar',
-    label:   'Enable Navigation Bar',
-    info:    'Displays study navigation menu for users.',
     scopes:  ['EDC', 'Survey', 'ePRO'],
   },
 ];
@@ -54,6 +42,13 @@ export default function StudyWizardStep3({ onCancel, onNext }) {
   const dispatch = useDispatch();
   const step1    = useSelector(selectStep1);
   const saved    = useSelector(selectStep3);
+
+  // Saving this step hits PUT /studies/:id/step-3, which the backend gates
+  // with authorize("ClinicalPrograms.Studies", "configure"). Without that
+  // permission the toggles are read-only and the user finishes the wizard
+  // without persisting a configuration change (no doomed 403 round-trip).
+  const { has }      = usePermissions();
+  const canConfigure = has('studies', 'configure');
 
   // Backwards-compat: scope may still arrive as an array from older state.
   const scope           = Array.isArray(step1.scope) ? (step1.scope[0] ?? '') : (step1.scope ?? '');
@@ -111,6 +106,24 @@ export default function StudyWizardStep3({ onCancel, onNext }) {
         Enable or disable modules for this study. All options default to off.
       </p>
 
+      {!canConfigure && (
+        <p
+          style={{
+            margin: '0 0 12px',
+            fontSize: '13px',
+            color: '#92400e',
+            background: '#fef3c7',
+            border: '1px solid #fde68a',
+            borderRadius: '8px',
+            padding: '10px 12px',
+            lineHeight: 1.5,
+          }}
+        >
+          You don&apos;t have permission to change study configuration. These
+          settings are read-only — continue to finish without changes.
+        </p>
+      )}
+
       <div className={styles.configList}>
         {visibleConfigs.map((cfg) => (
           <div key={cfg.key} className={styles.configCard}>
@@ -128,6 +141,7 @@ export default function StudyWizardStep3({ onCancel, onNext }) {
                 type="checkbox"
                 checked={form[cfg.key]}
                 onChange={() => toggle(cfg.key)}
+                disabled={!canConfigure}
               />
               <span className={styles.toggleTrack}>
                 <span className={styles.toggleThumb} />
@@ -145,9 +159,15 @@ export default function StudyWizardStep3({ onCancel, onNext }) {
         <button type="button" className={styles.btnCancel} onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" className={styles.btnSave} onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
+        {canConfigure ? (
+          <button type="button" className={styles.btnSave} onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        ) : (
+          <button type="button" className={styles.btnSave} onClick={() => onNext?.()}>
+            Finish
+          </button>
+        )}
       </div>
     </div>
   );

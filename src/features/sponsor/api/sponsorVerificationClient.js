@@ -3,7 +3,7 @@
  *
  * Spec §13.6 — /api/v1/sponsor/workspace/data-verifications
  * Sponsor Bearer + (study_id, environment) context auto-attached by
- * sponsorAxiosClient.
+ * pickScope().axios.
  *
  * Spec defines: GET /data-verifications, POST /data-verifications,
  * POST /data-verifications/:id/review. Everything else here is a non-spec
@@ -12,9 +12,33 @@
  */
 
 import sponsorAxiosClient from '@/api/sponsorAxiosClient';
+import siteAxiosClient    from '@/api/siteAxiosClient';
 
-const BASE      = '/api/v1/sponsor/workspace/data-verifications';
-const WORKSPACE = '/api/v1/sponsor/workspace';
+// Verification Manager is mounted under BOTH /sponsor/workspace and
+// /site/workspace. The page itself is shared; this client picks the right
+// axios + URL prefix based on which scope's token is live.
+//
+// Site session wins ONLY when there's no sponsor token — a CRO operator
+// impersonating a sponsor often has both, in which case we go sponsor.
+function pickScope() {
+  if (typeof window === 'undefined') {
+    return { axios: sponsorAxiosClient, base: '/api/v1/sponsor/workspace/data-verifications', workspace: '/api/v1/sponsor/workspace' };
+  }
+  const hasSponsor = !!localStorage.getItem('sponsorAccessToken') || !!localStorage.getItem('sponsorViewToken');
+  const hasSite    = !!localStorage.getItem('siteAccessToken');
+  if (hasSite && !hasSponsor) {
+    return {
+      axios:     siteAxiosClient,
+      base:      '/api/v1/site/workspace/data-verifications',
+      workspace: '/api/v1/site/workspace',
+    };
+  }
+  return {
+    axios:     sponsorAxiosClient,
+    base:      '/api/v1/sponsor/workspace/data-verifications',
+    workspace: '/api/v1/sponsor/workspace',
+  };
+}
 
 // ── Normalizers ────────────────────────────────────────────────────────────────
 
@@ -93,7 +117,7 @@ function normalizeDetails(raw) {
 
 export const sponsorVerificationClient = {
   async getMetrics(_studyId) {
-    const res = await sponsorAxiosClient.get(`${BASE}/metrics`);
+    const res = await pickScope().axios.get(`${pickScope().base}/metrics`);
     return {
       totalSubjects:       res?.total_subjects        ?? res?.totalSubjects        ?? 0,
       pendingVerification: res?.pending_verification  ?? res?.pendingVerification  ?? 0,
@@ -119,19 +143,19 @@ export const sponsorVerificationClient = {
     if (filters.dateTo)     params.date_to    = filters.dateTo;
     if (filters.minComplete !== undefined) params.min_completeness = filters.minComplete;
 
-    const res = await sponsorAxiosClient.get(BASE, { params });
+    const res = await pickScope().axios.get(pickScope().base, { params });
     const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
     return arr.map(normalizeSubject);
   },
 
   async getSubject(_studyId, subjectId) {
-    const res = await sponsorAxiosClient.get(`${BASE}/${subjectId}`);
+    const res = await pickScope().axios.get(`${pickScope().base}/${subjectId}`);
     return normalizeDetails(res?.item ?? res ?? {});
   },
 
   /** POST /data-verifications — spec §4.6 create. */
   async createVerification(_studyId, data) {
-    const res = await sponsorAxiosClient.post(BASE, {
+    const res = await pickScope().axios.post(pickScope().base, {
       subject_id:        data.subjectId,
       form_id:           data.formId,
       field_name:        data.fieldName || undefined,
@@ -146,7 +170,7 @@ export const sponsorVerificationClient = {
    * decision: 'Verified' | 'Rejected' | 'Locked'; body: { decision, comments }.
    */
   async review(_studyId, verificationId, { decision, comments, notes }) {
-    const res = await sponsorAxiosClient.post(`${BASE}/${verificationId}/review`, {
+    const res = await pickScope().axios.post(`${pickScope().base}/${verificationId}/review`, {
       decision,
       comments: comments ?? notes,
     });
@@ -155,37 +179,37 @@ export const sponsorVerificationClient = {
 
   // ── Not in spec §13.6 — retained for current UI. ──────────────────────────
   async verifyField(_studyId, subjectId, formId, fieldId, data) {
-    const res = await sponsorAxiosClient.patch(
-      `${BASE}/${subjectId}/forms/${formId}/fields/${fieldId}`,
+    const res = await pickScope().axios.patch(
+      `${pickScope().base}/${subjectId}/forms/${formId}/fields/${fieldId}`,
       { action: data.action, comment: data.comment },
     );
     return normalizeField(res?.item ?? res ?? {});
   },
 
   async verifyForm(_studyId, subjectId, formId, data) {
-    const res = await sponsorAxiosClient.post(
-      `${BASE}/${subjectId}/forms/${formId}/verify`,
+    const res = await pickScope().axios.post(
+      `${pickScope().base}/${subjectId}/forms/${formId}/verify`,
       { action: data.action, comment: data.comment },
     );
     return normalizeForm(res?.item ?? res ?? {});
   },
 
   async verifySubject(_studyId, subjectId, data) {
-    const res = await sponsorAxiosClient.post(`${BASE}/${subjectId}/verify`, {
+    const res = await pickScope().axios.post(`${pickScope().base}/${subjectId}/verify`, {
       comment: data?.comment,
     });
     return normalizeSubject(res?.item ?? res ?? {});
   },
 
   async approveSubject(_studyId, subjectId, data) {
-    const res = await sponsorAxiosClient.post(`${BASE}/${subjectId}/approve`, {
+    const res = await pickScope().axios.post(`${pickScope().base}/${subjectId}/approve`, {
       comment: data?.comment,
     });
     return normalizeSubject(res?.item ?? res ?? {});
   },
 
   async rejectSubject(_studyId, subjectId, data) {
-    const res = await sponsorAxiosClient.post(`${BASE}/${subjectId}/reject`, {
+    const res = await pickScope().axios.post(`${pickScope().base}/${subjectId}/reject`, {
       rejectionReason: data.rejectionReason,
       comment:         data.comment,
     });
@@ -193,17 +217,17 @@ export const sponsorVerificationClient = {
   },
 
   async bulkVerify(_studyId, ids) {
-    const res = await sponsorAxiosClient.post(`${BASE}/bulk-verify`, { subjectIds: ids });
+    const res = await pickScope().axios.post(`${pickScope().base}/bulk-verify`, { subjectIds: ids });
     return res?.verified ?? ids.length;
   },
 
   async bulkApprove(_studyId, ids) {
-    const res = await sponsorAxiosClient.post(`${BASE}/bulk-approve`, { subjectIds: ids });
+    const res = await pickScope().axios.post(`${pickScope().base}/bulk-approve`, { subjectIds: ids });
     return res?.approved ?? ids.length;
   },
 
   async exportReport(_studyId, format = 'csv') {
-    const res  = await sponsorAxiosClient.get(`${BASE}/export`, { params: { format }, responseType: 'blob' });
+    const res  = await pickScope().axios.get(`${pickScope().base}/export`, { params: { format }, responseType: 'blob' });
     const blob = res instanceof Blob ? res : new Blob([res], { type: format === 'pdf' ? 'application/pdf' : 'text/csv' });
     const ext  = format === 'pdf' ? 'pdf' : 'csv';
     const url  = URL.createObjectURL(blob);
@@ -216,7 +240,7 @@ export const sponsorVerificationClient = {
 
   async getSites(_studyId) {
     try {
-      const res = await sponsorAxiosClient.get(`${WORKSPACE}/sites`);
+      const res = await pickScope().axios.get(`${pickScope().workspace}/sites`);
       const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
       return arr.map((s) => ({
         value: s.site_code ?? s.siteCode ?? s.id,

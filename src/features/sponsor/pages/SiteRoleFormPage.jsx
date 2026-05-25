@@ -19,6 +19,7 @@ import FormField           from '@/components/form/FormField';
 import TextArea            from '@/components/form/TextArea';
 import SearchableDropdown  from '@/components/form/SearchableDropdown';
 import SponsorPermissionsMatrix from '@/features/cro/components/team-members/SponsorPermissionsMatrix';
+import DashboardWidgetPicker from '@/features/cro/components/sponsors/DashboardWidgetPicker';
 import { buildEmptyPermissions, countPermissions } from '@/features/sponsor/components/roles/permissionsTree';
 import { sponsorRolesClient } from '@/features/sponsor/api/sponsorRolesClient';
 import { addToast }           from '@/app/notificationSlice';
@@ -44,6 +45,9 @@ export default function SiteRoleFormPage() {
     status:      'Active',
   });
   const [permissions, setPermissions] = useState(buildEmptyPermissions());
+  // Per-role dashboard whitelist. null = default (category-leaf gating); array
+  // (possibly empty) = explicit whitelist of widget IDs this role can see.
+  const [widgetKeys,  setWidgetKeys]  = useState(null);
   const [errors,      setErrors]      = useState({});
   const [loading,     setLoading]     = useState(isEdit);
   const [saving,      setSaving]      = useState(false);
@@ -62,6 +66,7 @@ export default function SiteRoleFormPage() {
           status:      r.status      ?? 'Active',
         });
         setPermissions(r.permissions ?? buildEmptyPermissions());
+        setWidgetKeys(Array.isArray(r.dashboardWidgetKeys) ? r.dashboardWidgetKeys : null);
       })
       .catch(() => dispatch(addToast({ type: 'error', message: 'Failed to load role.' })))
       .finally(() => setLoading(false));
@@ -85,7 +90,7 @@ export default function SiteRoleFormPage() {
     setApiError('');
     setSaving(true);
     try {
-      const payload = { ...form, permissions };
+      const payload = { ...form, permissions, dashboardWidgetKeys: widgetKeys };
       if (isEdit) {
         await sponsorRolesClient.update(studyId, roleId, payload);
         dispatch(addToast({ type: 'success', message: `Role '${form.roleName}' updated successfully.` }));
@@ -189,6 +194,11 @@ export default function SiteRoleFormPage() {
             setErrors((p) => { const e = { ...p }; delete e.permissions; return e; });
           }}
         />
+      </div>
+
+      {/* Dashboard Cards card */}
+      <div className={styles.card}>
+        <DashboardWidgetPicker value={widgetKeys} onChange={setWidgetKeys} />
       </div>
 
       {/* Footer */}

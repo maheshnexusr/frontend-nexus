@@ -162,10 +162,35 @@ axiosClient.interceptors.response.use(
       return Promise.reject(normalizeError(error));
     }
 
-    /* 401 handling — one refresh attempt per request.
-       Skip for auth endpoints: a 401 there means wrong credentials, not expired session. */
+    /* 401 handling — branch on the backend's error message:
+         - "Authentication required."           → header was missing/empty.
+           Don't refresh. The token simply wasn't attached. Surface the
+           error so the caller can decide; do NOT redirect, do NOT call
+           /auth/refresh (refresh would 401 too).
+         - "Invalid or expired access token."   → token expired → refresh
+           once with the refresh_token, then retry the original request.
+       Skip auth endpoints entirely: 401 there means wrong credentials. */
     const isAuthEndpoint = AUTH_ENDPOINTS.some((p) => original.url?.includes(p));
     if (error.response?.status === 401 && !original._retry && !isAuthEndpoint) {
+      const serverMsg = (
+        error.response?.data?.message ||
+        error.response?.data?.error   ||
+        error.response?.data?.detail  ||
+        ''
+      ).toString();
+      const isMissingHeader =
+        /authentication\s+required/i.test(serverMsg) ||
+        // Defensive: if our own interceptor never wrote an Authorization
+        // header on this request, treat as missing regardless of message.
+        !(original.headers?.Authorization || original.headers?.authorization);
+
+      if (isMissingHeader) {
+        // Don't trigger a refresh — there's no expired session, just no
+        // header. Bubble the error so the caller (e.g. profileService)
+        // can swallow it gracefully.
+        return Promise.reject(normalizeError(error));
+      }
+
       original._retry = true;
 
       const refresh = getRefreshToken();

@@ -17,6 +17,7 @@ import FormField             from '@/components/form/FormField';
 import SearchableDropdown    from '@/components/form/SearchableDropdown';
 import ImageUpload           from '@/components/form/ImageUpload';
 import SponsorPermissionsMatrix from '@/features/cro/components/team-members/SponsorPermissionsMatrix';
+import DashboardWidgetPicker from '@/features/cro/components/sponsors/DashboardWidgetPicker';
 import { buildEmptyPermissions } from '@/features/sponsor/components/roles/permissionsTree';
 import styles from './TeamMemberNewPage.module.css';
 
@@ -59,6 +60,15 @@ export default function TeamMemberNewPage() {
     studiesClient.list().then((all) =>
       setStudyOptions(
         all
+          // Only PUBLISHED studies are assignable — an unpublished study
+          // (draft / configured) has no workspace database, so the assignment
+          // would be unusable. Mirrors the backend rule in
+          // teamService.assertStudiesAssignable; the backend still rejects
+          // anything that slips through.
+          .filter((s) => {
+            const st = (s.status ?? '').toLowerCase();
+            return st !== 'draft' && st !== 'configured';
+          })
           .sort((a, b) => (a.studyId ?? '').localeCompare(b.studyId ?? ''))
           .map((s) => ({
             id:          s.id,
@@ -103,30 +113,78 @@ export default function TeamMemberNewPage() {
 
   const toggleStudy = (study) => {
     setForm((prev) => {
-      const already = prev.assignedStudies.some((s) => s.studyId === study.studyId);
+      // IMPORTANT: backend FK expects cro_studies.study_id (`study.id`),
+      // NOT the protocol number (`study.studyId`). We keep both so the UI
+      // can still show the human-readable protocol while sending the
+      // correct id on save.
+      const already = prev.assignedStudies.some((s) => s.id === study.id);
       return {
         ...prev,
         assignedStudies: already
-          ? prev.assignedStudies.filter((s) => s.studyId !== study.studyId)
+          ? prev.assignedStudies.filter((s) => s.id !== study.id)
           : [
               ...prev.assignedStudies,
               {
-                studyId:            study.studyId,
+                id:                 study.id,           // DB PK — sent in payload
+                studyId:            study.studyId,      // protocol number — display only
                 studyTitle:         study.studyTitle,
                 sponsorId:          study.sponsorId,
                 sponsorName:        study.sponsorName,
                 sponsorPermissions: buildEmptyPermissions(),
+                dashboardWidgetKeys: null,
               },
             ],
       };
     });
+
+    // The /studies list endpoint may return lightweight study summaries
+    // without the Step-3 `configuration` object — leaving the matrix
+    // unable to gate leaves correctly. Pull the full study record (which
+    // does include `configuration`) and patch it back into studyOptions
+    // so SponsorPermissionsMatrix sees the authoritative toggles.
+    const alreadyHasConfig =
+      typeof study.config?.consentManager      === 'boolean' &&
+      typeof study.config?.queryManager        === 'boolean' &&
+      typeof study.config?.dataManager         === 'boolean' &&
+      typeof study.config?.verificationManager === 'boolean';
+
+    if (!alreadyHasConfig) {
+      studiesClient.getById(study.id).then((full) => {
+        if (!full) return;
+        setStudyOptions((prev) => prev.map((o) =>
+          o.id === study.id
+            ? {
+                ...o,
+                config: {
+                  consentManager:      full.consentManager,
+                  queryManager:        full.queryManager,
+                  dataManager:         full.dataManager,
+                  verificationManager: full.verificationManager,
+                  navigationBar:       full.navigationBar,
+                },
+              }
+            : o
+        ));
+      }).catch(() => { /* matrix will fall back to "all visible" */ });
+    }
   };
 
-  const setStudyPermissions = (studyId, nextPerms) => {
+  const setStudyPermissions = (id, nextPerms) => {
     setForm((prev) => ({
       ...prev,
       assignedStudies: prev.assignedStudies.map((s) =>
-        s.studyId === studyId ? { ...s, sponsorPermissions: nextPerms } : s,
+        s.id === id ? { ...s, sponsorPermissions: nextPerms } : s,
+      ),
+    }));
+  };
+
+  // Per-study dashboard widget whitelist (intersected with role-level cap
+  // server-side). null = no per-study cap; array = explicit whitelist.
+  const setStudyWidgetKeys = (id, nextKeys) => {
+    setForm((prev) => ({
+      ...prev,
+      assignedStudies: prev.assignedStudies.map((s) =>
+        s.id === id ? { ...s, dashboardWidgetKeys: nextKeys } : s,
       ),
     }));
   };
@@ -339,7 +397,7 @@ export default function TeamMemberNewPage() {
               const groupKey = group.sponsorId || '__unassigned__';
               const groupOpen = openSponsorGroups[groupKey] !== false;
               const checkedCount = group.studies.filter((s) =>
-                form.assignedStudies.some((a) => a.studyId === s.studyId),
+                form.assignedStudies.some((a) => a.id === s.id),
               ).length;
 
               return (
@@ -360,12 +418,12 @@ export default function TeamMemberNewPage() {
                   {groupOpen && (
                     <div className={styles.studyList}>
                       {group.studies.map((study) => {
-                        const checked = form.assignedStudies.some((s) => s.studyId === study.studyId);
-                        const assigned = form.assignedStudies.find((s) => s.studyId === study.studyId);
-                        const permsOpen = !!openStudyPerms[study.studyId];
+                        const checked  = form.assignedStudies.some((s) => s.id === study.id);
+                        const assigned = form.assignedStudies.find((s) => s.id === study.id);
+                        const permsOpen = !!openStudyPerms[study.id];
 
                         return (
-                          <div key={study.studyId} className={styles.studyRowBlock}>
+                          <div key={study.id} className={styles.studyRowBlock}>
                             <div
                               className={`${styles.studyItem} ${checked ? styles.studyItemActive : ''}`}
                             >
@@ -393,7 +451,7 @@ export default function TeamMemberNewPage() {
                                 <button
                                   type="button"
                                   className={styles.studyExpandBtn}
-                                  onClick={() => toggleStudyPerms(study.studyId)}
+                                  onClick={() => toggleStudyPerms(study.id)}
                                   title={permsOpen ? 'Hide permissions' : 'Configure sponsor permissions'}
                                 >
                                   {permsOpen ? 'Hide permissions' : 'Configure permissions'}
@@ -403,11 +461,22 @@ export default function TeamMemberNewPage() {
                             </div>
 
                             {checked && permsOpen && (
-                              <SponsorPermissionsMatrix
-                                value={assigned?.sponsorPermissions}
-                                onChange={(next) => setStudyPermissions(study.studyId, next)}
-                                studyConfig={study.config}
-                              />
+                              <>
+                                <SponsorPermissionsMatrix
+                                  value={assigned?.sponsorPermissions}
+                                  onChange={(next) => setStudyPermissions(study.id, next)}
+                                  studyConfig={study.config}
+                                />
+                                {/* Per-study dashboard whitelist for this team member's
+                                    sponsor-impersonation view. Intersected with their
+                                    CRO role's whitelist + Wizard Step 1 server-side. */}
+                                <div style={{ marginTop: 14 }}>
+                                  <DashboardWidgetPicker
+                                    value={assigned?.dashboardWidgetKeys ?? null}
+                                    onChange={(next) => setStudyWidgetKeys(study.id, next)}
+                                  />
+                                </div>
+                              </>
                             )}
                           </div>
                         );

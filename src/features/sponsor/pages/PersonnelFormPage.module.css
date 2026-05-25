@@ -106,6 +106,27 @@
   color: var(--text-muted, #64748b);
 }
 
+/* ── Assign-mode radios (All Sites / Specific Sites) ───────────────────── */
+.assignModeRow {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.radioLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary, #0f172a);
+  cursor: pointer;
+}
+.radioLabel input[type="radio"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
 /* ── Template hint (when no templates loaded yet) ────────────────────────── */
 .templateHint {
   display: flex;

@@ -17,7 +17,7 @@
  *   <Route element={<ProtectedRoute scope="sponsor"><SponsorLayout /></ProtectedRoute>} />
  */
 
-import { Navigate } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { useAppSelector } from '@/app/hooks';
 import { selectIsAuthenticated, selectPermissions } from '@/features/auth/authSlice';
@@ -69,22 +69,46 @@ function Forbidden() {
   );
 }
 
+/** True when the logged-in CRO user has the URL's :studyId in their
+ *  `assignedStudies` list. Read directly from localStorage so we don't need
+ *  a Redux selector for params that change with the URL. */
+function croUserHasAssignedStudy(studyId) {
+  if (!studyId) return false;
+  try {
+    const u = JSON.parse(localStorage.getItem('authUser') || 'null');
+    if (!u || !Array.isArray(u.assignedStudies)) return false;
+    return u.assignedStudies.some((s) => s.studyId === studyId);
+  } catch {
+    return false;
+  }
+}
+
 /* ── ProtectedRoute ──────────────────────────────────────────────────────── */
 export default function ProtectedRoute({ children, requiredPermission, scope }) {
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
   const permissions     = useAppSelector(selectPermissions);
+  const params          = useParams();
 
   if (scope === 'sponsor') {
-    // The sponsor workspace shell is reachable by three token scopes:
+    // The sponsor workspace shell is reachable by FOUR token scopes:
     //   • sponsorAccessToken  — direct sponsor login
-    //   • sponsorViewToken    — CRO user viewing a sponsor workspace
+    //   • sponsorViewToken    — CRO user viewing a sponsor workspace via /enter
     //   • siteAccessToken     — activated site personnel (PI / Coordinator /
     //                           Nurse / etc.) whose menu is then filtered by
     //                           their site-role's permission tree.
+    //   • CRO accessToken + matching assignedStudies entry — a CRO team-member
+    //                           explicitly assigned to this :studyId. Their
+    //                           menu is filtered by assignedStudies[].
+    //                           sponsorPermissions via useSiteRolePermissions.
+    //                           No separate /enter call is required because
+    //                           the per-study permission tree already lives
+    //                           on the user object.
     const hasSponsorToken     = !!localStorage.getItem('sponsorAccessToken');
     const hasSponsorViewToken = !!localStorage.getItem('sponsorViewToken');
     const hasSiteTokenScope   = !!localStorage.getItem('siteAccessToken');
-    if (!hasSponsorToken && !hasSponsorViewToken && !hasSiteTokenScope) {
+    const hasCroAssignedAccess = !!localStorage.getItem('accessToken')
+      && croUserHasAssignedStudy(params?.studyId);
+    if (!hasSponsorToken && !hasSponsorViewToken && !hasSiteTokenScope && !hasCroAssignedAccess) {
       return <Navigate to="/signin" replace />;
     }
     return children;

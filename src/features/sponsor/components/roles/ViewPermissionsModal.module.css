@@ -16,70 +16,109 @@
 .kpiLabel   { font-size: 11px; color: var(--text-secondary, #94a3b8); font-weight: 500; }
 .desc       { font-size: 12.5px; color: var(--text-secondary, #374151); margin: 0; flex: 1; }
 
-/* ── Matrix ──────────────────────────────────────────────────────────────── */
-.matrixWrap {
-  overflow-x: auto;
-  border: 1px solid var(--border-default, #e2e8f0);
-  border-radius: 7px;
-  background: var(--bg-card, #fff);
+/* ── Leaf list (compact layout) ─────────────────────────────────────────── */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 60vh;
+  overflow-y: auto;
 }
-.matrix { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 560px; }
 
-.mthModule {
-  padding: 8px 12px;
-  background: var(--bg-subtle, #f1f5f9);
-  border-bottom: 1px solid var(--border-default, #e2e8f0);
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--text-secondary, #64748b);
-  text-align: left;
-  min-width: 180px;
+/* Group wrapper — children render flush, group title gets a subtle band. */
+.group {
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
 }
-.mthPerm {
-  padding: 8px 6px;
-  background: var(--bg-subtle, #f1f5f9);
+.groupEmpty { opacity: 0.65; }
+.groupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--bg-subtle, #f8fafc);
   border-bottom: 1px solid var(--border-default, #e2e8f0);
-  font-size: 10.5px;
+}
+.groupLabel {
+  font-size: 12px;
   font-weight: 700;
-  color: var(--text-secondary, #64748b);
-  text-align: center;
-  width: 62px;
+  color: var(--text-primary, #0f172a);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.groupBadge {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+/* Leaf row — one per feature. Pills wrap naturally on narrow widths. */
+.leaf {
+  padding: 10px 12px;
+  border-top: 1px solid #f1f5f9;
+}
+.leaf:first-child { border-top: 0; }
+.leafChild { padding-left: 18px; }
+
+.leafHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.leafLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+}
+.leafCount {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  font-variant-numeric: tabular-nums;
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border: 1px solid transparent;
   white-space: nowrap;
 }
-
-.groupRow { background: #f8fafc; }
-.groupCell { padding: 7px 12px; border-bottom: 1px solid var(--border-default, #e2e8f0); }
-.groupLabel { font-size: 12.5px; font-weight: 700; color: var(--text-primary, #0f172a); }
-
-.leafRow { border-bottom: 1px solid var(--border-default, #f1f5f9); }
-.leafRow:last-child { border-bottom: none; }
-.childRow { }
-
-.moduleCell { padding: 8px 12px; }
-.moduleLabel { font-size: 12.5px; font-weight: 600; color: var(--text-primary, #0f172a); }
-.childLabel  { font-size: 12.5px; color: var(--text-primary, #374151); padding-left: 18px; display: block; }
-
-.permCell { padding: 7px 4px; text-align: center; }
-
-.grantedIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
+.pillOn {
   background: #ecfdf5;
-  color: #059669;
+  color: #047857;
+  border-color: #a7f3d0;
 }
-.deniedIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  color: #cbd5e1;
+.pillOff {
+  background: #fff;
+  color: var(--text-muted, #94a3b8);
+  border-color: var(--border-default, #e2e8f0);
 }
-.na { color: #e2e8f0; font-size: 11px; }
+
+/* Top-level (non-grouped) leaf — render as a card directly in the list. */
+.list > .leaf {
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-top: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 8px;
+  background: #fff;
+}
 
 /* Footer */
 .btnClose {

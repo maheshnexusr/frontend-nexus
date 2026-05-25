@@ -1,7 +1,27 @@
+/* Full-viewport shell — the route is registered outside SponsorLayout so
+   the runner fills the entire screen, matching the form-builder Preview's
+   full-screen mode. */
 .page {
-  padding: 16px 20px 24px;
-  max-width: none;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  background: #f8fafc;
+  padding: 0;
   margin: 0;
+}
+.page > * { flex: 0 0 auto; }
+/* The StudyFormRunner is the last child and should take the remaining height. */
+.page > :last-child { flex: 1 1 auto; min-height: 0; }
+
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+  height: 56px;
 }
 
 .center {
@@ -55,3 +75,71 @@
   border-color: #94a3b8;
   background: #f8fafc;
 }
+
+/* ── Submit-success state ─────────────────────────────────────────────── */
+.successCard {
+  margin: 32px auto;
+  max-width: 480px;
+  padding: 32px 28px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+.successIcon {
+  color: #16a34a;
+  margin-bottom: 12px;
+}
+.successTitle {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #0f172a;
+}
+.successSub {
+  margin: 0 0 24px;
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.5;
+}
+.successCode {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  background: #f1f5f9;
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: #334155;
+}
+.successActions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.successPrimary {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: 7px;
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.successPrimary:hover { background: #1d4ed8; }
+.successSecondary {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: 7px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.successSecondary:hover { background: #f8fafc; border-color: #94a3b8; }

@@ -32,6 +32,10 @@ import {
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import FieldToolbar         from './FieldToolbar';
 import CollaborationBadges  from './CollaborationBadges';
+import CollaborationChips   from './CollaborationChips';
+import { useFieldCapabilities } from './useFieldCapabilities';
+import { useFormGate } from './useFormGate';
+import { Lock, Snowflake } from 'lucide-react';
 import AnnotationModal      from './AnnotationModal';
 import NotesPopover         from './NotesPopover';
 import QueryDrawer          from './QueryDrawer';
@@ -50,6 +54,8 @@ export default function RuntimeFieldRenderer({
 }) {
   const dispatch = useDispatch();
   const user     = useSelector(selectCurrentUser);
+  const caps     = useFieldCapabilities();
+  const gate     = useFormGate(field.id);
   const me       = {
     by:     user?.id ?? 'unknown',
     byName: user?.fullName ?? user?.email ?? 'You',
@@ -130,7 +136,13 @@ export default function RuntimeFieldRenderer({
   // Conditional hide → render nothing.
   if (evalResult.hidden) return null;
 
-  const isDisabled = evalResult.disabled;
+  // Field input is disabled when:
+  //   - rule logic flagged it as disabled, OR
+  //   - the form's overall status forbids edits (Locked/Frozen/Signed), OR
+  //   - the field itself is locked/frozen, OR
+  //   - the user lacks `canEditField` capability.
+  const isDisabled = evalResult.disabled || !gate.canEditField;
+  const lockedMeta = gate.fieldLock || {};
 
   return (
     <div
@@ -145,6 +157,22 @@ export default function RuntimeFieldRenderer({
               <span className={s.label}>
                 {field.label}
                 {evalResult.required && <span className={s.req}>*</span>}
+                {lockedMeta.locked && (
+                  <Lock
+                    size={11}
+                    style={{ marginLeft: 6, color: '#92400e', verticalAlign: 'middle' }}
+                    aria-label="Locked"
+                    title={`Locked by ${lockedMeta.byName ?? 'system'}${lockedMeta.reason ? ` — ${lockedMeta.reason}` : ''}`}
+                  />
+                )}
+                {lockedMeta.frozen && (
+                  <Snowflake
+                    size={11}
+                    style={{ marginLeft: 6, color: '#1e40af', verticalAlign: 'middle' }}
+                    aria-label="Frozen"
+                    title={`Frozen by ${lockedMeta.byName ?? 'system'}${lockedMeta.reason ? ` — ${lockedMeta.reason}` : ''}`}
+                  />
+                )}
               </span>
             )}
             <CollaborationBadges fieldId={field.id} onOpen={openWith} />
@@ -152,10 +180,19 @@ export default function RuntimeFieldRenderer({
           {field.helpText && <p className={s.help}>{field.helpText}</p>}
         </div>
 
-        <FieldToolbar
-          enabled={field.collaboration}
-          onAction={openWith}
-        />
+        <div className={s.fieldHeadActions}>
+          <CollaborationChips
+            fieldId={field.id}
+            collaboration={field.collaboration}
+            capabilities={gate}
+            onOpen={openWith}
+          />
+          <FieldToolbar
+            enabled={field.collaboration}
+            capabilities={gate}
+            onAction={openWith}
+          />
+        </div>
       </div>
 
       {/* Field input — render-prop pattern keeps the wrapper agnostic of types. */}

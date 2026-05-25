@@ -28,6 +28,9 @@ const PHONE_RE = /^\d{10}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const EMPTY = {
+  // Sponsor-assigned identifier for the site (stored as `site_number` on the
+  // tenant `sites` table; aliased as site_code everywhere else on the wire).
+  siteCode:           '',
   siteName:           '',
   siteLocation:       '',
   address:            '',
@@ -50,6 +53,7 @@ function seedFromSite(site) {
   const legacyAddress = [site.addressLine1, site.addressLine2].filter(Boolean).join('\n');
   return {
     ...EMPTY,
+    siteCode:           site.siteCode ?? site.siteNumber ?? site.site_number ?? '',
     siteName:           site.siteName           ?? '',
     siteLocation:       site.siteLocation       ?? '',
     address:            site.address            ?? legacyAddress,
@@ -81,8 +85,10 @@ export default function SiteFormPage() {
   const [dialingCodes, setDialingCodes] = useState([]);
 
   // ── Load active countries for both Country dropdown and Country Code list ──
+  // Uses the auth-only lookup endpoint — populating this dropdown must not
+  // require the `masters` permission.
   useEffect(() => {
-    sponsorCountriesClient.list(studyId)
+    sponsorCountriesClient.lookup()
       .then((all) => {
         const active = all.filter((c) => c.status === 'Active');
         setCountryOpts(
@@ -123,6 +129,7 @@ export default function SiteFormPage() {
   // ── Validation ─────────────────────────────────────────────────────────────
   const validate = () => {
     const errs = {};
+    if (!form.siteCode.trim())                     errs.siteCode   = 'Site ID is required.';
     if (!form.siteName.trim())                     errs.siteName   = 'Site Name is required.';
     if (!form.postalCode.trim())                   errs.postalCode = 'Postal Code is required.';
     if (form.email && !EMAIL_RE.test(form.email))  errs.email      = 'Enter a valid email address.';
@@ -159,7 +166,7 @@ export default function SiteFormPage() {
             // Find a Principal Investigator role from the active Site Roles
             // master; if none exists, fall back to the first active role so
             // the invite still goes through.
-            const roles  = await sponsorRolesClient.list(studyId, { status: 'Active' });
+            const roles  = await sponsorRolesClient.lookup(studyId, { status: 'Active' });
             const active = roles.filter((r) => r.status === 'Active');
             const piRole = active.find((r) =>
                               /principal.*investigator|^pi$/i.test(r.roleName ?? ''),
@@ -241,6 +248,15 @@ export default function SiteFormPage() {
 
         <section className={styles.section}>
           <div className={styles.row2}>
+            <FormField label="Site ID" name="siteCode" required error={errors.siteCode}>
+              <input
+                id="siteCode"
+                className={ic(styles, errors.siteCode)}
+                value={form.siteCode}
+                onChange={set('siteCode')}
+                placeholder="e.g. S001"
+              />
+            </FormField>
             <FormField label="Site Name" name="siteName" required error={errors.siteName}>
               <input
                 id="siteName"
@@ -249,6 +265,8 @@ export default function SiteFormPage() {
                 onChange={set('siteName')}
               />
             </FormField>
+          </div>
+          <div className={styles.row2}>
             <FormField label="Site Location" name="siteLocation">
               <input
                 id="siteLocation"
@@ -257,6 +275,7 @@ export default function SiteFormPage() {
                 onChange={set('siteLocation')}
               />
             </FormField>
+            <div /> {/* spacer for grid balance */}
           </div>
 
           <FormField label="Address" name="address">

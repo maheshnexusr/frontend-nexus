@@ -76,6 +76,16 @@ export function createField(type) {
     conditions: { enabled: false, logic: 'AND', rules: [] },
     attributes: { disabled: false, readonly: false, autofocus: false, autocomplete: '', id: '', class: '' },
     decorators: { prefix: '', suffix: '', before: '', after: '' },
+    // Clinical / EDC field metadata. Empty viewRoles/editRoles arrays mean
+    // "no restriction" (every role) — so forms built before this existed stay
+    // fully open. Consumed by the form runner + backend save enforcement.
+    clinical: {
+      viewRoles: [],
+      editRoles: [],
+      sdvEnabled: false,
+      reviewRequired: false,
+      queryEnabled: false,
+    },
   };
 
   switch (type) {

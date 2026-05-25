@@ -17,6 +17,8 @@ const STEP1_INIT = {
   studyDescription: '',
   sponsorId:        '',
   sponsorName:      '',   // organizationName for display
+  sponsorPermissions: null, // nested matrix — per-study sponsor workspace grant
+  sponsorDashboardWidgetKeys: null, // per-study sponsor dashboard whitelist (Step 1)
 };
 
 const STEP2_INIT = {

@@ -9,6 +9,10 @@ import {
 import { sponsorConsentReviewClient } from '@/features/sponsor/api/sponsorConsentReviewClient';
 import { useReadOnlyView }    from '@/features/workspace/hooks/useReadOnlyView';
 import { addToast }          from '@/app/notificationSlice';
+import { formatDateTime }    from '@/utils/formatDate';
+import PlatformDatePicker    from '@/components/form/PlatformDatePicker';
+import SnapshotButton        from '@/components/feedback/SnapshotButton';
+import { usePermissions }    from '@/features/auth/usePermissions';
 import SearchableDropdown    from '@/components/form/SearchableDropdown';
 import ApproveModal          from '@/features/sponsor/components/consent/ApproveModal';
 import RejectModal           from '@/features/sponsor/components/consent/RejectModal';
@@ -26,10 +30,7 @@ const STATUS_META = {
   Expired:  { color: '#94a3b8', bg: '#f8fafc' },
 };
 
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-}
+const fmtDate = (iso) => formatDateTime(iso) || '—';
 
 function SortIcon({ col, sortKey, sortDir }) {
   if (col !== sortKey) return <ChevronsUpDown size={12} style={{ opacity: 0.4 }} />;
@@ -77,6 +78,16 @@ export default function ConsentReviewPage() {
   const [approveTarget,  setApproveTarget]  = useState(null); // submission | 'bulk'
   const [rejectTarget,   setRejectTarget]   = useState(null); // submission | 'bulk'
   const [downloading,    setDownloading]    = useState(null); // id
+
+  // ── Permission gates ─────────────────────────────────────────────────────
+  // Approve and Reject are discrete actions on the consent_review leaf; a
+  // reviewer can hold one without the other (e.g. a "Returns" specialist who
+  // can only reject, or an Approval Officer who can only approve). Without
+  // the discrete permission the corresponding button is hidden everywhere —
+  // single-row action AND bulk-bar.
+  const { has } = usePermissions();
+  const canApprove = has('consent_review', 'approve');
+  const canReject  = has('consent_review', 'reject');
 
   // ── Load data ────────────────────────────────────────────────────────────
   const load = useCallback(() => {
@@ -227,9 +238,12 @@ export default function ConsentReviewPage() {
           <h1 className={styles.title}>Consent Review & Approval</h1>
           <p className={styles.sub}>Review, approve, or reject consent submissions for this study.</p>
         </div>
-        <button className={styles.btnRefresh} onClick={load} title="Refresh">
-          <RefreshCw size={14} />
-        </button>
+        <div className={styles.headerActions}>
+          <SnapshotButton leaf="consent_review" filename="consent_review" />
+          <button className={styles.btnRefresh} onClick={load} title="Refresh">
+            <RefreshCw size={14} />
+          </button>
+        </div>
       </div>
 
       {/* Toolbar */}
@@ -262,20 +276,18 @@ export default function ConsentReviewPage() {
 
           {/* Date range */}
           <div className={styles.dateRange}>
-            <input
-              type="date"
+            <PlatformDatePicker
               className={styles.dateInput}
               value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              title="From date"
+              onChange={setDateFrom}
+              placeholder="From date"
             />
             <span className={styles.dateSep}>–</span>
-            <input
-              type="date"
+            <PlatformDatePicker
               className={styles.dateInput}
               value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              title="To date"
+              onChange={setDateTo}
+              placeholder="To date"
             />
           </div>
         </div>
@@ -304,20 +316,24 @@ export default function ConsentReviewPage() {
           <span className={styles.bulkCount}>
             {selectedCount} submission{selectedCount !== 1 ? 's' : ''} selected
           </span>
-          <button
-            className={styles.bulkApprove}
-            onClick={() => setApproveTarget('bulk')}
-            {...ro.disabledProps('Approve selected')}
-          >
-            <CheckCircle size={13} /> Approve Selected
-          </button>
-          <button
-            className={styles.bulkReject}
-            onClick={() => setRejectTarget('bulk')}
-            {...ro.disabledProps('Reject selected')}
-          >
-            <XCircle size={13} /> Reject Selected
-          </button>
+          {canApprove && (
+            <button
+              className={styles.bulkApprove}
+              onClick={() => setApproveTarget('bulk')}
+              {...ro.disabledProps('Approve selected')}
+            >
+              <CheckCircle size={13} /> Approve Selected
+            </button>
+          )}
+          {canReject && (
+            <button
+              className={styles.bulkReject}
+              onClick={() => setRejectTarget('bulk')}
+              {...ro.disabledProps('Reject selected')}
+            >
+              <XCircle size={13} /> Reject Selected
+            </button>
+          )}
           <button
             className={styles.bulkClear}
             onClick={() => setSelected(new Set())}
@@ -436,8 +452,8 @@ export default function ConsentReviewPage() {
                       <Eye size={13} />
                     </button>
 
-                    {/* Approve — only pending */}
-                    {isPending && (
+                    {/* Approve — only pending, gated by consent_review.approve */}
+                    {isPending && canApprove && (
                       <button
                         className={`${styles.actionBtn} ${styles.actionApprove}`}
                         title={ro.isReadOnly ? ro.readOnlyMessage : 'Approve'}
@@ -448,8 +464,8 @@ export default function ConsentReviewPage() {
                       </button>
                     )}
 
-                    {/* Reject — only pending */}
-                    {isPending && (
+                    {/* Reject — only pending, gated by consent_review.reject */}
+                    {isPending && canReject && (
                       <button
                         className={`${styles.actionBtn} ${styles.actionReject}`}
                         title={ro.isReadOnly ? ro.readOnlyMessage : 'Reject'}

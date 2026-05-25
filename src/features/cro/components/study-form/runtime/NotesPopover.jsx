@@ -5,13 +5,11 @@ import {
   selectFieldBucket, addNote, updateNote, deleteNote,
 } from '@/features/cro/store/formRuntimeSlice';
 import { selectCurrentUser } from '@/features/auth/authSlice';
+import { formatDateTime } from '@/utils/formatDate';
 import Popover from './Popover';
 import s from './runtime.module.css';
 
-function fmt(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
-}
+const fmt = (iso) => formatDateTime(iso);
 
 export default function NotesPopover({ fieldId, fieldLabel, anchorRect, onClose }) {
   const dispatch = useDispatch();

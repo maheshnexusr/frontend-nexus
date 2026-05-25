@@ -12,6 +12,8 @@
 import sponsorAxiosClient from '@/api/sponsorAxiosClient';
 
 const BASE = '/api/v1/sponsor/workspace/masters/countries';
+// Auth-only reference list for form dropdowns — no `masters` permission needed.
+const LOOKUP = '/api/v1/sponsor/workspace/lookups/countries';
 
 function normalize(raw) {
   // The backend has used several ID names across iterations; pick whichever
@@ -63,6 +65,12 @@ function extractList(res) {
 export const sponsorCountriesClient = {
   async list(_studyId) {
     const res = await sponsorAxiosClient.get(BASE);
+    return extractList(res);
+  },
+
+  /** GET /lookups/countries — auth-only reference list for form dropdowns. */
+  async lookup() {
+    const res = await sponsorAxiosClient.get(LOOKUP);
     return extractList(res);
   },
 

@@ -5,12 +5,13 @@
  * Step 3 toggles → sponsor permission-tree leaf keys:
  *   consentManager      → consent_builder, consent_review
  *   queryManager        → query_manager
- *   dataManager         → data_capture
  *   verificationManager → data_verification
  *
- * Anything else (dashboard, sites, masters, reports, activity_log, …) is
- * always visible regardless of the study config — these are core sponsor
- * features, not optional modules.
+ * Anything else (dashboard, data capture, sites, masters, reports,
+ * activity_log, …) is always visible regardless of the study config —
+ * those are core EDC features, not optional modules. (Data Capture used
+ * to be gated by a `dataManager` toggle; that was removed because EDC
+ * studies always need data capture.)
  */
 
 import { FEATURE_TREE } from '@/features/sponsor/components/roles/permissionsTree';
@@ -19,7 +20,6 @@ import { FEATURE_TREE } from '@/features/sponsor/components/roles/permissionsTre
 export const CONFIG_GATED_LEAVES = {
   consentManager:      ['consent_builder', 'consent_review'],
   queryManager:        ['query_manager'],
-  dataManager:         ['data_capture'],
   verificationManager: ['data_verification'],
 };
 
@@ -44,9 +44,7 @@ export function resolveStudyConfig(config) {
   return {
     consentManager:      readConfigFlag(config, 'consentManager',      'consentEnabled'),
     queryManager:        readConfigFlag(config, 'queryManager',        'queryEnabled'),
-    dataManager:         readConfigFlag(config, 'dataManager',         'dataManagerEnabled'),
     verificationManager: readConfigFlag(config, 'verificationManager', 'verificationEnabled'),
-    navigationBar:       readConfigFlag(config, 'navigationBar',       'navBarEnabled'),
   };
 }
 
