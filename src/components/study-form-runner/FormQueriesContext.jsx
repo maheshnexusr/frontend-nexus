@@ -19,12 +19,14 @@ import { useLocation } from 'react-router-dom';
 import PropTypes from 'prop-types';
 import { sponsorQueryClient } from '@/features/sponsor/api/sponsorQueryClient';
 import { siteQueryClient } from '@/features/site/api/siteQueryClient';
+import { usePermissions } from '@/features/auth/usePermissions';
 
 const FormQueriesContext = createContext({
   queries:        [],
   byField:        new Map(),
   byPage:         new Map(),
   byBlock:        new Map(),
+  fieldLocation:  () => null,
   loading:        false,
   refresh:        () => Promise.resolve(),
 });
@@ -41,6 +43,16 @@ export function FormQueriesProvider({ subjectId, formId, blocks, children }) {
   const isSite   = location.pathname.startsWith('/site/');
   const client   = isSite ? siteQueryClient : sponsorQueryClient;
 
+  // Only fetch queries if the user can actually access them. A data-capture
+  // role without query access (e.g. a Data Manager with no query_manager.view /
+  // raise_query) would otherwise fire GET /queries → 403, which the read-only
+  // axios interceptor surfaces as a misleading "You do not have permission"
+  // toast on the data-capture screen. Skipping the call when they can't view
+  // queries avoids the request entirely (the field count badges simply don't
+  // show). The drawer's own raise/answer actions stay gated server-side.
+  const perms = usePermissions();
+  const canSeeQueries = perms?.canAccessQueryManager || perms?.canRaiseQueryOnField;
+
   const [queries, setQueries] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -50,6 +62,12 @@ export function FormQueriesProvider({ subjectId, formId, blocks, children }) {
     if (!subjectId || !formId) {
       // eslint-disable-next-line no-console
       console.warn('[FormQueries] skipping fetch — missing subjectId/formId in URL', { subjectId, formId });
+      setQueries([]);
+      return;
+    }
+    // No query access → skip the fetch entirely (avoids a 403 that the
+    // read-only interceptor would toast on the data-capture screen).
+    if (!canSeeQueries) {
       setQueries([]);
       return;
     }
@@ -73,23 +91,37 @@ export function FormQueriesProvider({ subjectId, formId, blocks, children }) {
     } finally {
       setLoading(false);
     }
-  }, [client, subjectId, formId, isSite]);
+  }, [client, subjectId, formId, isSite, canSeeQueries]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Map every fieldId in the blocks tree → its (blockId, pageId) so we can
-  // aggregate the queries across the three levels in one pass.
+  // Map every fieldId in the blocks tree → its (blockId, pageId) plus the
+  // human-readable block/page titles. The IDs drive the count aggregation; the
+  // titles are stamped onto a raised query so the Query Manager table can show
+  // the block/page the query belongs to.
   const fieldIndex = useMemo(() => {
-    const map = new Map(); // fieldId → { blockId, pageId }
+    const map = new Map(); // fieldId → { blockId, pageId, blockName, pageName }
     for (const blk of blocks ?? []) {
       for (const pg of blk.pages ?? []) {
         for (const f of pg.fields ?? []) {
-          map.set(f.id, { blockId: blk.id, pageId: pg.id });
+          map.set(f.id, {
+            blockId:   blk.id,
+            pageId:    pg.id,
+            blockName: blk.title ?? '',
+            pageName:  pg.title ?? '',
+          });
         }
       }
     }
     return map;
   }, [blocks]);
+
+  // Resolve a field's block/page titles — used when raising a query so the
+  // Query Manager table can render the originating block/page.
+  const fieldLocation = useCallback(
+    (fieldId) => fieldIndex.get(fieldId) ?? null,
+    [fieldIndex]
+  );
 
   const aggregates = useMemo(() => {
     const byField = new Map(); // fieldId → active count
@@ -128,9 +160,10 @@ export function FormQueriesProvider({ subjectId, formId, blocks, children }) {
     byField:  aggregates.byField,
     byPage:   aggregates.byPage,
     byBlock:  aggregates.byBlock,
+    fieldLocation,
     loading,
     refresh:  load,
-  }), [queries, aggregates, loading, load]);
+  }), [queries, aggregates, fieldLocation, loading, load]);
 
   return (
     <FormQueriesContext.Provider value={value}>

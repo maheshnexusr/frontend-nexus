@@ -12,12 +12,13 @@
  */
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { Loader2, AlertCircle, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import StudyFormRunner from '@/components/study-form-runner/StudyFormRunner';
 import sponsorAxiosClient from '@/api/sponsorAxiosClient';
 import { useReadOnlyView } from '@/features/workspace/hooks/useReadOnlyView';
 import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
+import { selectCurrentUser } from '@/features/auth/authSlice';
 import { addToast } from '@/app/notificationSlice';
 import SubjectContextStrip from '@/features/sponsor/components/capture/SubjectContextStrip';
 import s from './CaptureFormPage.module.css';
@@ -35,7 +36,16 @@ export default function CaptureFormPage() {
   // data_capture.edit gets the form view-only — it can see the data but not
   // change fields or move the form's status.
   const perms      = useSiteRolePermissions(studyId);
-  const canEdit    = !perms || perms?.data_capture?.edit === true;
+  const dc         = perms?.data_capture;
+  // Per-action gate. `submit` is a distinct data_capture action; a role with no
+  // such key inherits `edit` (so pre-split roles still submit), while an explicit
+  // false withholds submit even from an edit-capable role.
+  const dcAllows   = (action) => !perms
+    ? true
+    : (typeof dc?.[action] === 'boolean' ? dc[action] === true : dc?.edit === true);
+  const canEdit    = !perms || dc?.edit === true;
+  const canSubmit  = dcAllows('submit');
+  const canVerify  = !perms || perms?.data_verification?.edit === true;
   const isReadOnly = ro.isReadOnly || !canEdit;
 
   const [blocks,    setBlocks]    = useState([]);
@@ -44,6 +54,12 @@ export default function CaptureFormPage() {
   const [error,     setError]     = useState(null);
   const [defaults,  setDefaults]  = useState({});
   const [submitted, setSubmitted] = useState(false);
+  // { [pageId]: { completedAt, status } } — pages already Marked Completed.
+  const [completedPages, setCompletedPages] = useState({});
+  // Persisted verification: { fields: { [fieldId]: {...} }, pages: { [pageId]: {...} } }
+  const [verification, setVerification] = useState({ fields: {}, pages: {} });
+  const currentUser = useSelector(selectCurrentUser);
+  const myName = currentUser?.fullName ?? currentUser?.full_name ?? currentUser?.email ?? 'You';
 
   /* ── fetch form schema (and existing data if a subject is provided) ── */
   useEffect(() => {
@@ -69,6 +85,29 @@ export default function CaptureFormPage() {
           );
           const row = dataRes?.data ?? null;
           if (!cancelled) setDefaults(row?.form_data ?? row?.formData ?? {});
+
+          // Which pages are already Marked Completed → the runner shows a
+          // "Page Completed" badge instead of the button. Non-fatal on error.
+          try {
+            const ps = await sponsorAxiosClient.get(
+              `/api/v1/sponsor/workspace/subjects/${subjectId}/forms/${formId}/page-status`,
+            );
+            if (!cancelled) {
+              const cmap = {};
+              const vfields = {};
+              const vpages  = {};
+              for (const r of (ps?.pages ?? [])) {
+                if (!r.field_name) {
+                  if (r.completed_at) cmap[r.page_id] = { completedAt: r.completed_at, status: r.status };
+                  vpages[r.page_id] = { status: r.status, verifiedByName: r.verified_by_name, verifiedAt: r.verified_at };
+                } else {
+                  vfields[r.field_name] = { status: r.status, verifiedByName: r.verified_by_name, verifiedAt: r.verified_at };
+                }
+              }
+              setCompletedPages(cmap);
+              setVerification({ fields: vfields, pages: vpages });
+            }
+          } catch { /* ignore */ }
         }
       } catch (err) {
         if (!cancelled) {
@@ -95,9 +134,9 @@ export default function CaptureFormPage() {
       dispatch(addToast({ type: 'info', message: ro.readOnlyMessage }));
       throw new Error('read-only');
     }
-    if (!canEdit) {
-      dispatch(addToast({ type: 'info', message: 'Your role has view-only access to this form.' }));
-      throw new Error('view-only');
+    if (!canSubmit) {
+      dispatch(addToast({ type: 'info', message: 'Your role cannot submit this form.' }));
+      throw new Error('no-submit');
     }
     if (!subjectId) {
       dispatch(addToast({
@@ -112,7 +151,32 @@ export default function CaptureFormPage() {
     );
     dispatch(addToast({ type: 'success', message: 'Form saved.' }));
     setSubmitted(true);
-  }, [formId, subjectId, ro.isReadOnly, ro.readOnlyMessage, canEdit, dispatch]);
+  }, [formId, subjectId, ro.isReadOnly, ro.readOnlyMessage, canSubmit, dispatch]);
+
+  // Verify the current page (SDV) — sponsor/CRO verifier. Sends the page's data
+  // fields flagged verified; the backend derives the page status.
+  const handleVerifyPage = useCallback(async (pageId, pageTitle, fields) => {
+    if (!canVerify || !subjectId) return;
+    try {
+      const res = await sponsorAxiosClient.post(
+        `/api/v1/sponsor/workspace/data-verifications/verify-page`,
+        { subject_id: subjectId, form_id: formId, page_id: pageId, page_title: pageTitle, fields },
+      );
+      const skipped = res?.skipped ?? [];
+      if (skipped.length) {
+        dispatch(addToast({
+          type: 'info',
+          message: `${skipped.length} field(s) have an open query and were not verified: ${skipped.join(', ')}`,
+        }));
+      } else {
+        dispatch(addToast({ type: 'success', message: 'Page verified.' }));
+      }
+      return { skipped, pageStatus: res?.pageStatus, verifiedByName: res?.verifiedByName ?? res?.verified_by_name ?? null };
+    } catch (e) {
+      dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to verify page.' }));
+      throw e;
+    }
+  }, [formId, subjectId, canVerify, myName, dispatch]);
 
   if (loading) {
     return (
@@ -190,6 +254,10 @@ export default function CaptureFormPage() {
         formTitle={formTitle}
         defaultValues={defaults}
         onSubmit={handleSubmit}
+        onVerifyPage={canVerify ? handleVerifyPage : undefined}
+        completedPages={completedPages}
+        verification={verification}
+        canSubmit={canSubmit}
         submitLabel={isReadOnly ? 'Read-only view' : 'Submit eCRF'}
         readOnly={isReadOnly}
       />

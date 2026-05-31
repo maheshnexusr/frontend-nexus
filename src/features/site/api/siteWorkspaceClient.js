@@ -40,6 +40,11 @@ export const siteWorkspaceClient = {
     return siteAxiosClient.patch(`${BASE}/subjects/${subjectId}`, payload);
   },
 
+  /** Hard-delete a subject and all its data (gated by data_capture.subject_delete). */
+  async deleteSubject(subjectId) {
+    return siteAxiosClient.delete(`${BASE}/subjects/${subjectId}`);
+  },
+
   /** Forms defined for the chosen study (latest version per form). */
   async listForms() {
     return siteAxiosClient.get(`${BASE}/forms`);
@@ -59,6 +64,25 @@ export const siteWorkspaceClient = {
   /** Upsert (subject, form) answers. `status` may be 'Draft' or 'Submitted'. */
   async saveSubjectFormData(subjectId, formId, payload) {
     return siteAxiosClient.post(`${BASE}/subjects/${subjectId}/forms/${formId}/data`, payload);
+  },
+
+  /** Mark a page Completed → creates the Verification Manager work-item. */
+  async markPageCompleted(subjectId, formId, pageId, pageTitle) {
+    return siteAxiosClient.post(
+      `${BASE}/subjects/${subjectId}/forms/${formId}/pages/${pageId}/complete`,
+      { page_title: pageTitle ?? null }
+    );
+  },
+
+  /** Verify a page — `fields` = [{ field_name, verified, comment }]. */
+  async verifyPage(payload) {
+    return siteAxiosClient.post(`${BASE}/data-verifications/verify-page`, payload);
+  },
+
+  /** Per-page completion/verification status for one (subject, form). Returns
+   *  `{ pages: [{ page_id, status, completed_at, ... }] }`. */
+  async getPageStatuses(subjectId, formId) {
+    return siteAxiosClient.get(`${BASE}/subjects/${subjectId}/forms/${formId}/page-status`);
   },
 
   /**

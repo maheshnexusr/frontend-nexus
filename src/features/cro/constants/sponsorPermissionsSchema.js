@@ -83,11 +83,11 @@ export const SPONSOR_PERMISSION_GROUPS = [
       // "Data Capture" (open-form) gate + Activity History + Snapshot. No
       // subject_view: visibility falls through data_capture.view, which
       // already governs whether the user sees the subject list at all.
-      { label: 'Data Capture',      key: 'data_capture',      desc: 'eCRF data entry, subject roster, raise/close query, mark completed/reviewed/verified, signature, freeze, lock block/form.',
+      { label: 'Data Capture',      key: 'data_capture',      desc: 'eCRF data entry, subject roster, raise/close query, save/mark-completed/submit, reviewed/verified, signature, freeze, lock block/form.',
         perms: perms(['view', 'create', 'edit', 'delete', 'export',
                       'subject_create', 'subject_edit', 'subject_delete', 'subject_lock',
                       'subject_data_capture',
-                      'complete', 'review', 'verify', 'sign',
+                      'complete', 'submit', 'review', 'verify', 'sign',
                       'freeze', 'lock', 'lock_block',
                       'raise_query', 'close_query',
                       'activity_log', 'snapshot']) },

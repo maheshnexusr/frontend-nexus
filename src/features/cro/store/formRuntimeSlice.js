@@ -60,6 +60,15 @@ export const FORM_STATUS_META = {
 /** Statuses that block ANY data edit (form-wide). */
 export const READ_ONLY_STATUSES = new Set(['Frozen', 'Locked', 'Signed']);
 
+/**
+ * Spec §VM auto-reset: editing data on a page that has already been
+ * Reviewed / Verified / Approved invalidates the prior review and bounces
+ * the form back to "In Progress" so a CRA / DM must re-run the cascade.
+ * Frozen/Locked/Signed already block edits at the gate layer, so they
+ * never reach the reset path.
+ */
+const POST_REVIEW_STATUSES = new Set(['Reviewed', 'Verified', 'Approved']);
+
 const initialState = {
   fieldData:        {},
   collaboration:    {},
@@ -92,6 +101,51 @@ function pushAudit(state, entry) {
   });
 }
 
+/**
+ * Spec §VM: when a verified field is edited, its verification is invalidated
+ * and the parent form bounces out of any post-review status so the CRA must
+ * re-run the cascade. Both events are audited so the reviewer can trace why
+ * a previously Verified page suddenly went back to In Progress.
+ */
+function resetVerificationOnEdit(state, fieldId, by, byName) {
+  const bucket = state.collaboration[fieldId];
+  if (bucket?.verification?.verified) {
+    bucket.verification = {
+      verified: false,
+      verifiedBy: null,
+      verifiedByName: null,
+      verifiedAt: null,
+      comment: null,
+    };
+    pushAudit(state, {
+      fieldId,
+      action: 'verification.auto_reset',
+      by,
+      byName,
+      meta: { reason: 'Field value changed after verification — Not Verified.' },
+    });
+  }
+  if (POST_REVIEW_STATUSES.has(state.formStatus)) {
+    const from = state.formStatus;
+    state.formStatus = 'In Progress';
+    state.formStatusHistory.push({
+      from,
+      to: 'In Progress',
+      by,
+      byName,
+      at: new Date().toISOString(),
+      reason: 'Auto-reset: data edited after page was reviewed/verified.',
+    });
+    pushAudit(state, {
+      fieldId,
+      action: 'form.status.auto_reset',
+      by,
+      byName,
+      meta: { from, to: 'In Progress' },
+    });
+  }
+}
+
 /* ── Slice ────────────────────────────────────────────────────────────────── */
 const formRuntimeSlice = createSlice({
   name: 'formRuntime',
@@ -108,6 +162,7 @@ const formRuntimeSlice = createSlice({
             fieldId, action: 'value.changed', by, byName,
             meta: { oldValue: old ?? null, newValue: value },
           });
+          resetVerificationOnEdit(state, fieldId, by, byName);
         }
       },
       prepare: (payload) => ({ payload }),
@@ -121,6 +176,7 @@ const formRuntimeSlice = createSlice({
         fieldId, action: 'value.cleared', by, byName,
         meta: { oldValue: old ?? null },
       });
+      resetVerificationOnEdit(state, fieldId, by, byName);
     },
 
     /* ── Annotations ────────────────────────────────────────────────────── */

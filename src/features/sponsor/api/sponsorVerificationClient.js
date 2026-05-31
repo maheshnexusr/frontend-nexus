@@ -46,17 +46,49 @@ function normalizeSubject(raw) {
   const crfsCompleted = raw.crfs_completed ?? raw.crfsCompleted ?? 0;
   const crfsTotal     = raw.crfs_total     ?? raw.crfsTotal     ?? 0;
   return {
+    // Verification row identifier — needed for the Activity History drill-in.
+    verificationId:   raw.verification_id ?? raw.verificationId ?? null,
     id:               raw.id             ?? raw.subject_id   ?? '',
+    // Spec §VM: Subject Details = Subject ID + Initials.
+    subjectNumber:    raw.subject_number  ?? raw.subjectNumber ?? '',
+    initials:         raw.subject_initials ?? raw.initials    ?? '',
     siteCode:         raw.site_code      ?? raw.siteCode     ?? '',
     siteName:         raw.site_name      ?? raw.siteName     ?? '',
-    enrollmentDate:   raw.enrollment_date ?? raw.enrollmentDate ?? '',
+    // Backend now returns enrolled_at (subjects.enrolled_at) instead of an
+    // ad-hoc enrollment_date column.
+    enrollmentDate:   raw.enrolled_at    ?? raw.enrollment_date ?? raw.enrollmentDate ?? '',
     crfsCompleted,
     crfsTotal,
-    completeness:     raw.completeness   ?? (crfsTotal ? Math.round((crfsCompleted / crfsTotal) * 100) : 0),
+    // Per-row completeness = this PAGE's verification progress (verified fields ÷
+    // the page's total fields) → 100% when the page is fully verified. Distinct
+    // from the study-wide CRF Completeness bar (data entry). Falls back to the
+    // legacy CRF ratio only if the backend didn't send a per-page value.
+    completeness:     raw.verified_pct ?? raw.completeness ?? (crfsTotal ? Math.round((crfsCompleted / crfsTotal) * 100) : 0),
+    verifiedFields:   raw.verified_fields ?? raw.verifiedFields ?? null,
+    totalFields:      raw.total_fields    ?? raw.totalFields    ?? null,
     openQueries:      raw.open_queries   ?? raw.openQueries  ?? 0,
     status:           raw.status         ?? 'Pending',
-    verifiedBy:       raw.verified_by    ?? raw.verifiedBy   ?? '',
-    verificationDate: raw.verification_date ?? raw.verificationDate ?? '',
+    // Prefer the resolved display name; fall back to the raw id only if the
+    // backend couldn't resolve it.
+    verifiedBy:       raw.verified_by_name ?? raw.verifiedByName ?? raw.verified_by ?? raw.verifiedBy ?? '',
+    // Full list of distinct verifiers (for the "Multiple (N)" tooltip).
+    verifiedByNames:  raw.verified_by_names ?? raw.verifiedByNames ?? [],
+    verificationDate: raw.verified_at    ?? raw.verification_date ?? raw.verificationDate ?? '',
+    completedByName:  raw.completed_by_name ?? raw.completedByName ?? '',
+    // Per-page verification flow: a PAGE work-item has pageId set + fieldName
+    // empty; a field-level row has both. completedBy/At = who marked the page
+    // done (data entry) — distinct from verifiedBy (the SDV reviewer).
+    formId:           raw.form_id        ?? raw.formId       ?? '',
+    pageId:           raw.page_id        ?? raw.pageId       ?? '',
+    pageTitle:        raw.page_title     ?? raw.pageTitle    ?? '',
+    fieldName:        raw.field_name     ?? raw.fieldName    ?? '',
+    completedBy:      raw.completed_by   ?? raw.completedBy  ?? '',
+    completedAt:      raw.completed_at   ?? raw.completedAt  ?? '',
+    // Spec §VM: Block / Page = the form + the specific eCRF page being verified.
+    blockPage:        [raw.form_name ?? raw.formName, raw.page_title ?? raw.pageTitle]
+                        .filter(Boolean).join(' / ') || (raw.form_name ?? raw.formName ?? ''),
+    // Days from row creation → verified_at (or NOW() if pending).
+    ageDays:          Number(raw.age_days ?? raw.ageDays ?? 0),
   };
 }
 
@@ -118,16 +150,37 @@ function normalizeDetails(raw) {
 export const sponsorVerificationClient = {
   async getMetrics(_studyId) {
     const res = await pickScope().axios.get(`${pickScope().base}/metrics`);
+    // Backend (spec vocabulary):
+    //   total, not_verified, in_verification, partially_verified,
+    //   verified, overdue, avg_verification_days
+    // Legacy keys (pending_verification, in_review, approved, rejected_queried,
+    // completion_rate, by_site) kept as fallbacks so older mocks still render.
+    const total = res?.total ?? res?.total_subjects ?? res?.totalSubjects ?? 0;
+    const verified = res?.verified ?? 0;
     return {
-      totalSubjects:       res?.total_subjects        ?? res?.totalSubjects        ?? 0,
-      pendingVerification: res?.pending_verification  ?? res?.pendingVerification  ?? 0,
-      inReview:            res?.in_review             ?? res?.inReview             ?? 0,
-      verified:            res?.verified              ?? 0,
-      approved:            res?.approved              ?? 0,
-      rejectedQueried:     res?.rejected_queried      ?? res?.rejectedQueried      ?? 0,
-      completionRate:      res?.completion_rate       ?? res?.completionRate       ?? 0,
-      avgVerificationDays: res?.avg_verification_days ?? res?.avgVerificationDays  ?? 0,
-      bySite:              res?.by_site               ?? res?.bySite               ?? [],
+      total,
+      totalSubjects:        total,
+      notVerified:          res?.not_verified         ?? res?.notVerified          ?? res?.pending_verification ?? 0,
+      pendingVerification:  res?.not_verified         ?? res?.pending_verification ?? res?.pendingVerification ?? 0,
+      inVerification:       res?.in_verification      ?? res?.inVerification       ?? res?.in_review           ?? 0,
+      inReview:             res?.in_verification      ?? res?.in_review            ?? res?.inReview            ?? 0,
+      partiallyVerified:    res?.partially_verified   ?? res?.partiallyVerified    ?? 0,
+      verified,
+      // Spec §VM Overdue card — set by the cron scanner. Always exposed,
+      // including the camelCase fallback for completeness.
+      overdue:              res?.overdue              ?? res?.overdueVerifications ?? 0,
+      approved:             res?.approved             ?? 0,
+      rejectedQueried:      res?.rejected_queried     ?? res?.rejectedQueried      ?? 0,
+      completionRate:       res?.completion_rate      ?? res?.completionRate       ?? (total ? Math.round((verified / total) * 100) : 0),
+      // Spec §VM progress bars — pre-computed on the BE so the FE doesn't
+      // need to know the "completed status" vocabulary for CRF entry.
+      verificationCompletionPct: res?.verification_completion_pct ?? res?.verificationCompletionPct
+        ?? (total ? Math.round((verified / total) * 100) : 0),
+      crfCompletenessPct:        res?.crf_completeness_pct        ?? res?.crfCompletenessPct        ?? 0,
+      crfFormsTotal:             res?.crf_forms_total             ?? res?.crfFormsTotal             ?? 0,
+      crfFormsComplete:          res?.crf_forms_complete          ?? res?.crfFormsComplete          ?? 0,
+      avgVerificationDays:  res?.avg_verification_days ?? res?.avgVerificationDays  ?? 0,
+      bySite:               res?.by_site              ?? res?.bySite               ?? [],
     };
   },
 
@@ -144,13 +197,34 @@ export const sponsorVerificationClient = {
     if (filters.minComplete !== undefined) params.min_completeness = filters.minComplete;
 
     const res = await pickScope().axios.get(pickScope().base, { params });
-    const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
+    // Backend wraps rows in `{ success, verifications }`; older mocks used
+    // `items` or `data`. Accept all three so the page stays compatible.
+    const arr = Array.isArray(res)
+      ? res
+      : (res?.verifications ?? res?.items ?? res?.data ?? []);
     return arr.map(normalizeSubject);
   },
 
   async getSubject(_studyId, subjectId) {
     const res = await pickScope().axios.get(`${pickScope().base}/${subjectId}`);
     return normalizeDetails(res?.item ?? res ?? {});
+  },
+
+  /** Per-page + per-field verification status for one (subject, form). Returns
+   *  the raw rows ({ page_id, page_title, field_name, status, verified_by_name,
+   *  verified_at, completed_by_name, completed_at }). Scope-aware (sponsor/site). */
+  async getPageStatuses(subjectId, formId) {
+    const { axios, workspace } = pickScope();
+    const res = await axios.get(`${workspace}/subjects/${subjectId}/forms/${formId}/page-status`);
+    return res?.pages ?? res?.data ?? [];
+  },
+
+  /** Form schema — used to resolve field ids → labels and page titles in the
+   *  verification detail view. */
+  async getForm(formId) {
+    const { axios, workspace } = pickScope();
+    const res = await axios.get(`${workspace}/forms/${formId}`);
+    return res?.form ?? res ?? {};
   },
 
   /** POST /data-verifications — spec §4.6 create. */

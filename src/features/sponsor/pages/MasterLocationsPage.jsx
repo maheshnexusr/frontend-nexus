@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, MapPin, Filter, Upload, Download, FileDown } from
 import { sponsorLocationsClient } from '@/features/sponsor/api/sponsorLocationsClient';
 import { sponsorCountriesClient } from '@/features/sponsor/api/sponsorCountriesClient';
 import { useReadOnlyView }        from '@/features/workspace/hooks/useReadOnlyView';
+import { usePermissions }         from '@/features/auth/usePermissions';
 import { addToast }               from '@/app/notificationSlice';
 import DataTable                  from '@/components/data-table/DataTable';
 import StatusBadge                from '@/components/feedback/StatusBadge';
@@ -65,6 +66,10 @@ export default function MasterLocationsPage() {
   const dispatch    = useDispatch();
   const fileRef     = useRef(null);
   const ro          = useReadOnlyView();
+  const { has }     = usePermissions();
+  const canCreate   = has('locations', 'create');
+  const canEdit     = has('locations', 'edit');
+  const canDelete   = has('locations', 'delete');
 
   const [locations,    setLocations]  = useState([]);
   const [countryOpts,  setCountryOpts] = useState([]);
@@ -266,27 +271,31 @@ export default function MasterLocationsPage() {
       width: '90px',
       render: (_, row) => (
         <div className={styles.actions}>
-          <button
-            className={styles.actionBtn}
-            title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
-            onClick={() => openEdit(row)}
-            {...ro.disabledProps('Edit location')}
-          >
-            <Pencil size={14} />
-          </button>
-          <button
-            className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
-            title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
-            onClick={() => handleDeleteClick(row)}
-            {...ro.disabledProps('Delete location')}
-          >
-            <Trash2 size={14} />
-          </button>
+          {canEdit && (
+            <button
+              className={styles.actionBtn}
+              title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
+              onClick={() => openEdit(row)}
+              {...ro.disabledProps('Edit location')}
+            >
+              <Pencil size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+              title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
+              onClick={() => handleDeleteClick(row)}
+              {...ro.disabledProps('Delete location')}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       ),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [ro.isReadOnly]);
+  ], [ro.isReadOnly, canEdit, canDelete]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -299,35 +308,43 @@ export default function MasterLocationsPage() {
           <p className={styles.sub}>Manage geographical locations scoped to this study.</p>
         </div>
         <div className={styles.headerActions}>
-          <button
-            className={styles.btnSecondary}
-            onClick={handleSampleDownload}
-            title="Download sample template (Locations.csv)"
-          >
-            <FileDown size={14} />
-            Sample Template
-          </button>
-          <button
-            className={styles.btnSecondary}
-            onClick={() => !ro.isReadOnly && fileRef.current?.click()}
-            disabled={importing || ro.isReadOnly}
-            aria-disabled={importing || ro.isReadOnly}
-            title={ro.isReadOnly ? ro.readOnlyMessage : 'Import from CSV or Excel'}
-          >
-            <Upload size={14} />
-            {importing ? 'Importing…' : 'Import'}
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            style={{ display: 'none' }}
-            onChange={handleFileChange}
-          />
-          <button className={styles.btnPrimary} onClick={openCreate} {...ro.disabledProps('Add location')}>
-            <Plus size={15} />
-            Add Location
-          </button>
+          {canCreate && (
+            <button
+              className={styles.btnSecondary}
+              onClick={handleSampleDownload}
+              title="Download sample template (Locations.csv)"
+            >
+              <FileDown size={14} />
+              Sample Template
+            </button>
+          )}
+          {canCreate && (
+            <>
+              <button
+                className={styles.btnSecondary}
+                onClick={() => !ro.isReadOnly && fileRef.current?.click()}
+                disabled={importing || ro.isReadOnly}
+                aria-disabled={importing || ro.isReadOnly}
+                title={ro.isReadOnly ? ro.readOnlyMessage : 'Import from CSV or Excel'}
+              >
+                <Upload size={14} />
+                {importing ? 'Importing…' : 'Import'}
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                style={{ display: 'none' }}
+                onChange={handleFileChange}
+              />
+            </>
+          )}
+          {canCreate && (
+            <button className={styles.btnPrimary} onClick={openCreate} {...ro.disabledProps('Add location')}>
+              <Plus size={15} />
+              Add Location
+            </button>
+          )}
         </div>
       </div>
 

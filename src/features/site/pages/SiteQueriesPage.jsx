@@ -4,8 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import {
   Eye, MessageSquare, CheckCircle, FileText, Filter, Search, X as XIcon,
-  RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown,
-  MessageSquareWarning,
+  RefreshCw, RotateCcw, ChevronUp, ChevronDown, ChevronsUpDown,
+  MessageSquareWarning, AlertTriangle, Clock,
 } from 'lucide-react';
 import { siteQueryClient } from '@/features/site/api/siteQueryClient';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
@@ -15,12 +15,15 @@ import { formatDate }       from '@/utils/formatDate';
 import PlatformDatePicker   from '@/components/form/PlatformDatePicker';
 import RespondModal         from '@/features/sponsor/components/query/RespondModal';
 import CloseReopenModal     from '@/features/sponsor/components/query/CloseReopenModal';
+import QueryDetailsModal    from '@/features/sponsor/components/query/QueryDetailsModal';
+import EscalateModal        from '@/features/sponsor/components/query/EscalateModal';
+import SlaSettingsModal     from '@/features/sponsor/components/sla/SlaSettingsModal';
 import { usePermissions }   from '@/features/auth/usePermissions';
 import styles from '@/features/sponsor/pages/QueriesPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS   = ['All', 'Raised', 'Answered', 'Resolved', 'Overdue'];
+const STATUS_OPTIONS   = ['All', 'Raised', 'Answered', 'Resolved', 'Closed', 'Overdue'];
 const PRIORITY_OPTIONS = ['All', 'High', 'Medium', 'Low'];
 
 const PRIORITY_META = {
@@ -37,12 +40,17 @@ const STATUS_META = {
   Resolved:     { color: '#166534', bg: '#dcfce7', accent: '#16A34A' },
   Open:         { color: '#92400e', bg: '#fef3c7', accent: '#F59E0B' },
   'In Progress':{ color: '#1d4ed8', bg: '#dbeafe', accent: '#2563EB' },
-  Closed:       { color: '#166534', bg: '#dcfce7', accent: '#16A34A' },
+  Closed:       { color: '#475569', bg: '#f1f5f9', accent: '#94A3B8' }, // Gray — distinct from Resolved
   Overdue:      { color: '#dc2626', bg: '#fef2f2', accent: '#dc2626' },
 };
 
-const STATUS_DISPLAY = { Open: 'Raised', 'In Progress': 'Answered', Closed: 'Resolved' };
+// Closed is its OWN terminal status (the Close Query popup now sets 'Closed',
+// not 'Resolved') — no longer folded into Resolved, so it matches the sponsor
+// Query Manager. Only Open/In Progress legacy aliases are remapped.
+const STATUS_DISPLAY = { Open: 'Raised', 'In Progress': 'Answered' };
 const toDisplayStatus = (st) => STATUS_DISPLAY[st] ?? st ?? 'Raised';
+// Terminal statuses — no further action (respond/close) is offered.
+const isTerminalStatus = (display) => display === 'Resolved' || display === 'Closed';
 
 const fmtDate = (iso) => formatDate(iso) || '—';
 
@@ -71,19 +79,35 @@ export default function SiteQueriesPage() {
   //   /queries/:id/close  → data_capture.close_query  (migration 026 split)
   // Without these checks the buttons would render and 403 on click.
   const { has } = usePermissions();
-  const canRespond = has('query_manager', 'edit');
-  const canClose   = has('data_capture', 'close_query');
+  const canRespond  = has('query_manager', 'edit');
+  const canClose    = has('data_capture', 'close_query');
+  const canEscalate = has('query_manager', 'edit');
+  const canReopen   = has('query_manager', 'edit');
+  // SLA Settings: panel is visible to anyone with query_manager.view; edit is
+  // separately gated server-side AND client-side by `sla_settings`.
+  const canEditSla  = has('query_manager', 'sla_settings');
+  const [slaOpen, setSlaOpen] = useState(false);
 
   // ── Data ─────────────────────────────────────────────────────────────────
-  const [queries, setQueries] = useState([]);
+  // `queries` drives the table — refetched whenever a server-side filter
+  // (status / priority / date) changes.
+  // `allQueries` drives the stats cards at the top — fetched ONCE per
+  // page-mount (and after every mutation) with no filters so the totals
+  // never shift when the user changes the table filter.
+  const [queries,    setQueries]    = useState([]);
+  const [allQueries, setAllQueries] = useState([]);
   const [loading, setLoading] = useState(true);
   // Study's first form id — used by the "Open Study Form" action when a query
   // row doesn't carry its own formId (single-form studies).
   const [studyFormId, setStudyFormId] = useState(null);
 
-  // ── Modal targets — Respond / Close. Resolved-only rows hide both. ─────
-  const [respondTarget, setRespond] = useState(null);
-  const [closeTarget,   setClose]   = useState(null);
+  // ── Modal targets — Respond / Close / Details. Resolved-only rows hide
+  //    Respond + Close; Details is visible for every status (read-only view).
+  const [respondTarget,  setRespond]  = useState(null);
+  const [closeTarget,    setClose]    = useState(null);
+  const [detailsTarget,  setDetails]  = useState(null);
+  const [escalateTarget, setEscalate] = useState(null);
+  const [reopenTarget,   setReopen]   = useState(null);
 
   // ── Filters ──────────────────────────────────────────────────────────────
   const [statusFilter,   setStatusFilter]   = useState('Raised');
@@ -106,6 +130,7 @@ export default function SiteQueriesPage() {
   const [sortDir,  setSortDir]  = useState('desc');
 
   // ── Load ──────────────────────────────────────────────────────────────────
+  // Filtered fetch — drives the table.
   const load = useCallback(() => {
     setLoading(true);
     siteQueryClient.list({
@@ -120,7 +145,16 @@ export default function SiteQueriesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, priorityFilter, dateFrom, dateTo]);
 
+  // Unfiltered fetch — drives the stats cards. Re-run after every mutation
+  // (respond / close / escalate) via `loadAll` so the totals stay current.
+  const loadAll = useCallback(() => {
+    siteQueryClient.list({})
+      .then((qs) => setAllQueries(qs))
+      .catch(() => { /* leave existing stats — silent */ });
+  }, []);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadAll(); }, [loadAll]);
   useEffect(() => { setPage(1); }, [statusFilter, priorityFilter, query, dateFrom, dateTo, onlyMine]);
 
   // Resolve the study's primary form id once, so the per-row "Open Study
@@ -155,7 +189,7 @@ export default function SiteQueriesPage() {
     rows = rows.filter((q) => {
       if (!query) return true;
       const s = query.toLowerCase();
-      return [q.id, q.queryText, q.fieldName, q.subjectId, q.formName, q.raisedBy]
+      return [q.id, q.queryText, q.fieldLabel, q.fieldName, q.subjectId, q.formName, q.raisedBy]
         .some((v) => (v ?? '').toLowerCase().includes(s));
     });
     if (sortKey) {
@@ -178,22 +212,40 @@ export default function SiteQueriesPage() {
   const pageData   = useMemo(() => filtered.slice((page - 1) * pageSize, page * pageSize), [filtered, page, pageSize]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
 
+  // Per-site sequential Query ID (1, 2, 3 …) — computed from the unfiltered
+  // result set so the same query keeps the same number regardless of filter.
+  // Sorted ASC by raised date so #1 is always the oldest.
+  const sequenceById = useMemo(() => {
+    const sorted = [...queries].sort((a, b) => {
+      const av = a.raisedDate ?? '';
+      const bv = b.raisedDate ?? '';
+      return av < bv ? -1 : av > bv ? 1 : 0;
+    });
+    const map = new Map();
+    sorted.forEach((q, idx) => map.set(q.id, idx + 1));
+    return map;
+  }, [queries]);
+
   const handleSort = (key) => {
     if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
     else { setSortKey(key); setSortDir('desc'); }
   };
 
   // ── Stats ─────────────────────────────────────────────────────────────────
+  // Always counts the FULL set of queries on this site, never the filtered
+  // table view. So changing status/priority/date filters never shifts the
+  // numbers in the cards above.
   const stats = useMemo(() => {
-    const byDisplay = (label) => queries.filter((q) => toDisplayStatus(q.status) === label).length;
+    const byDisplay = (label) => allQueries.filter((q) => toDisplayStatus(q.status) === label).length;
     return {
-      total:    queries.length,
+      total:    allQueries.length,
       raised:   byDisplay('Raised'),
       answered: byDisplay('Answered'),
       resolved: byDisplay('Resolved'),
-      overdue:  queries.filter((q) => q.status === 'Overdue' || (q.slaRemaining < 0 && toDisplayStatus(q.status) !== 'Resolved')).length,
+      closed:   byDisplay('Closed'),
+      overdue:  allQueries.filter((q) => q.status === 'Overdue' || (q.slaRemaining < 0 && !isTerminalStatus(toDisplayStatus(q.status)))).length,
     };
-  }, [queries]);
+  }, [allQueries]);
 
   // ── Modal-driven Respond + Close (mirrors the sponsor QueryManager page). ──
   const handleRespond = async (data) => {
@@ -202,6 +254,7 @@ export default function SiteQueriesPage() {
       dispatch(addToast({ type: 'success', message: 'Response sent.' }));
       setRespond(null);
       load();
+      loadAll();
     } catch {
       dispatch(addToast({ type: 'error', message: 'Failed to send response.' }));
       throw new Error();
@@ -214,8 +267,35 @@ export default function SiteQueriesPage() {
       dispatch(addToast({ type: 'success', message: 'Query closed.' }));
       setClose(null);
       load();
+      loadAll();
     } catch {
       dispatch(addToast({ type: 'error', message: 'Failed to close query.' }));
+      throw new Error();
+    }
+  };
+
+  const handleEscalate = async (data) => {
+    try {
+      await siteQueryClient.escalate(escalateTarget.id, data);
+      dispatch(addToast({ type: 'success', message: 'Query escalated.' }));
+      setEscalate(null);
+      load();
+      loadAll();
+    } catch {
+      dispatch(addToast({ type: 'error', message: 'Failed to escalate query.' }));
+      throw new Error();
+    }
+  };
+
+  const handleReopen = async (data) => {
+    try {
+      await siteQueryClient.reopen(reopenTarget.id, data);
+      dispatch(addToast({ type: 'success', message: 'Query reopened.' }));
+      setReopen(null);
+      load();
+      loadAll();
+    } catch {
+      dispatch(addToast({ type: 'error', message: 'Failed to reopen query.' }));
       throw new Error();
     }
   };
@@ -245,7 +325,16 @@ export default function SiteQueriesPage() {
           <p className={styles.sub}>Review and respond to data queries raised on your site.</p>
         </div>
         <div className={styles.headerActions}>
-          <button className={styles.btnRefresh} onClick={load} title="Refresh">
+          {canEditSla && (
+            <button
+              className={styles.btnSecondary}
+              onClick={() => setSlaOpen(true)}
+              title="Configure SLA"
+            >
+              <Clock size={13} /> SLA Settings
+            </button>
+          )}
+          <button className={styles.btnRefresh} onClick={() => { load(); loadAll(); }} title="Refresh">
             <RefreshCw size={14} />
           </button>
         </div>
@@ -258,6 +347,7 @@ export default function SiteQueriesPage() {
           { label: 'Raised',        value: stats.raised,   color: '#F59E0B', bg: '#fef3c7' },
           { label: 'Answered',      value: stats.answered, color: '#2563EB', bg: '#dbeafe' },
           { label: 'Resolved',      value: stats.resolved, color: '#16A34A', bg: '#dcfce7' },
+          { label: 'Closed',        value: stats.closed,   color: '#475569', bg: '#f1f5f9' },
           { label: 'Overdue',       value: stats.overdue,  color: '#dc2626', bg: '#fee2e2' },
         ].map(({ label, value, color, bg }) => (
           <Card key={label}>
@@ -401,16 +491,28 @@ export default function SiteQueriesPage() {
               const pm = PRIORITY_META[q.priority] ?? PRIORITY_META.Medium;
               const display = toDisplayStatus(q.status);
               const sm = STATUS_META[display] ?? STATUS_META.Raised;
-              const isResolved = display === 'Resolved';
-              const isActive   = !isResolved;
+              // Lifecycle: open/answered (active) → Resolved (reopenable +
+              // closable) → Closed (final). Close advances one step.
+              const isTerminal = isTerminalStatus(display);      // Resolved || Closed
+              const isResolved = isTerminal;                     // used for "actioned by"
+              const isActive   = !isTerminal;
+              const canCloseStep  = isActive || display === 'Resolved'; // Close until final
+              const canReopenStep = isTerminal;                   // Resolved + Closed
               const isOverdue  = q.slaRemaining < 0 && isActive;
 
-              const actionedBy   = isResolved ? (q.resolvedBy || q.respondedBy || q.raisedBy)
-                                  : display === 'Answered' ? (q.respondedBy || q.raisedBy)
-                                  : q.raisedBy;
+              // Prefer the resolved full name from the backend join. Falls
+              // back to the raw id only when the join missed (e.g. user was
+              // deleted) so the cell never shows blank.
+              const actionedBy   = isResolved
+                ? (q.resolvedByName || q.respondedByName || q.raisedByName || q.resolvedBy || q.respondedBy || q.raisedBy)
+                : display === 'Answered'
+                  ? (q.respondedByName || q.raisedByName || q.respondedBy || q.raisedBy)
+                  : (q.raisedByName || q.raisedBy);
               const actionedDate = isResolved ? (q.resolvedDate || q.responseDate || q.raisedDate)
                                   : display === 'Answered' ? (q.responseDate || q.raisedDate)
                                   : q.raisedDate;
+
+              const sequenceLabel = sequenceById.get(q.id) ?? '—';
 
               return (
                 <tr
@@ -418,42 +520,42 @@ export default function SiteQueriesPage() {
                   className={`${styles.row} ${isOverdue ? styles.rowOverdue : ''}`}
                   title={q.queryText ? `${q.fieldName || ''}: ${q.queryText}` : ''}
                 >
-                  <td className={styles.td}><code className={styles.qid}>{q.id}</code></td>
+                  {/* Sequential per-site Query ID (1, 2, 3 …). Raw id stays
+                      on the cell's title for support/debugging. */}
+                  <td className={styles.td}>
+                    <code className={styles.qid} title={q.id}>{sequenceLabel}</code>
+                  </td>
 
-                  {/* Site ID + Site Name */}
+                  {/* Site — code (primary) + name (secondary). Both come from
+                      the tenant JOIN; no raw site_id surfaces in the UI. */}
                   <td className={styles.td}>
                     <div className={styles.stack}>
-                      <span className={styles.stackPrimary}>{q.siteId || '—'}</span>
+                      <span className={styles.stackPrimary}>{q.siteCode || '—'}</span>
                       {q.siteName && <span className={styles.stackSecondary}>{q.siteName}</span>}
                     </div>
                   </td>
 
-                  {/* Subject ID + Subject Initials */}
+                  {/* Subject — initials only. Subject id is internal; the
+                      study coordinator identifies subjects by initials. */}
                   <td className={styles.td}>
-                    <div className={styles.stack}>
-                      <span className={styles.stackPrimary}>{q.subjectId || '—'}</span>
-                      {q.subjectInitials && (
-                        <span className={styles.stackSecondary}>{q.subjectInitials}</span>
-                      )}
-                    </div>
+                    <span className={styles.pill}>{q.subjectInitials || '—'}</span>
                   </td>
 
-                  {/* Block + Page */}
+                  {/* Block + Page (Block grey, Page black per Query Manager spec). */}
                   <td className={styles.td}>
-                    <div className={styles.stack}>
-                      <span className={styles.stackPrimary}>{q.blockName || q.formName || '—'}</span>
-                      {(q.pageName || (q.formName && q.blockName)) && (
-                        <span className={styles.stackSecondary}>
-                          {q.pageName || q.formName || ''}
-                        </span>
-                      )}
-                    </div>
+                    {(q.blockName || q.pageName) ? (
+                      <>
+                        {q.blockName && <span className={styles.blockName}>{q.blockName}</span>}
+                        {q.blockName && q.pageName && <span className={styles.blockPageSep}> / </span>}
+                        {q.pageName && <span className={styles.pageName}>{q.pageName}</span>}
+                      </>
+                    ) : (q.formName || '—')}
                   </td>
 
                   {/* Field Name + Query Description */}
                   <td className={styles.td} title={q.queryText || ''}>
                     <div className={styles.stack} style={{ maxWidth: 280 }}>
-                      <span className={`${styles.stackPrimary} ${styles.fieldName}`}>{q.fieldName || '—'}</span>
+                      <span className={`${styles.stackPrimary} ${styles.fieldName}`}>{q.fieldLabel || q.fieldName || '—'}</span>
                       {q.queryText && (
                         <span className={styles.stackSecondary} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
                           {q.queryText}
@@ -491,7 +593,7 @@ export default function SiteQueriesPage() {
                       : '—'}
                   </td>
                   <td className={styles.tdActions}>
-                    <button className={styles.actionBtn} title="View Details" onClick={() => dispatch(addToast({ type: 'info', message: `Query ${q.id} — full details view coming soon.` }))}>
+                    <button className={styles.actionBtn} title="View Details" onClick={() => setDetails(q)}>
                       <Eye size={12} />
                     </button>
                     <button className={styles.actionBtn} title="Open Study Form" onClick={() => openStudyForm(q)}>
@@ -506,13 +608,31 @@ export default function SiteQueriesPage() {
                         <MessageSquare size={12} />
                       </button>
                     )}
-                    {isActive && canClose && (
+                    {canCloseStep && canClose && (
                       <button
                         className={`${styles.actionBtn} ${styles.actionClose}`}
-                        title="Close"
+                        title={display === 'Resolved' ? 'Close (finalise)' : 'Close'}
                         onClick={() => setClose(q)}
                       >
                         <CheckCircle size={12} />
+                      </button>
+                    )}
+                    {isActive && canEscalate && (
+                      <button
+                        className={`${styles.actionBtn} ${styles.actionEscalate}`}
+                        title="Escalate"
+                        onClick={() => setEscalate(q)}
+                      >
+                        <AlertTriangle size={12} />
+                      </button>
+                    )}
+                    {canReopenStep && canReopen && (
+                      <button
+                        className={`${styles.actionBtn} ${styles.actionReopen}`}
+                        title="Reopen"
+                        onClick={() => setReopen(q)}
+                      >
+                        <RotateCcw size={12} />
                       </button>
                     )}
                   </td>
@@ -565,6 +685,42 @@ export default function SiteQueriesPage() {
           onClose={() => setClose(null)}
         />
       )}
+      {detailsTarget && (
+        <QueryDetailsModal
+          query={detailsTarget}
+          client={siteQueryClient}
+          displayId={sequenceById.get(detailsTarget.id)}
+          onClose={() => setDetails(null)}
+          onAction={(action, q) => {
+            setDetails(null);
+            if (action === 'respond'  && canRespond)  setRespond(q);
+            else if (action === 'close'    && canClose)    setClose(q);
+            else if (action === 'escalate' && canEscalate) setEscalate(q);
+            else if (action === 'reopen'   && canReopen)   setReopen(q);
+          }}
+        />
+      )}
+      {escalateTarget && (
+        <EscalateModal
+          query={escalateTarget}
+          onConfirm={handleEscalate}
+          onClose={() => setEscalate(null)}
+        />
+      )}
+      {reopenTarget && (
+        <CloseReopenModal
+          mode="reopen"
+          query={reopenTarget}
+          onConfirm={handleReopen}
+          onClose={() => setReopen(null)}
+        />
+      )}
+      <SlaSettingsModal
+        open={slaOpen}
+        kind="query_manager"
+        canEdit={canEditSla}
+        onClose={() => setSlaOpen(false)}
+      />
     </div>
   );
 }

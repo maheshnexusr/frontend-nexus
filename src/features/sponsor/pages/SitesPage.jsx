@@ -13,6 +13,7 @@ import LockUnlockModal          from '../components/sites/LockUnlockModal';
 import SiteDetailsModal         from '../components/sites/SiteDetailsModal';
 import ConfirmDialog            from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }      from '@/features/workspace/hooks/useReadOnlyView';
+import { usePermissions }       from '@/features/auth/usePermissions';
 import css from './SitesPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -57,6 +58,13 @@ export default function SitesPage() {
   const dispatch    = useDispatch();
   const importRef   = useRef(null);
   const ro          = useReadOnlyView();
+  const { has }     = usePermissions();
+  const canCreate   = has('sites', 'create');
+  const canEdit     = has('sites', 'edit');
+  const canDelete   = has('sites', 'delete');
+  const canLockSite = has('sites', 'lock_site');
+  const canImport   = has('sites', 'import');
+  const canExport   = has('sites', 'export');
 
   // Data
   const [sites,      setSites]      = useState([]);
@@ -234,20 +242,28 @@ export default function SitesPage() {
           <p  className={css.sub}>Manage participating clinical trial sites for this study.</p>
         </div>
         <div className={css.headerActions}>
-          <button
-            className={css.btnSecondary}
-            onClick={() => importRef.current?.click()}
-            {...ro.disabledProps('Import sites')}
-          >
-            <Upload size={14} /> Import
-          </button>
-          <input ref={importRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleImport} />
-          <button className={css.btnSecondary} onClick={() => handleExport('csv')}>
-            <Download size={14} /> CSV
-          </button>
-          <button className={css.btnSecondary} onClick={() => handleExport('xlsx')}>
-            <Download size={14} /> Excel
-          </button>
+          {canImport && (
+            <button
+              className={css.btnSecondary}
+              onClick={() => importRef.current?.click()}
+              {...ro.disabledProps('Import sites')}
+            >
+              <Upload size={14} /> Import
+            </button>
+          )}
+          {canImport && (
+            <input ref={importRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleImport} />
+          )}
+          {canExport && (
+            <button className={css.btnSecondary} onClick={() => handleExport('csv')}>
+              <Download size={14} /> CSV
+            </button>
+          )}
+          {canExport && (
+            <button className={css.btnSecondary} onClick={() => handleExport('xlsx')}>
+              <Download size={14} /> Excel
+            </button>
+          )}
           <button
             className={css.btnRefresh}
             onClick={() => loadSites(true)}
@@ -256,13 +272,15 @@ export default function SitesPage() {
           >
             <RefreshCw size={15} style={refreshing ? { animation: 'spin .7s linear infinite' } : {}} />
           </button>
-          <button
-            className={css.btnPrimary}
-            onClick={() => navigate(`/sponsor/${studyId}/sites/new`)}
-            {...ro.disabledProps('Add Site')}
-          >
-            <Plus size={15} /> Add Site
-          </button>
+          {canCreate && (
+            <button
+              className={css.btnPrimary}
+              onClick={() => navigate(`/sponsor/${studyId}/sites/new`)}
+              {...ro.disabledProps('Add Site')}
+            >
+              <Plus size={15} /> Add Site
+            </button>
+          )}
         </div>
       </div>
 
@@ -444,31 +462,37 @@ export default function SitesPage() {
                       >
                         <Eye size={13} />
                       </button>
-                      <button
-                        className={css.actionBtn}
-                        title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
-                        onClick={() => navigate(`/sponsor/${studyId}/sites/${site.id ?? site.siteCode}/edit`)}
-                        disabled={site.isLocked || ro.isReadOnly}
-                        aria-disabled={site.isLocked || ro.isReadOnly}
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        className={`${css.actionBtn} ${site.isLocked ? css.actionUnlock : css.actionLock}`}
-                        title={ro.isReadOnly ? ro.readOnlyMessage : (site.isLocked ? 'Unlock' : 'Lock')}
-                        onClick={() => setLockTarget({ mode: site.isLocked ? 'unlock' : 'lock', site })}
-                        {...ro.disabledProps(site.isLocked ? 'Unlock site' : 'Lock site')}
-                      >
-                        {site.isLocked ? <Unlock size={13} /> : <Lock size={13} />}
-                      </button>
-                      <button
-                        className={`${css.actionBtn} ${css.actionDelete}`}
-                        title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
-                        onClick={() => setDeleteTarget(site)}
-                        {...ro.disabledProps('Delete site')}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {canEdit && (
+                        <button
+                          className={css.actionBtn}
+                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
+                          onClick={() => navigate(`/sponsor/${studyId}/sites/${site.id ?? site.siteCode}/edit`)}
+                          disabled={site.isLocked || ro.isReadOnly}
+                          aria-disabled={site.isLocked || ro.isReadOnly}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                      )}
+                      {canLockSite && (
+                        <button
+                          className={`${css.actionBtn} ${site.isLocked ? css.actionUnlock : css.actionLock}`}
+                          title={ro.isReadOnly ? ro.readOnlyMessage : (site.isLocked ? 'Unlock' : 'Lock')}
+                          onClick={() => setLockTarget({ mode: site.isLocked ? 'unlock' : 'lock', site })}
+                          {...ro.disabledProps(site.isLocked ? 'Unlock site' : 'Lock site')}
+                        >
+                          {site.isLocked ? <Unlock size={13} /> : <Lock size={13} />}
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          className={`${css.actionBtn} ${css.actionDelete}`}
+                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
+                          onClick={() => setDeleteTarget(site)}
+                          {...ro.disabledProps('Delete site')}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

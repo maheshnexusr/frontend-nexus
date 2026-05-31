@@ -54,6 +54,10 @@ function normalizeQuery(raw) {
     pageName:     raw.page_name    ?? raw.pageName    ?? raw.form_name ?? raw.formName ?? '',
     formName:     raw.form_name    ?? raw.formName    ?? '',
     fieldName:    raw.field_name   ?? raw.fieldName   ?? '',
+    // Human-readable label captured at raise time. Tables prefer this over
+    // fieldName (the stable field ID/key). Falls back to fieldName for
+    // pre-migration rows that have no label.
+    fieldLabel:   raw.field_label  ?? raw.fieldLabel  ?? '',
     queryText:    raw.query_text   ?? raw.queryText   ?? raw.question ?? '',
     queryReason:  raw.query_reason ?? raw.queryReason ?? '',
     severity,
@@ -61,12 +65,14 @@ function normalizeQuery(raw) {
     status,
     raisedBy:     raw.raised_by    ?? raw.raisedBy    ?? '',
     raisedByName: raw.raised_by_name ?? raw.raisedByName ?? '',
+    raisedByRole: raw.raised_by_role ?? raw.raisedByRole ?? '',
     raisedDate,
     responseDate:       raw.response_date       ?? raw.responseDate       ?? raw.latest_response_at ?? raw.latestResponseAt ?? '',
     respondedBy:        raw.responded_by        ?? raw.respondedBy        ?? '',
     respondedByName:    raw.responded_by_name   ?? raw.respondedByName    ?? '',
     latestResponseText: raw.latest_response_text ?? raw.latestResponseText ?? '',
     resolvedBy:    raw.resolved_by    ?? raw.resolvedBy    ?? raw.closed_by   ?? raw.closedBy    ?? '',
+    resolvedByName: raw.resolved_by_name ?? raw.resolvedByName ?? '',
     resolvedDate:  raw.resolved_date  ?? raw.resolvedDate  ?? raw.closed_date ?? raw.closedDate  ?? '',
     resolutionComment: raw.resolution_comment ?? raw.resolutionComment ?? raw.close_comments ?? raw.closeComments ?? '',
     dueAt:        raw.due_at        ?? raw.dueAt       ?? '',
@@ -74,16 +80,39 @@ function normalizeQuery(raw) {
     slaRemaining: slaRemaining(priority, raisedDate),
     assignedTo:     raw.assigned_to       ?? raw.assignedTo     ?? '',
     assignedToName: raw.assigned_to_name  ?? raw.assignedToName ?? '',
+    assignedToRole: raw.assigned_to_role  ?? raw.assignedToRole ?? '',
     expectedValue:     raw.expected_value      ?? raw.expectedValue      ?? '',
     referenceSource:   raw.reference_source    ?? raw.referenceSource    ?? '',
     currentFieldValue: raw.current_field_value ?? raw.currentFieldValue  ?? '',
   };
 }
 
+// A reopen is stored as a "[Reopened] <reason>" comment. Render it as a
+// distinct system status line (not a reply bubble) so the lifecycle event
+// reads clearly in the thread. Returns null when it isn't a reopen marker.
+export function asReopenSystemEntry(raw, responderName) {
+  const text = raw.response_text ?? raw.responseText ?? raw.comment_text ?? raw.answer ?? '';
+  const m = /^\s*\[reopened\]\s*(.*)$/is.exec(text);
+  if (!m) return null;
+  const reason = (m[1] || '').trim();
+  return {
+    id:           raw.id ?? raw.comment_id ?? crypto.randomUUID(),
+    isSystem:     true,
+    statusChange: 'Reopened',
+    responderName,
+    responseText: `🔄 Reopened by ${responderName}${reason ? ` — ${reason}` : ''}`,
+    timestamp:    raw.timestamp ?? raw.created_at ?? '',
+    attachments:  [],
+  };
+}
+
 function normalizeResponse(raw) {
+  const responderName = raw.responder_name ?? raw.responderName ?? 'Unknown';
+  const reopen = asReopenSystemEntry(raw, responderName);
+  if (reopen) return reopen;
   return {
     id:             raw.id             ?? crypto.randomUUID(),
-    responderName:  raw.responder_name ?? raw.responderName  ?? '',
+    responderName,
     responderRole:  raw.responder_role ?? raw.responderRole  ?? '',
     responseText:   raw.response_text  ?? raw.responseText   ?? raw.answer ?? '',
     timestamp:      raw.timestamp      ?? raw.created_at     ?? '',
@@ -98,11 +127,36 @@ function normalizeResponse(raw) {
   };
 }
 
+// Map the backend's raw action vocabulary (sponsor 'RAISE'/'ANSWER'/… and
+// site 'query.raised'/'query.statusChanged'/…) onto the human labels the
+// modal's AUDIT_ICONS map keys on.
+export function humanizeAuditAction(raw) {
+  const a = String(raw ?? '').toLowerCase().replace(/^query\./, '');
+  switch (a) {
+    case 'raise':
+    case 'raised':         return 'Query Raised';
+    case 'answer':
+    case 'answered':
+    case 'statuschanged':  return 'Response Added';
+    case 'resolve':
+    case 'resolved':
+    case 'close':
+    case 'closed':         return 'Query Closed';
+    case 'reopen':
+    case 'reopened':       return 'Query Reopened';
+    case 'escalate':
+    case 'escalated':      return 'Query Escalated';
+    case 'reassign':
+    case 'reassigned':     return 'Status Changed';
+    default:               return raw || 'Activity';
+  }
+}
+
 function normalizeAudit(raw) {
   return {
     id:          raw.id          ?? crypto.randomUUID(),
-    action:      raw.action      ?? '',
-    performedBy: raw.performed_by ?? raw.performedBy ?? '',
+    action:      humanizeAuditAction(raw.action),
+    performedBy: raw.performed_by ?? raw.performedBy ?? 'System',
     timestamp:   raw.timestamp   ?? raw.created_at   ?? '',
     details:     raw.details     ?? '',
   };
@@ -139,9 +193,12 @@ export const sponsorQueryClient = {
   },
 
   /** GET /queries/:queryId — details. */
-  async getById(_studyId, queryId) {
+  async getById(queryId) {
     const res = await sponsorAxiosClient.get(`${BASE}/${queryId}`);
-    return normalizeDetails(res?.item ?? res ?? {});
+    // Backend wraps the row as { success, query }. Unwrap query/item before
+    // normalising — passing the envelope (no row fields) yields an empty detail
+    // object and the Details modal renders blank.
+    return normalizeDetails(res?.query ?? res?.item ?? res ?? {});
   },
 
   /** POST /queries — raise a new query (spec §4.5 body). */
@@ -154,6 +211,9 @@ export const sponsorQueryClient = {
       subject_id:  data.subjectId,
       form_id:     data.formId,
       field_name:  data.fieldName ?? data.fieldKey,
+      field_label: data.fieldLabel ?? undefined,
+      block_name:  data.blockName ?? undefined,
+      page_name:   data.pageName ?? undefined,
       query_text:  data.queryText ?? data.question,
       severity,
       site_id:     data.siteId      || undefined,
@@ -194,8 +254,11 @@ export const sponsorQueryClient = {
 
   // ── Not in spec §13.5 — retained for current UI. ──────────────────────────
   async reopen(_studyId, queryId, data) {
+    // Send `reason` (not `reopenReason`): the axios client deep-snake-cases the
+    // body, so `reopenReason` would arrive as `reopen_reason` and the controller
+    // (which reads `reason`) would miss it — dropping the [Reopened] comment.
     const res = await sponsorAxiosClient.post(`${BASE}/${queryId}/reopen`, {
-      reopenReason: data.reopenReason,
+      reason: data.reopenReason ?? data.reason,
     });
     return normalizeQuery(res?.item ?? res ?? {});
   },

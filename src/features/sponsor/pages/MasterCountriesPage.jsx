@@ -4,6 +4,7 @@ import { useDispatch } from 'react-redux';
 import { Plus, Pencil, Trash2, Globe, Filter } from 'lucide-react';
 import { sponsorCountriesClient } from '@/features/sponsor/api/sponsorCountriesClient';
 import { useReadOnlyView }        from '@/features/workspace/hooks/useReadOnlyView';
+import { usePermissions }         from '@/features/auth/usePermissions';
 import { addToast }               from '@/app/notificationSlice';
 import DataTable                  from '@/components/data-table/DataTable';
 import StatusBadge                from '@/components/feedback/StatusBadge';
@@ -15,6 +16,10 @@ export default function MasterCountriesPage() {
   const { studyId } = useParams();
   const dispatch    = useDispatch();
   const ro          = useReadOnlyView();
+  const { has }     = usePermissions();
+  const canCreate   = has('countries', 'create');
+  const canEdit     = has('countries', 'edit');
+  const canDelete   = has('countries', 'delete');
 
   const [countries,     setCountries]   = useState([]);
   const [loading,       setLoading]     = useState(true);
@@ -151,27 +156,31 @@ export default function MasterCountriesPage() {
       width: '90px',
       render: (_, row) => (
         <div className={styles.actions}>
-          <button
-            className={styles.actionBtn}
-            title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
-            onClick={() => openEdit(row)}
-            {...ro.disabledProps('Edit country')}
-          >
-            <Pencil size={14} />
-          </button>
-          <button
-            className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
-            title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
-            onClick={() => handleDeleteClick(row)}
-            {...ro.disabledProps('Delete country')}
-          >
-            <Trash2 size={14} />
-          </button>
+          {canEdit && (
+            <button
+              className={styles.actionBtn}
+              title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
+              onClick={() => openEdit(row)}
+              {...ro.disabledProps('Edit country')}
+            >
+              <Pencil size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+              title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
+              onClick={() => handleDeleteClick(row)}
+              {...ro.disabledProps('Delete country')}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       ),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [ro.isReadOnly]);
+  ], [ro.isReadOnly, canEdit, canDelete]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -184,10 +193,12 @@ export default function MasterCountriesPage() {
           <p className={styles.sub}>Manage country records scoped to this study.</p>
         </div>
         <div className={styles.headerActions}>
-          <button className={styles.btnPrimary} onClick={openCreate} {...ro.disabledProps('Add country')}>
-            <Plus size={15} />
-            Add Country
-          </button>
+          {canCreate && (
+            <button className={styles.btnPrimary} onClick={openCreate} {...ro.disabledProps('Add country')}>
+              <Plus size={15} />
+              Add Country
+            </button>
+          )}
         </div>
       </div>
 

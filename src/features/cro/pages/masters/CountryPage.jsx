@@ -7,6 +7,7 @@ import DataTable           from '@/components/data-table/DataTable';
 import StatusBadge         from '@/components/feedback/StatusBadge';
 import ConfirmDialog       from '@/components/feedback/ConfirmDialog';
 import CountryModal        from '@/features/cro/components/countries/CountryModal';
+import { usePermissions }   from '@/features/auth/usePermissions';
 import styles from './CountryPage.module.css';
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────
@@ -54,6 +55,10 @@ function downloadSampleCSV() {
 export default function CountryPage() {
   const dispatch  = useDispatch();
   const fileRef   = useRef(null);
+  const { has }   = usePermissions();
+  const canCreate = has('country', 'create');
+  const canEdit   = has('country', 'edit');
+  const canDelete = has('country', 'delete');
 
   const [countries, setCountries] = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -232,21 +237,25 @@ export default function CountryPage() {
       width: '90px',
       render: (_, row) => (
         <div className={styles.actions}>
-          <button className={styles.actionBtn} title="Edit" onClick={() => openEdit(row)}>
-            <Pencil size={14} />
-          </button>
-          <button
-            className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
-            title="Delete"
-            onClick={() => handleDeleteClick(row)}
-          >
-            <Trash2 size={14} />
-          </button>
+          {canEdit && (
+            <button className={styles.actionBtn} title="Edit" onClick={() => openEdit(row)}>
+              <Pencil size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+              title="Delete"
+              onClick={() => handleDeleteClick(row)}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       ),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+  ], [canEdit, canDelete]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -259,34 +268,42 @@ export default function CountryPage() {
           <p className={styles.sub}>Manage countries used across sponsors, studies, and locations.</p>
         </div>
         <div className={styles.headerActions}>
-          <button
-            className={styles.btnSecondary}
-            onClick={handleSampleDownload}
-            title="Download sample template (Countries.csv)"
-          >
-            <FileDown size={14} />
-            Sample Template
-          </button>
-          <button
-            className={styles.btnSecondary}
-            onClick={() => fileRef.current?.click()}
-            disabled={importing}
-            title="Import from CSV or Excel"
-          >
-            <Upload size={14} />
-            {importing ? 'Importing…' : 'Import'}
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            style={{ display: 'none' }}
-            onChange={handleFileChange}
-          />
-          <button className={styles.btnPrimary} onClick={openCreate}>
-            <Plus size={15} />
-            Add Country
-          </button>
+          {canCreate && (
+            <button
+              className={styles.btnSecondary}
+              onClick={handleSampleDownload}
+              title="Download sample template (Countries.csv)"
+            >
+              <FileDown size={14} />
+              Sample Template
+            </button>
+          )}
+          {canCreate && (
+            <>
+              <button
+                className={styles.btnSecondary}
+                onClick={() => fileRef.current?.click()}
+                disabled={importing}
+                title="Import from CSV or Excel"
+              >
+                <Upload size={14} />
+                {importing ? 'Importing…' : 'Import'}
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                style={{ display: 'none' }}
+                onChange={handleFileChange}
+              />
+            </>
+          )}
+          {canCreate && (
+            <button className={styles.btnPrimary} onClick={openCreate}>
+              <Plus size={15} />
+              Add Country
+            </button>
+          )}
         </div>
       </div>
 

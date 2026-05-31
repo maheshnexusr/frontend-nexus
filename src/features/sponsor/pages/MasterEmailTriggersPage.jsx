@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { sponsorEmailTriggersClient } from '@/features/sponsor/api/sponsorEmailTriggersClient';
 import { useReadOnlyView }            from '@/features/workspace/hooks/useReadOnlyView';
+import { usePermissions }             from '@/features/auth/usePermissions';
 import { addToast } from '@/app/notificationSlice';
 import css from './MasterEmailTriggersPage.module.css';
 
@@ -221,7 +222,7 @@ function EditTriggerModal({ trigger, templates, onSave, onClose, saving }) {
 }
 
 /* ── Trigger row ─────────────────────────────────────────────────────────── */
-function TriggerRow({ trigger, onEdit, onToggle, toggling, ro }) {
+function TriggerRow({ trigger, onEdit, onToggle, toggling, ro, canEdit }) {
   const mc       = MODULE_COLORS[trigger.module] ?? MODULE_COLORS.Study;
   const isActive = trigger.status === 'Active';
   const hasTemplate = !!trigger.templateId;
@@ -279,26 +280,30 @@ function TriggerRow({ trigger, onEdit, onToggle, toggling, ro }) {
         )}
       </td>
       <td className={css.tdActions}>
-        <button
-          className={css.actionBtn}
-          title={ro?.isReadOnly ? ro.readOnlyMessage : 'Configure'}
-          onClick={() => onEdit(trigger)}
-          {...(ro?.disabledProps?.('Configure trigger') ?? {})}
-        >
-          <Pencil size={14} />
-        </button>
-        <button
-          className={`${css.actionBtn} ${css.toggleBtn}`}
-          title={ro?.isReadOnly ? ro.readOnlyMessage : (isActive ? 'Disable trigger' : 'Enable trigger')}
-          onClick={() => onToggle(trigger)}
-          disabled={toggling === trigger.eventCode || !!ro?.isReadOnly}
-          aria-disabled={toggling === trigger.eventCode || !!ro?.isReadOnly}
-        >
-          {isActive
-            ? <ToggleRight size={18} className={css.toggleOn} />
-            : <ToggleLeft  size={18} className={css.toggleOff} />
-          }
-        </button>
+        {canEdit && (
+          <button
+            className={css.actionBtn}
+            title={ro?.isReadOnly ? ro.readOnlyMessage : 'Configure'}
+            onClick={() => onEdit(trigger)}
+            {...(ro?.disabledProps?.('Configure trigger') ?? {})}
+          >
+            <Pencil size={14} />
+          </button>
+        )}
+        {canEdit && (
+          <button
+            className={`${css.actionBtn} ${css.toggleBtn}`}
+            title={ro?.isReadOnly ? ro.readOnlyMessage : (isActive ? 'Disable trigger' : 'Enable trigger')}
+            onClick={() => onToggle(trigger)}
+            disabled={toggling === trigger.eventCode || !!ro?.isReadOnly}
+            aria-disabled={toggling === trigger.eventCode || !!ro?.isReadOnly}
+          >
+            {isActive
+              ? <ToggleRight size={18} className={css.toggleOn} />
+              : <ToggleLeft  size={18} className={css.toggleOff} />
+            }
+          </button>
+        )}
       </td>
     </tr>
   );
@@ -309,6 +314,8 @@ export default function MasterEmailTriggersPage() {
   const { studyId } = useParams();
   const dispatch    = useDispatch();
   const ro          = useReadOnlyView();
+  const { has }     = usePermissions();
+  const canEdit     = has('email_templates', 'edit');
 
   const [triggers,   setTriggers]   = useState([]);
   const [templates,  setTemplates]  = useState([]);
@@ -515,6 +522,7 @@ export default function MasterEmailTriggersPage() {
                             onToggle={handleToggle}
                             toggling={toggling}
                             ro={ro}
+                            canEdit={canEdit}
                           />
                         ))}
                       </tbody>

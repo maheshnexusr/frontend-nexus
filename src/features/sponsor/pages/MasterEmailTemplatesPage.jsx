@@ -11,6 +11,7 @@ import DataTable from '@/components/data-table/DataTable';
 import { addToast } from '@/app/notificationSlice';
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import { useReadOnlyView } from '@/features/workspace/hooks/useReadOnlyView';
+import { usePermissions } from '@/features/auth/usePermissions';
 import { emailTemplateService } from '@/services/emailTemplateService';
 import { formatDate, formatDateTime } from '@/utils/formatDate';
 import styles from './MasterEmailTemplatesPage.module.css';
@@ -573,6 +574,10 @@ export default function MasterEmailTemplatesPage() {
   const dispatch    = useDispatch();
   const currentUser = useSelector(selectCurrentUser);
   const ro          = useReadOnlyView();
+  const { has }     = usePermissions();
+  const canCreate   = has('email_templates', 'create');
+  const canEdit     = has('email_templates', 'edit');
+  const canDelete   = has('email_templates', 'delete');
 
   // Table state
   const [data,      setData]      = useState([]);
@@ -773,22 +778,26 @@ export default function MasterEmailTemplatesPage() {
       width:  180,
       render: (_, row) => (
         <div className={styles.actionCell}>
-          <button
-            className={styles.iconBtn}
-            title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
-            onClick={() => openEdit(row)}
-            {...ro.disabledProps('Edit template')}
-          >
-            <Pencil size={15} />
-          </button>
-          <button
-            className={styles.iconBtn}
-            title={ro.isReadOnly ? ro.readOnlyMessage : 'Duplicate'}
-            onClick={() => handleDuplicate(row)}
-            {...ro.disabledProps('Duplicate template')}
-          >
-            <Copy size={15} />
-          </button>
+          {canEdit && (
+            <button
+              className={styles.iconBtn}
+              title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
+              onClick={() => openEdit(row)}
+              {...ro.disabledProps('Edit template')}
+            >
+              <Pencil size={15} />
+            </button>
+          )}
+          {canCreate && (
+            <button
+              className={styles.iconBtn}
+              title={ro.isReadOnly ? ro.readOnlyMessage : 'Duplicate'}
+              onClick={() => handleDuplicate(row)}
+              {...ro.disabledProps('Duplicate template')}
+            >
+              <Copy size={15} />
+            </button>
+          )}
           <button
             className={styles.iconBtn}
             title="Preview"
@@ -796,25 +805,29 @@ export default function MasterEmailTemplatesPage() {
           >
             <Eye size={15} />
           </button>
-          <button
-            className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-            title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
-            onClick={() => openDelete(row)}
-            {...ro.disabledProps('Delete template')}
-          >
-            <Trash2 size={15} />
-          </button>
-          <button
-            className={`${styles.iconBtn} ${styles.toggleBtn}`}
-            title={ro.isReadOnly ? ro.readOnlyMessage : (row.status === 'Active' ? 'Deactivate' : 'Activate')}
-            onClick={() => handleToggleStatus(row)}
-            {...ro.disabledProps('Toggle status')}
-          >
-            {row.status === 'Active'
-              ? <ToggleRight size={18} style={{ color: 'var(--color-success)' }} />
-              : <ToggleLeft  size={18} style={{ color: 'var(--text-muted)' }} />
-            }
-          </button>
+          {canDelete && (
+            <button
+              className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
+              title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
+              onClick={() => openDelete(row)}
+              {...ro.disabledProps('Delete template')}
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
+          {canEdit && (
+            <button
+              className={`${styles.iconBtn} ${styles.toggleBtn}`}
+              title={ro.isReadOnly ? ro.readOnlyMessage : (row.status === 'Active' ? 'Deactivate' : 'Activate')}
+              onClick={() => handleToggleStatus(row)}
+              {...ro.disabledProps('Toggle status')}
+            >
+              {row.status === 'Active'
+                ? <ToggleRight size={18} style={{ color: 'var(--color-success)' }} />
+                : <ToggleLeft  size={18} style={{ color: 'var(--text-muted)' }} />
+              }
+            </button>
+          )}
         </div>
       ),
     },
@@ -829,9 +842,11 @@ export default function MasterEmailTemplatesPage() {
           <h1 className={styles.title}>Email Templates</h1>
           <p className={styles.sub}>Manage system and custom email templates for study communications.</p>
         </div>
-        <button className={styles.newBtn} onClick={openCreate} {...ro.disabledProps('New template')}>
-          <Plus size={16} /> New Template
-        </button>
+        {canCreate && (
+          <button className={styles.newBtn} onClick={openCreate} {...ro.disabledProps('New template')}>
+            <Plus size={16} /> New Template
+          </button>
+        )}
       </div>
 
       {/* Filter row */}

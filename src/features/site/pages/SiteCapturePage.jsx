@@ -15,7 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
   Database, RefreshCw, Search, X, Filter, Plus,
-  ClipboardList, FileText, Pencil, UserCheck, AlertCircle,
+  ClipboardList, FileText, Pencil, UserCheck, AlertCircle, Trash2,
   Clock, CheckCircle2, PauseCircle, XCircle,
 } from 'lucide-react';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
@@ -86,7 +86,11 @@ export default function SiteCapturePage() {
   // direct URL hits are caught by useFieldCapabilities downstream.
   const { has } = usePermissions();
   const canCreateSubject = has('data_capture', 'subject_create');
+  const canEditSubject   = has('data_capture', 'subject_edit');
+  const canDeleteSubject = has('data_capture', 'subject_delete');
+  const canOpenForm      = has('data_capture', 'subject_data_capture');
 
+  const [deletingId,   setDeletingId]   = useState(null);
   const [subjects,     setSubjects]     = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [query,        setQuery]        = useState('');
@@ -142,6 +146,26 @@ export default function SiteCapturePage() {
 
   const openCreate = () => navigate('/site/capture/subjects/new');
   const openEdit   = (subject) => navigate(`/site/capture/subjects/${subject.id}/edit`);
+
+  const handleDelete = useCallback(async (subject) => {
+    const label = subject.subjectCode || subject.subjectInitials || 'this subject';
+    if (!window.confirm(
+      `Delete ${label} and ALL of its data (forms, queries, verifications)?\n\nThis cannot be undone.`
+    )) return;
+    setDeletingId(subject.id);
+    try {
+      await siteWorkspaceClient.deleteSubject(subject.id);
+      dispatch(addToast({ type: 'success', message: `Subject ${label} deleted.` }));
+      setSubjects((prev) => prev.filter((s) => s.id !== subject.id));
+    } catch (err) {
+      dispatch(addToast({
+        type: 'error',
+        message: err?.response?.data?.message || err?.message || 'Failed to delete subject.',
+      }));
+    } finally {
+      setDeletingId(null);
+    }
+  }, [dispatch]);
 
   const counts = useMemo(() => {
     const m = {};
@@ -213,7 +237,7 @@ export default function SiteCapturePage() {
 
           <div className={css.filterRow}>
             <Filter size={13} className={css.filterIcon} />
-            {['All', 'Enrolled', 'Screening', 'Active', 'Completed', 'Withdrawn'].map((s) => (
+            {['All', 'Enrolled', 'Screening', 'Completed', 'Withdrawn', 'Discontinued'].map((s) => (
               <button
                 key={s}
                 className={`${css.filterBtn} ${statusFilter === s ? css.filterBtnActive : ''}`}
@@ -232,7 +256,6 @@ export default function SiteCapturePage() {
           <thead>
             <tr>
               <th className={css.th}>Subject ID</th>
-              <th className={css.th}>Subject Name</th>
               <th className={css.th}>Initials</th>
               <th className={css.th}>Status</th>
               <th className={css.th}>Enrolled</th>
@@ -269,9 +292,6 @@ export default function SiteCapturePage() {
                         <span className={css.subjectCode}>{subject.subjectCode}</span>
                       </div>
                     </td>
-                    <td className={css.td}>
-                      <span className={css.subjectName ?? ''}>{subject.subjectName || '—'}</span>
-                    </td>
                     <td className={css.td}>{subject.subjectInitials || '—'}</td>
                     <td className={css.td}>
                       <span className={`${css.statusBadge} ${meta.cls}`}>
@@ -282,22 +302,37 @@ export default function SiteCapturePage() {
                       <span className={css.dateCell}>{fmtDate(subject.enrolledAt)}</span>
                     </td>
                     <td className={css.tdActions}>
-                      <button
-                        className={pageCss.iconBtn}
-                        onClick={() => openEdit(subject)}
-                        title="Edit subject"
-                        aria-label="Edit subject"
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        className={pageCss.iconBtn}
-                        onClick={() => openForm(subject)}
-                        title="Enter eCRF data"
-                        aria-label="Enter eCRF data"
-                      >
-                        <FileText size={14} />
-                      </button>
+                      {canEditSubject && (
+                        <button
+                          className={pageCss.iconBtn}
+                          onClick={() => openEdit(subject)}
+                          title="Edit subject"
+                          aria-label="Edit subject"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      )}
+                      {canOpenForm && (
+                        <button
+                          className={pageCss.iconBtn}
+                          onClick={() => openForm(subject)}
+                          title="Enter eCRF data"
+                          aria-label="Enter eCRF data"
+                        >
+                          <FileText size={14} />
+                        </button>
+                      )}
+                      {canDeleteSubject && (
+                        <button
+                          className={pageCss.iconBtn}
+                          onClick={() => handleDelete(subject)}
+                          disabled={deletingId === subject.id}
+                          title="Delete subject and all its data"
+                          aria-label="Delete subject"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

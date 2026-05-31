@@ -8,11 +8,16 @@ import { countPermissions } from '@/features/cro/constants/permissionsSchema';
 import DataTable         from '@/components/data-table/DataTable';
 import ConfirmDialog     from '@/components/feedback/ConfirmDialog';
 import { formatDate }    from '@/utils/formatDate';
+import { usePermissions } from '@/features/auth/usePermissions';
 import styles from './TeamRolesPage.module.css';
 
 export default function TeamRolesPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const { has }  = usePermissions();
+  const canCreate = has('rolesPermissions', 'create');
+  const canEdit   = has('rolesPermissions', 'edit');
+  const canDelete = has('rolesPermissions', 'delete');
 
   const [roles,        setRoles]    = useState([]);
   const [loading,      setLoading]  = useState(true);
@@ -142,27 +147,31 @@ export default function TeamRolesPage() {
       width: '90px',
       render: (_, row) => (
         <div className={styles.actions}>
-          <button
-            className={styles.actionBtn}
-            title={row.isSystem ? 'System role — cannot edit' : 'Edit'}
-            disabled={row.isSystem}
-            onClick={(e) => { e.stopPropagation(); navigate(`/cro/team/roles/${row.id}`); }}
-          >
-            <Pencil size={14} />
-          </button>
-          <button
-            className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
-            title={row.isSystem ? 'System role — cannot delete' : 'Delete'}
-            disabled={row.isSystem}
-            onClick={(e) => { e.stopPropagation(); handleDeleteClick(row); }}
-          >
-            <Trash2 size={14} />
-          </button>
+          {canEdit && (
+            <button
+              className={styles.actionBtn}
+              title={row.isSystem ? 'System role — cannot edit' : 'Edit'}
+              disabled={row.isSystem}
+              onClick={(e) => { e.stopPropagation(); navigate(`/cro/team/roles/${row.id}`); }}
+            >
+              <Pencil size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+              title={row.isSystem ? 'System role — cannot delete' : 'Delete'}
+              disabled={row.isSystem}
+              onClick={(e) => { e.stopPropagation(); handleDeleteClick(row); }}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       ),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [navigate]);
+  ], [navigate, canEdit, canDelete]);
 
   return (
     <div className={styles.page}>
@@ -175,10 +184,12 @@ export default function TeamRolesPage() {
             Define roles and configure granular access permissions for each feature.
           </p>
         </div>
-        <button className={styles.btnPrimary} onClick={() => navigate('/cro/team/roles/new')}>
-          <Plus size={15} />
-          Add Role
-        </button>
+        {canCreate && (
+          <button className={styles.btnPrimary} onClick={() => navigate('/cro/team/roles/new')}>
+            <Plus size={15} />
+            Add Role
+          </button>
+        )}
       </div>
 
       <DataTable

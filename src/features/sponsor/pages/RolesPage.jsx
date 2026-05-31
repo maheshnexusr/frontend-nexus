@@ -12,6 +12,7 @@ import { sponsorRolesClient }  from '../api/sponsorRolesClient';
 import ViewPermissionsModal    from '../components/roles/ViewPermissionsModal';
 import ConfirmDialog           from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }     from '@/features/workspace/hooks/useReadOnlyView';
+import { usePermissions }      from '@/features/auth/usePermissions';
 import { countPermissions } from '../components/roles/permissionsTree';
 import { formatDate } from '@/utils/formatDate';
 import css from './RolesPage.module.css';
@@ -44,6 +45,10 @@ export default function RolesPage() {
   const navigate    = useNavigate();
   const dispatch    = useDispatch();
   const ro          = useReadOnlyView();
+  const { has }     = usePermissions();
+  const canCreate   = has('site_roles', 'create');
+  const canEdit     = has('site_roles', 'edit');
+  const canDelete   = has('site_roles', 'delete');
 
   const [roles,      setRoles]      = useState([]);
   const [loading,    setLoading]    = useState(true);
@@ -176,13 +181,15 @@ export default function RolesPage() {
           >
             <RefreshCw size={15} style={refreshing ? { animation: 'spin .7s linear infinite' } : {}} />
           </button>
-          <button
-            className={css.btnPrimary}
-            onClick={() => navigate(`/sponsor/${studyId}/roles/new`)}
-            {...ro.disabledProps('Add Role')}
-          >
-            <Plus size={15} /> Add Role
-          </button>
+          {canCreate && (
+            <button
+              className={css.btnPrimary}
+              onClick={() => navigate(`/sponsor/${studyId}/roles/new`)}
+              {...ro.disabledProps('Add Role')}
+            >
+              <Plus size={15} /> Add Role
+            </button>
+          )}
         </div>
       </div>
 
@@ -316,44 +323,52 @@ export default function RolesPage() {
                         <Eye size={13} />
                       </button>
                       {/* Edit */}
-                      <button
-                        className={css.actionBtn}
-                        title={ro.isReadOnly ? ro.readOnlyMessage : (role.isSystem ? 'System role — cannot edit' : 'Edit')}
-                        disabled={role.isSystem || ro.isReadOnly}
-                        aria-disabled={role.isSystem || ro.isReadOnly}
-                        onClick={() => !role.isSystem && !ro.isReadOnly && navigate(`/sponsor/${studyId}/roles/${role.id}/edit`)}
-                      >
-                        <Pencil size={13} />
-                      </button>
+                      {canEdit && (
+                        <button
+                          className={css.actionBtn}
+                          title={ro.isReadOnly ? ro.readOnlyMessage : (role.isSystem ? 'System role — cannot edit' : 'Edit')}
+                          disabled={role.isSystem || ro.isReadOnly}
+                          aria-disabled={role.isSystem || ro.isReadOnly}
+                          onClick={() => !role.isSystem && !ro.isReadOnly && navigate(`/sponsor/${studyId}/roles/${role.id}/edit`)}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                      )}
                       {/* Duplicate */}
-                      <button
-                        className={`${css.actionBtn} ${css.actionDuplicate}`}
-                        title={ro.isReadOnly ? ro.readOnlyMessage : 'Duplicate'}
-                        onClick={() => { setDuplicateTarget(role); setDuplicateName(`${role.roleName} (Copy)`); }}
-                        {...ro.disabledProps('Duplicate role')}
-                      >
-                        <Copy size={13} />
-                      </button>
+                      {canCreate && (
+                        <button
+                          className={`${css.actionBtn} ${css.actionDuplicate}`}
+                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Duplicate'}
+                          onClick={() => { setDuplicateTarget(role); setDuplicateName(`${role.roleName} (Copy)`); }}
+                          {...ro.disabledProps('Duplicate role')}
+                        >
+                          <Copy size={13} />
+                        </button>
+                      )}
                       {/* Toggle status */}
-                      <button
-                        className={`${css.actionBtn} ${role.status === 'Active' ? css.actionDeactivate : css.actionActivate}`}
-                        title={ro.isReadOnly ? ro.readOnlyMessage : (role.status === 'Active' ? 'Inactivate' : 'Activate')}
-                        disabled={role.isSystem || ro.isReadOnly}
-                        aria-disabled={role.isSystem || ro.isReadOnly}
-                        onClick={() => !ro.isReadOnly && handleToggleStatus(role)}
-                      >
-                        {role.status === 'Active' ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
-                      </button>
+                      {canEdit && (
+                        <button
+                          className={`${css.actionBtn} ${role.status === 'Active' ? css.actionDeactivate : css.actionActivate}`}
+                          title={ro.isReadOnly ? ro.readOnlyMessage : (role.status === 'Active' ? 'Inactivate' : 'Activate')}
+                          disabled={role.isSystem || ro.isReadOnly}
+                          aria-disabled={role.isSystem || ro.isReadOnly}
+                          onClick={() => !ro.isReadOnly && handleToggleStatus(role)}
+                        >
+                          {role.status === 'Active' ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
+                        </button>
+                      )}
                       {/* Delete */}
-                      <button
-                        className={`${css.actionBtn} ${css.actionDelete}`}
-                        title={ro.isReadOnly ? ro.readOnlyMessage : (role.isSystem ? 'System role — cannot delete' : 'Delete')}
-                        disabled={role.isSystem || ro.isReadOnly}
-                        aria-disabled={role.isSystem || ro.isReadOnly}
-                        onClick={() => !role.isSystem && !ro.isReadOnly && setDeleteTarget(role)}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {canDelete && (
+                        <button
+                          className={`${css.actionBtn} ${css.actionDelete}`}
+                          title={ro.isReadOnly ? ro.readOnlyMessage : (role.isSystem ? 'System role — cannot delete' : 'Delete')}
+                          disabled={role.isSystem || ro.isReadOnly}
+                          aria-disabled={role.isSystem || ro.isReadOnly}
+                          onClick={() => !role.isSystem && !ro.isReadOnly && setDeleteTarget(role)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

@@ -49,8 +49,12 @@ export default function RespondModal({ query, onConfirm, onClose }) {
     </>
   );
 
+  // Identify the query by its field (e.g. "Date of Birth") — readable for
+  // reviewers — rather than the internal random id.
+  const fieldName = query?.fieldLabel || query?.fieldName || '';
+
   return (
-    <Modal open onClose={onClose} title={`Respond to Query #${query?.id ?? ''}`} size="sm" footer={footer}>
+    <Modal open onClose={onClose} title={fieldName ? `Respond to Query · ${fieldName}` : 'Respond to Query'} size="sm" footer={footer}>
       <div className={styles.body}>
 
         {query && (

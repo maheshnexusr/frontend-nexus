@@ -58,7 +58,8 @@ export default function CloseReopenModal({ mode, query, onConfirm, onClose }) {
       <div className={styles.body}>
         {query && (
           <div className={styles.snippet}>
-            <span className={styles.snippetId}>#{query.id}</span>
+            {/* Identify by field (e.g. "Date of Birth"), not the internal id. */}
+            <span className={styles.snippetId}>{query.fieldLabel || query.fieldName || '—'}</span>
             <span className={styles.snippetText}>{query.queryText}</span>
           </div>
         )}

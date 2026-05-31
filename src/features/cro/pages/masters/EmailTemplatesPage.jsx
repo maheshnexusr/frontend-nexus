@@ -9,6 +9,7 @@ import ConfirmDialog            from '@/components/feedback/ConfirmDialog';
 import EmailTemplateModal       from '@/features/cro/components/email-templates/EmailTemplateModal';
 import EmailPreviewModal        from '@/features/cro/components/email-templates/EmailPreviewModal';
 import { formatDate }           from '@/utils/formatDate';
+import { usePermissions }       from '@/features/auth/usePermissions';
 import styles from './EmailTemplatesPage.module.css';
 
 const fmt = (iso) => formatDate(iso) || '—';
@@ -16,6 +17,10 @@ const fmt = (iso) => formatDate(iso) || '—';
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function EmailTemplatesPage() {
   const dispatch = useDispatch();
+  const { has }  = usePermissions();
+  const canCreate = has('emailTemplates', 'create');
+  const canEdit   = has('emailTemplates', 'edit');
+  const canDelete = has('emailTemplates', 'delete');
 
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -157,24 +162,30 @@ export default function EmailTemplatesPage() {
           <button className={styles.actionBtn} title="Preview" onClick={() => setPreview(row)}>
             <Eye size={14} />
           </button>
-          <button className={styles.actionBtn} title="Edit" onClick={() => openEdit(row)}>
-            <Pencil size={14} />
-          </button>
-          <button className={styles.actionBtn} title="Duplicate" onClick={() => handleDuplicate(row)}>
-            <Copy size={14} />
-          </button>
-          <button
-            className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
-            title="Delete"
-            onClick={() => confirmDelete(row)}
-          >
-            <Trash2 size={14} />
-          </button>
+          {canEdit && (
+            <button className={styles.actionBtn} title="Edit" onClick={() => openEdit(row)}>
+              <Pencil size={14} />
+            </button>
+          )}
+          {canCreate && (
+            <button className={styles.actionBtn} title="Duplicate" onClick={() => handleDuplicate(row)}>
+              <Copy size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+              title="Delete"
+              onClick={() => confirmDelete(row)}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       ),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+  ], [canCreate, canEdit, canDelete]);
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
@@ -186,10 +197,12 @@ export default function EmailTemplatesPage() {
           <h1 className={styles.title}>Email Templates</h1>
           <p className={styles.sub}>Manage automated email communication templates.</p>
         </div>
-        <button className={styles.btnPrimary} onClick={openCreate}>
-          <Plus size={15} />
-          Add Template
-        </button>
+        {canCreate && (
+          <button className={styles.btnPrimary} onClick={openCreate}>
+            <Plus size={15} />
+            Add Template
+          </button>
+        )}
       </div>
 
       {/* Status filter */}

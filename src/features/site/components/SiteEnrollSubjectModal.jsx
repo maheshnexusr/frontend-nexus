@@ -34,7 +34,6 @@ const ENROLLMENT_OPTIONS = [
 ];
 
 const EMPTY = {
-  subjectNumber:    '',
   externalId:       '',
   screeningStatus:  'Screening',
   enrollmentStatus: 'Pending',
@@ -56,10 +55,10 @@ export default function SiteEnrollSubjectModal({ open, onClose, onSaved, onError
   };
 
   const validate = () => {
-    const next = {};
-    if (!form.subjectNumber.trim()) next.subjectNumber = 'Subject ID is required.';
-    setErrors(next);
-    return Object.keys(next).length === 0;
+    // The Subject ID is assigned automatically by the backend
+    // (SUB-<site_number>-<seq>), so there is no manual identifier to validate.
+    setErrors({});
+    return true;
   };
 
   const handleSubmit = async (e) => {
@@ -68,7 +67,6 @@ export default function SiteEnrollSubjectModal({ open, onClose, onSaved, onError
     setSaving(true);
     try {
       const payload = {
-        subjectNumber:    form.subjectNumber.trim(),
         externalId:       form.externalId.trim() || null,
         screeningStatus:  form.screeningStatus,
         enrollmentStatus: form.enrollmentStatus,
@@ -110,23 +108,16 @@ export default function SiteEnrollSubjectModal({ open, onClose, onSaved, onError
       }
     >
       <form onSubmit={handleSubmit} className={styles.body}>
-        <FormField
-          label="Subject ID"
-          name="subjectNumber"
-          required
-          error={errors.subjectNumber}
-          helpText="The identifier this subject will be tracked by (e.g. S-001)."
+        <div
+          style={{
+            background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8,
+            padding: '10px 12px', fontSize: 12.5, color: '#075985',
+            marginBottom: 4, lineHeight: 1.5,
+          }}
         >
-          <input
-            id="subjectNumber"
-            type="text"
-            className={`${styles.input} ${errors.subjectNumber ? styles.inputError : ''}`}
-            value={form.subjectNumber}
-            onChange={setField('subjectNumber')}
-            placeholder="e.g. S-001"
-            autoFocus
-          />
-        </FormField>
+          A Subject ID is assigned automatically on save — formatted as{' '}
+          <strong>SUB-&lt;site&gt;-&lt;sequence&gt;</strong> (e.g. SUB-SUN001-1001).
+        </div>
 
         <FormField
           label="External ID"

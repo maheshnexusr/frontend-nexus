@@ -7,6 +7,7 @@ import { addToast }      from '@/app/notificationSlice';
 import DataTable         from '@/components/data-table/DataTable';
 import ConfirmDialog     from '@/components/feedback/ConfirmDialog';
 import TeamMemberViewModal from '@/features/cro/components/team-members/TeamMemberViewModal';
+import { usePermissions } from '@/features/auth/usePermissions';
 import styles from './TeamMembersPage.module.css';
 
 // ── Avatar cell ───────────────────────────────────────────────────────────────
@@ -26,6 +27,10 @@ function Avatar({ photo, name }) {
 export default function TeamMembersPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const { has }  = usePermissions();
+  const canCreate = has('teamMembers', 'create');
+  const canEdit   = has('teamMembers', 'edit');
+  const canDelete = has('teamMembers', 'delete');
 
   const [members,      setMembers]    = useState([]);
   const [loading,      setLoading]    = useState(true);
@@ -137,25 +142,29 @@ export default function TeamMembersPage() {
       width: '90px',
       render: (_, row) => (
         <div className={styles.actions}>
-          <button
-            className={styles.actionBtn}
-            title="Edit"
-            onClick={(e) => { e.stopPropagation(); navigate(`/cro/team/members/${row.id}`); }}
-          >
-            <Pencil size={14} />
-          </button>
-          <button
-            className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
-            title="Delete"
-            onClick={(e) => { e.stopPropagation(); setDel(row); }}
-          >
-            <Trash2 size={14} />
-          </button>
+          {canEdit && (
+            <button
+              className={styles.actionBtn}
+              title="Edit"
+              onClick={(e) => { e.stopPropagation(); navigate(`/cro/team/members/${row.id}`); }}
+            >
+              <Pencil size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+              title="Delete"
+              onClick={(e) => { e.stopPropagation(); setDel(row); }}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       ),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [navigate]);
+  ], [navigate, canEdit, canDelete]);
 
   return (
     <div className={styles.page}>
@@ -166,10 +175,12 @@ export default function TeamMembersPage() {
           <h1 className={styles.title}>Team Members</h1>
           <p className={styles.sub}>Manage CRO team members and their study assignments.</p>
         </div>
-        <button className={styles.btnPrimary} onClick={() => navigate('/cro/team/members/new')}>
-          <Plus size={15} />
-          Add Team Member
-        </button>
+        {canCreate && (
+          <button className={styles.btnPrimary} onClick={() => navigate('/cro/team/members/new')}>
+            <Plus size={15} />
+            Add Team Member
+          </button>
+        )}
       </div>
 
       <DataTable
