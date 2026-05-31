@@ -10,6 +10,24 @@ import {
 import { addToast }                   from '@/app/notificationSlice';
 import { sponsorVerificationClient }  from '../api/sponsorVerificationClient';
 import sponsorAxiosClient             from '@/api/sponsorAxiosClient';
+import siteAxiosClient                from '@/api/siteAxiosClient';
+
+// Pick the right axios + workspace prefix based on which scope's token is
+// live. Mirrors the same pattern in sponsorVerificationClient/sponsorSlaClient.
+// Used by the per-page /forms lookup so the Verification page actually works
+// when mounted at /site/verification too (router.jsx mounts the same component
+// under both /sponsor/:studyId/verification and /site/verification).
+function pickScopedAxios() {
+  if (typeof window === 'undefined') {
+    return { axios: sponsorAxiosClient, workspace: '/api/v1/sponsor/workspace' };
+  }
+  const hasSponsor = !!localStorage.getItem('sponsorAccessToken') || !!localStorage.getItem('sponsorViewToken');
+  const hasSite    = !!localStorage.getItem('siteAccessToken');
+  if (hasSite && !hasSponsor) {
+    return { axios: siteAxiosClient, workspace: '/api/v1/site/workspace' };
+  }
+  return { axios: sponsorAxiosClient, workspace: '/api/v1/sponsor/workspace' };
+}
 import SubjectVerificationModal       from '../components/verification/SubjectVerificationModal';
 import VerifyActionModal              from '../components/verification/VerifyActionModal';
 import { useReadOnlyView }            from '@/features/workspace/hooks/useReadOnlyView';
@@ -46,12 +64,18 @@ const STATUS_META = {
 
 const ALL_STATUSES = ['Not Verified', 'In Verification', 'Partially Verified', 'Verified', 'Overdue'];
 
+// Column order follows spec §VM list table:
+//   Subject Details (Subject ID + Initials) · Site Details · Enrolment Date ·
+//   Block / Page · CRF Completeness % · Age · Status · Actions.
+// Verified By + Verified On stay as supplementary columns so existing
+// reviewer info is still visible — not on the spec table but useful day-to-day.
 const COLS = [
-  { key: 'id',               label: 'Subject ID',       sortable: true  },
+  { key: 'id',               label: 'Subject',          sortable: true  },
   { key: 'siteCode',         label: 'Site',             sortable: true  },
   { key: 'enrollmentDate',   label: 'Enrolled',         sortable: true  },
-  { key: 'crfsCompleted',    label: 'CRFs',             sortable: true  },
-  { key: 'completeness',     label: 'Completeness',     sortable: true  },
+  { key: 'blockPage',        label: 'Block / Page',     sortable: true  },
+  { key: 'completeness',     label: 'Verified %',       sortable: true  },
+  { key: 'ageDays',          label: 'Age',              sortable: true  },
   { key: 'openQueries',      label: 'Queries',          sortable: true  },
   { key: 'status',           label: 'Status',           sortable: true  },
   { key: 'verifiedBy',       label: 'Verified By',      sortable: false },
@@ -87,6 +111,9 @@ export default function VerificationPage() {
   // data_verification leaf.
   const { has } = usePermissions();
   const canEditSla = has('data_verification', 'sla_settings');
+  const canVerify  = has('data_verification', 'create') || has('data_verification', 'edit');
+  const canApprove = has('data_capture', 'verify');
+  const canReject  = has('data_verification', 'edit');
   const [slaOpen,  setSlaOpen]  = useState(false);
 
   // Data
@@ -99,7 +126,10 @@ export default function VerificationPage() {
   const [studyFormId, setStudyFormId] = useState(null);
 
   // Filters
-  const [activeStatuses, setActiveStatuses] = useState(['Pending', 'In Review']);
+  // Default: all statuses selected (= show everything). Legacy seed of
+  // ['Pending','In Review'] hid every new row, since those aren't in the chip
+  // set and the backend status filter is an exact match.
+  const [activeStatuses, setActiveStatuses] = useState([...ALL_STATUSES]);
   const [siteFilter,     setSiteFilter]     = useState('');
   const [dateFrom,       setDateFrom]       = useState('');
   const [dateTo,         setDateTo]         = useState('');
@@ -125,20 +155,12 @@ export default function VerificationPage() {
     if (!quiet) setLoading(true);
     else        setRefreshing(true);
     try {
-      const filters = {
-        ...(activeStatuses.length < ALL_STATUSES.length ? { status: activeStatuses.join(',') } : {}),
-        ...(siteFilter   ? { siteCode:    siteFilter }   : {}),
-        ...(dateFrom     ? { dateFrom }                  : {}),
-        ...(dateTo       ? { dateTo }                    : {}),
-        ...(minComplete  ? { minComplete: Number(minComplete) } : {}),
-      };
-      // Each fetch is wrapped in `.catch` so the page survives even when the
-      // backend hasn't implemented every endpoint yet. The list endpoint is
-      // load-bearing — if it fails we surface the error; metrics + sites are
-      // best-effort enrichment that falls back to safe defaults.
+      // Fetch the full queue for the study; status / site / date / completeness
+      // filtering is done client-side (see `filtered`) so any combination works
+      // instantly and isn't tripped up by the backend's exact-match status param.
       const [m, s, siteList] = await Promise.all([
         sponsorVerificationClient.getMetrics(studyId).catch(() => null),
-        sponsorVerificationClient.list(studyId, filters),
+        sponsorVerificationClient.list(studyId, {}),
         sites.length
           ? Promise.resolve(sites)
           : sponsorVerificationClient.getSites(studyId).catch(() => []),
@@ -155,15 +177,19 @@ export default function VerificationPage() {
       setRefreshing(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studyId, activeStatuses, siteFilter, dateFrom, dateTo, minComplete]);
+  }, [studyId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
   // Resolve the study's form id once so a subject row can open the study form.
+  // Scope-aware: on /site/verification this hits /api/v1/site/workspace/forms
+  // with the site token; on /sponsor/:studyId/verification it stays on the
+  // sponsor route. studyId is only present on the sponsor URL — the site URL
+  // doesn't have one, but the site token is already pinned to its own study.
   useEffect(() => {
-    if (!studyId) return undefined;
     let cancelled = false;
-    sponsorAxiosClient.get('/api/v1/sponsor/workspace/forms')
+    const { axios, workspace } = pickScopedAxios();
+    axios.get(`${workspace}/forms`)
       .then((res) => {
         if (cancelled) return;
         const items = res?.items ?? res ?? [];
@@ -174,18 +200,51 @@ export default function VerificationPage() {
   }, [studyId]);
 
   // Open the study form for a subject so the verifier can review its data.
+  // Scope-aware navigation: site mounts have no `studyId` segment so they
+  // need /site/capture/form; sponsor mounts use /sponsor/:studyId/capture/form.
   const openStudyForm = (subject) => {
     if (!studyFormId || !subject?.id) {
       dispatch(addToast({ type: 'error', message: 'Cannot open the form — no study form found.' }));
       return;
     }
-    navigate(`/sponsor/${studyId}/capture/form?formId=${studyFormId}&subjectId=${subject.id}`);
+    const isSiteSession = typeof window !== 'undefined'
+      && !!localStorage.getItem('siteAccessToken')
+      && !localStorage.getItem('sponsorAccessToken')
+      && !localStorage.getItem('sponsorViewToken');
+    // Deep-link straight to the completed page when the row carries one.
+    const pageQS = subject.pageId ? `&pageId=${encodeURIComponent(subject.pageId)}` : '';
+    const path = isSiteSession
+      ? `/site/capture/form?formId=${studyFormId}&subjectId=${subject.id}${pageQS}`
+      : `/sponsor/${studyId}/capture/form?formId=${studyFormId}&subjectId=${subject.id}${pageQS}`;
+    navigate(path);
   };
 
   // ── Filter + Sort + Search (client-side) ─────────────────────────────────
 
   const filtered = useMemo(() => {
-    let list = subjects;
+    // The Verification Manager lists PAGE-level work-items (and legacy
+    // subject/form-level rows). Per-field verification rows (fieldName set) are
+    // detail records surfaced when drilling into a page, not table rows.
+    let list = subjects.filter((s) => !s.fieldName);
+
+    // Status chips — a subset narrows the list; all-selected = no filter.
+    if (activeStatuses.length < ALL_STATUSES.length) {
+      const set = new Set(activeStatuses);
+      list = list.filter((s) => set.has(s.status));
+    }
+    // Site dropdown (match by code or id — depends on the option value).
+    if (siteFilter) {
+      list = list.filter((s) => s.siteCode === siteFilter || s.siteId === siteFilter);
+    }
+    // Min verified % (per-page verification completeness).
+    if (minComplete) {
+      const min = Number(minComplete);
+      list = list.filter((s) => (s.completeness ?? 0) >= min);
+    }
+    // Enrollment date range.
+    if (dateFrom) list = list.filter((s) => (s.enrollmentDate || '').slice(0, 10) >= dateFrom);
+    if (dateTo)   list = list.filter((s) => (s.enrollmentDate || '').slice(0, 10) <= dateTo);
+
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -205,7 +264,27 @@ export default function VerificationPage() {
       bv = String(bv).toLowerCase();
       return sort.dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
     });
-  }, [subjects, search, sort]);
+  }, [subjects, search, sort, activeStatuses, siteFilter, minComplete, dateFrom, dateTo]);
+
+  // Metric cards are derived from the SAME page-level rows the table lists (one
+  // row per page work-item), so "Total" equals the table's row count. The
+  // backend metrics counted every data_verifications row (page + per-field),
+  // which over-counted. Cards summarise the whole queue (unaffected by the
+  // status/site/search filters, which segment the table itself).
+  const cardCounts = useMemo(() => {
+    const pageRows = subjects.filter((s) => !s.fieldName);
+    const c = { total: pageRows.length, notVerified: 0, inVerification: 0, partiallyVerified: 0, verified: 0, overdue: 0 };
+    for (const s of pageRows) {
+      const st = s.status;
+      if (st === 'Not Verified' || st === 'Pending')          c.notVerified++;
+      else if (st === 'In Verification' || st === 'In Review') c.inVerification++;
+      else if (st === 'Partially Verified')                   c.partiallyVerified++;
+      else if (st === 'Verified' || st === 'Approved')        c.verified++;
+      else if (st === 'Overdue')                              c.overdue++;
+    }
+    c.completionRate = c.total ? Math.round((c.verified / c.total) * 100) : 0;
+    return c;
+  }, [subjects]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage   = Math.min(page, totalPages);
@@ -311,15 +390,20 @@ export default function VerificationPage() {
 
   // ── Metrics bar ───────────────────────────────────────────────────────────
 
-  const METRIC_CARDS = metrics ? [
-    { label: 'Total',       value: metrics.totalSubjects,       color: '#0f172a', icon: BarChart2 },
-    { label: 'Pending',     value: metrics.pendingVerification, color: '#d97706', icon: Clock },
-    { label: 'In Review',   value: metrics.inReview,            color: '#2563eb', icon: Eye },
-    { label: 'Verified',    value: metrics.verified,            color: '#059669', icon: CheckCircle },
-    { label: 'Approved',    value: metrics.approved,            color: '#7c3aed', icon: Shield },
-    { label: 'Rejected',    value: metrics.rejectedQueried,     color: '#dc2626', icon: XCircle },
-    { label: 'Completion',  value: `${metrics.completionRate ?? 0}%`, color: '#0891b2', icon: BarChart2 },
-  ] : [];
+  // Spec §VM status cards (in spec order): Not Verified · In Verification ·
+  // Partially Verified · Verified · Overdue. Approved / Rejected stay for
+  // legacy data still tagged with those values. Overdue card is shown when
+  // metrics.overdue > 0 so an empty queue stays clean.
+  const METRIC_CARDS = [
+    { label: 'Total',              value: cardCounts.total,             color: '#0f172a', icon: BarChart2 },
+    { label: 'Not Verified',       value: cardCounts.notVerified,       color: '#475569', icon: Clock },
+    { label: 'Partially Verified', value: cardCounts.partiallyVerified, color: '#b45309', icon: Shield },
+    { label: 'Verified',           value: cardCounts.verified,          color: '#059669', icon: CheckCircle },
+    ...(cardCounts.overdue > 0
+      ? [{ label: 'Overdue', value: cardCounts.overdue, color: '#dc2626', icon: AlertTriangle }]
+      : []),
+    { label: 'Completion',         value: `${cardCounts.completionRate}%`, color: '#0891b2', icon: BarChart2 },
+  ];
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -330,17 +414,19 @@ export default function VerificationPage() {
       {/* Header */}
       <div className={css.header}>
         <div>
-          <h1 className={css.title}>Data Verification</h1>
+          <h1 className={css.title}>Verification Manager</h1>
           <p  className={css.sub}>Review and verify subject CRF data against source documents.</p>
         </div>
         <div className={css.headerActions}>
-          <button
-            className={css.btnSecondary}
-            onClick={() => setSlaOpen(true)}
-            title={canEditSla ? 'Configure SLA' : 'View SLA settings'}
-          >
-            <Clock size={14} /> SLA Settings
-          </button>
+          {canEditSla && (
+            <button
+              className={css.btnSecondary}
+              onClick={() => setSlaOpen(true)}
+              title="Configure SLA"
+            >
+              <Clock size={14} /> SLA Settings
+            </button>
+          )}
           <SnapshotButton leaf="data_verification" filename="verification" className={css.btnSecondary} />
           <button className={css.btnSecondary} onClick={() => handleExport('csv')}>
             <Download size={14} /> Export CSV
@@ -366,8 +452,53 @@ export default function VerificationPage() {
         onClose={() => setSlaOpen(false)}
       />
 
-      {/* Metrics */}
-      {metrics && (
+      {/* Spec §VM Overdue banner — surfaces the count of rows flipped to
+          'Overdue' by the SLA scanner. Clicking the inline link adds the
+          Overdue pill to the active status filter so the CRA jumps straight
+          to the affected rows. */}
+      {cardCounts.overdue > 0 && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '10px 14px',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: 8,
+            color: '#7f1d1d',
+            margin: '0 0 12px',
+            fontSize: 13,
+          }}
+        >
+          <AlertTriangle size={16} style={{ flex: '0 0 auto' }} />
+          <strong style={{ fontWeight: 700 }}>{cardCounts.overdue}</strong>
+          <span>
+            verification{cardCounts.overdue === 1 ? '' : 's'} {cardCounts.overdue === 1 ? 'is' : 'are'} <strong>Overdue</strong>.
+            Action needed before the SLA breach escalates.
+          </span>
+          <button
+            type="button"
+            onClick={() => setActiveStatuses((cur) => (cur.includes('Overdue') ? cur : [...cur, 'Overdue']))}
+            style={{
+              marginLeft: 'auto',
+              background: 'transparent',
+              border: '1px solid #b91c1c',
+              color: '#7f1d1d',
+              fontWeight: 600,
+              fontSize: 12,
+              padding: '4px 10px',
+              borderRadius: 6,
+              cursor: 'pointer',
+            }}
+          >
+            View overdue
+          </button>
+        </div>
+      )}
+
+      {/* Metrics — derived from the page-row list (cardCounts), so counts match
+          the table. "In Verification" and "Avg. Days" intentionally removed. */}
+      {cardCounts.total > 0 && (
         <div className={css.metricsBar}>
           {METRIC_CARDS.map(({ label, value, color, icon: Icon }) => (
             <div key={label} className={css.metricCard}>
@@ -376,15 +507,13 @@ export default function VerificationPage() {
               <span className={css.metricLabel}>{label}</span>
             </div>
           ))}
-          {metrics.avgVerificationDays > 0 && (
-            <div className={css.metricCard}>
-              <Clock size={16} style={{ color: '#64748b' }} />
-              <span className={css.metricValue} style={{ color: '#64748b' }}>{metrics.avgVerificationDays}d</span>
-              <span className={css.metricLabel}>Avg. Days</span>
-            </div>
-          )}
         </div>
       )}
+
+      {/* CRF Completeness % + Verification Completion % progress bars are
+          temporarily removed — to be re-implemented later. The BE getMetrics
+          endpoint still returns crf_completeness_pct / verification_completion_pct,
+          and <ProgressTile> remains available, so this is a pure UI restore. */}
 
       {/* Toolbar */}
       <div className={css.toolbar}>
@@ -439,13 +568,13 @@ export default function VerificationPage() {
             />
           </div>
 
-          {/* Completeness threshold */}
-          <div className={css.completeWrap}>
+          {/* Min verified % threshold (per-page verification completeness) */}
+          <div className={css.completeWrap} title="Minimum verified % (per page)">
             <span className={css.completeLabel}>≥</span>
             <input
               type="number"
               className={css.completeInput}
-              placeholder="0"
+              placeholder="Verified %"
               min={0}
               max={100}
               value={minComplete}
@@ -476,33 +605,39 @@ export default function VerificationPage() {
       {selectedCount > 0 && (
         <div className={css.bulkBar}>
           <span className={css.bulkCount}>{selectedCount} selected</span>
-          <button
-            className={css.bulkVerify}
-            onClick={handleBulkVerify}
-            disabled={actionLoading || ro.isReadOnly}
-            aria-disabled={actionLoading || ro.isReadOnly}
-            title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
-          >
-            <CheckCircle size={13} /> Bulk Verify
-          </button>
-          <button
-            className={css.bulkApprove}
-            onClick={() => setActionTarget({ mode: 'approve', bulk: selectedCount })}
-            disabled={actionLoading || ro.isReadOnly}
-            aria-disabled={actionLoading || ro.isReadOnly}
-            title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
-          >
-            <ThumbsUp size={13} /> Bulk Approve
-          </button>
-          <button
-            className={css.bulkReject}
-            onClick={() => setActionTarget({ mode: 'reject', bulk: selectedCount })}
-            disabled={actionLoading || ro.isReadOnly}
-            aria-disabled={actionLoading || ro.isReadOnly}
-            title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
-          >
-            <ThumbsDown size={13} /> Bulk Reject
-          </button>
+          {canVerify && (
+            <button
+              className={css.bulkVerify}
+              onClick={handleBulkVerify}
+              disabled={actionLoading || ro.isReadOnly}
+              aria-disabled={actionLoading || ro.isReadOnly}
+              title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
+            >
+              <CheckCircle size={13} /> Bulk Verify
+            </button>
+          )}
+          {canApprove && (
+            <button
+              className={css.bulkApprove}
+              onClick={() => setActionTarget({ mode: 'approve', bulk: selectedCount })}
+              disabled={actionLoading || ro.isReadOnly}
+              aria-disabled={actionLoading || ro.isReadOnly}
+              title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
+            >
+              <ThumbsUp size={13} /> Bulk Approve
+            </button>
+          )}
+          {canReject && (
+            <button
+              className={css.bulkReject}
+              onClick={() => setActionTarget({ mode: 'reject', bulk: selectedCount })}
+              disabled={actionLoading || ro.isReadOnly}
+              aria-disabled={actionLoading || ro.isReadOnly}
+              title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
+            >
+              <ThumbsDown size={13} /> Bulk Reject
+            </button>
+          )}
           <button className={css.bulkClear} onClick={() => setSelected(new Set())}>
             Clear
           </button>
@@ -511,7 +646,7 @@ export default function VerificationPage() {
 
       {/* Count */}
       <p className={css.count}>
-        {loading ? 'Loading…' : `${filtered.length} subject${filtered.length !== 1 ? 's' : ''}`}
+        {loading ? 'Loading…' : `${filtered.length} item${filtered.length !== 1 ? 's' : ''}`}
       </p>
 
       {/* Table */}
@@ -572,7 +707,7 @@ export default function VerificationPage() {
                 const isSel   = selected.has(s.id);
                 const pct     = s.completeness ?? 0;
                 return (
-                  <tr key={s.id} className={`${css.row} ${isSel ? css.rowSelected : ''}`}>
+                  <tr key={s.verificationId || s.id} className={`${css.row} ${isSel ? css.rowSelected : ''}`}>
                     <td className={css.tdCheck}>
                       {isSelectable && (
                         <input
@@ -582,27 +717,55 @@ export default function VerificationPage() {
                         />
                       )}
                     </td>
+                    {/* Subject + Site columns mirror the Query Manager exactly:
+                        Subject = initials pill; Site = code over name. */}
                     <td className={css.td}>
-                      <span className={css.subjectId}>{s.id}</span>
+                      <span
+                        className={css.pill}
+                        title={[s.subjectNumber, s.initials].filter(Boolean).join(' · ')}
+                      >
+                        {s.initials || s.subjectNumber || s.id || '—'}
+                      </span>
                     </td>
-                    <td className={css.td}>
-                      <span className={css.siteCode}>{s.siteCode}</span>
-                      {s.siteName && <span className={css.siteName}> {s.siteName}</span>}
+                    <td className={css.td} title={[s.siteCode, s.siteName].filter(Boolean).join(' — ')}>
+                      {s.siteCode || s.siteName ? (
+                        <>
+                          <span className={css.siteCode}>{s.siteCode || '—'}</span>
+                          {s.siteName && <span className={css.siteName}>{s.siteName}</span>}
+                        </>
+                      ) : '—'}
                     </td>
                     <td className={css.td}>{fmtDate(s.enrollmentDate)}</td>
                     <td className={css.td}>
-                      {s.crfsCompleted ?? 0} / {s.crfsTotal ?? 0}
+                      {s.blockPage || <span className={css.queryNone}>—</span>}
                     </td>
                     <td className={css.td}>
-                      <div className={css.completenessCell}>
+                      <div
+                        className={css.completenessCell}
+                        title={Number.isFinite(s.verifiedFields) && Number.isFinite(s.totalFields)
+                          ? `${s.verifiedFields}/${s.totalFields} fields verified on this page`
+                          : 'Page verification progress'}
+                      >
                         <div className={css.progressBarSmall}>
                           <div
                             className={css.progressFillSmall}
                             style={{ width: `${pct}%`, background: progressColor(pct) }}
                           />
                         </div>
-                        <span style={{ color: progressColor(pct), fontWeight: 600 }}>{pct}%</span>
+                        <span style={{ color: progressColor(pct), fontWeight: 600 }}>
+                          {pct}%
+                          {Number.isFinite(s.verifiedFields) && Number.isFinite(s.totalFields) && (
+                            <span style={{ color: '#94a3b8', fontWeight: 500 }}> ({s.verifiedFields}/{s.totalFields})</span>
+                          )}
+                        </span>
                       </div>
+                    </td>
+                    <td className={css.td}>
+                      {/* Spec §VM Age = days between Not Verified → Verified
+                          (or days since the row became eligible if still
+                          pending). Backend returns numeric days; we render
+                          whole days for the list. */}
+                      {Number.isFinite(s.ageDays) ? `${Math.round(s.ageDays)}d` : '—'}
                     </td>
                     <td className={css.td}>
                       {s.openQueries > 0
@@ -617,7 +780,14 @@ export default function VerificationPage() {
                         {s.status}
                       </span>
                     </td>
-                    <td className={css.td}>{s.verifiedBy || '—'}</td>
+                    <td
+                      className={css.td}
+                      title={Array.isArray(s.verifiedByNames) && s.verifiedByNames.length > 1
+                        ? `Verified by: ${s.verifiedByNames.join(', ')}`
+                        : undefined}
+                    >
+                      {s.verifiedBy || '—'}
+                    </td>
                     <td className={css.td}>{fmtDate(s.verificationDate)}</td>
                     <td className={css.tdActions}>
                       {/* View Details */}
@@ -637,7 +807,7 @@ export default function VerificationPage() {
                         <FileText size={13} />
                       </button>
                       {/* Approve */}
-                      {['Verified', 'In Review', 'Pending'].includes(s.status) && (
+                      {canApprove && ['Verified', 'In Review', 'Pending'].includes(s.status) && (
                         <button
                           className={`${css.actionBtn} ${css.actionApprove}`}
                           title={ro.isReadOnly ? ro.readOnlyMessage : 'Approve'}
@@ -648,7 +818,7 @@ export default function VerificationPage() {
                         </button>
                       )}
                       {/* Reject */}
-                      {['Verified', 'In Review', 'Pending'].includes(s.status) && (
+                      {canReject && ['Verified', 'In Review', 'Pending'].includes(s.status) && (
                         <button
                           className={`${css.actionBtn} ${css.actionReject}`}
                           title={ro.isReadOnly ? ro.readOnlyMessage : 'Reject'}
@@ -705,8 +875,7 @@ export default function VerificationPage() {
       {/* Subject Verification Modal */}
       {detailSubject && (
         <SubjectVerificationModal
-          studyId={studyId}
-          subjectId={detailSubject.id}
+          subject={detailSubject}
           onClose={() => { setDetailSubject(null); loadData(true); }}
         />
       )}
@@ -720,6 +889,51 @@ export default function VerificationPage() {
           onConfirm={handleActionConfirm}
           onClose={() => setActionTarget(null)}
         />
+      )}
+
+    </div>
+  );
+}
+
+// Spec §VM dashboard progress bar — clamps the percentage to [0, 100] so a
+// stale BE value never overflows the track, and surfaces a small caption
+// (e.g. "X of Y forms completed") so the bar is interpretable without a
+// tooltip.
+function ProgressTile({ label, value, caption, color }) {
+  const pct = Math.max(0, Math.min(100, Number(value) || 0));
+  return (
+    <div
+      style={{
+        background: '#fff',
+        border: '1px solid #e2e8f0',
+        borderRadius: 10,
+        padding: '12px 14px',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: '#475569' }}>{label}</span>
+        <span style={{ fontSize: 16, fontWeight: 700, color }}>{pct}%</span>
+      </div>
+      <div
+        style={{
+          height: 8,
+          background: '#f1f5f9',
+          borderRadius: 4,
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            width: `${pct}%`,
+            height: '100%',
+            background: color,
+            borderRadius: 4,
+            transition: 'width .3s ease',
+          }}
+        />
+      </div>
+      {caption && (
+        <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 6 }}>{caption}</div>
       )}
     </div>
   );

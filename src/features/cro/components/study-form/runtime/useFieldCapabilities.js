@@ -83,8 +83,18 @@ export function useFieldCapabilities() {
     const config = resolveStudyConfig(study?.config);
 
     return {
-      // ─ Stage 1 ∧ Stage 2: feature ON for the study AND user can view it ─
-      canSeeQueries:      config.queryManager        && p.canAccessQueryManager,
+      // ─ Stage 1 ∧ Stage 2: feature ON for the study AND user can act on it ─
+      // The query icon shows when the user can EITHER manage queries
+      // (query_manager.view) OR raise them inline (data_capture.raise_query) —
+      // raising IS a data_capture action, so a data-capture role with
+      // raise_query must see it (the "see" and "do" gates were decoupled,
+      // causing a "no permission" dead-end).
+      canSeeQueries:      config.queryManager        && (p.canAccessQueryManager || p.canRaiseQueryOnField),
+      // Verification has NO data_capture equivalent — the actual SDV verify is
+      // gated on data_verification.edit (verify-page route), so the icon is
+      // driven purely by Verification Manager access. (data_capture.verify is a
+      // separate legacy "approve form" permission — it must NOT reveal the SDV
+      // icon, or a Query-Manager role would wrongly see Verify after VM is off.)
       canSeeVerification: config.verificationManager && p.canAccessVerificationManager,
       canSeeAnnotations:  p.canViewForm,
       canSeeNotes:        p.canViewForm,

@@ -92,10 +92,18 @@ export default function QueriesPage() {
   // `query_manager.sla_settings` permission.
   const { has } = usePermissions();
   const canEditSla = has('query_manager', 'sla_settings');
+  const canEditQuery   = has('query_manager', 'edit');
+  const canCreateQuery = has('query_manager', 'create');
+  const canRaiseQuery  = has('data_capture',  'raise_query');
+  const canCloseQuery  = has('data_capture',  'close_query');
   const [slaOpen,  setSlaOpen]  = useState(false);
 
   // ── Data ─────────────────────────────────────────────────────────────────
-  const [queries,   setQueries]   = useState([]);
+  // `queries` drives the table (re-fetched with server-side filters).
+  // `allQueries` drives the stats cards above the table — fetched once with
+  // no filters so the totals don't shift when the user changes table filters.
+  const [queries,    setQueries]    = useState([]);
+  const [allQueries, setAllQueries] = useState([]);
   const [siteOpts,  setSiteOpts]  = useState([]);
   const [loading,   setLoading]   = useState(true);
   // Study's form id — fallback for opening the form from a query whose row
@@ -155,7 +163,18 @@ export default function QueriesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studyId, statusFilter, priorityFilter, siteFilter, dateFrom, dateTo]);
 
-  useEffect(() => { load(); }, [load]);
+  // Unfiltered fetch — drives the stats cards. Re-runs on studyId change and
+  // is triggered manually after every mutation (respond / close / escalate /
+  // reopen / bulk) so the totals stay current.
+  const loadAll = useCallback(() => {
+    if (!studyId) return;
+    sponsorQueryClient.list(studyId, {})
+      .then((qs) => setAllQueries(qs))
+      .catch(() => { /* leave existing stats — silent */ });
+  }, [studyId]);
+
+  useEffect(() => { load(); },    [load]);
+  useEffect(() => { loadAll(); }, [loadAll]);
 
   // Resolve the study's form id once, so the "Open Form" action works even
   // for query rows that don't carry a form id.
@@ -214,7 +233,7 @@ export default function QueriesPage() {
     rows = rows.filter((q) => {
       if (!query) return true;
       const s = query.toLowerCase();
-      return [q.id, q.queryText, q.fieldName, q.subjectId, q.formName, q.raisedBy]
+      return [q.id, q.queryText, q.fieldLabel, q.fieldName, q.subjectId, q.formName, q.raisedBy]
         .some((v) => (v ?? '').toLowerCase().includes(s));
     });
     if (sortKey) {
@@ -243,21 +262,27 @@ export default function QueriesPage() {
   };
 
   // ── Stats — keyed to the new spec palette. ───────────────────────────────
+  // Always counts the FULL set of queries for this study; never the filtered
+  // table view. Changing status/priority/site/date filters never shifts these
+  // numbers.
   const stats = useMemo(() => {
-    const byDisplay = (label) => queries.filter((q) => toDisplayStatus(q.status) === label).length;
+    const byDisplay = (label) => allQueries.filter((q) => toDisplayStatus(q.status) === label).length;
     return {
-      total:      queries.length,
+      total:      allQueries.length,
       open:       byDisplay('Open'),
       inProgress: byDisplay('In Progress'),
       resolved:   byDisplay('Resolved'),
       closed:     byDisplay('Closed'),
-      overdue:    queries.filter((q) => q.status === 'Overdue'
+      overdue:    allQueries.filter((q) => q.status === 'Overdue'
         || (q.slaRemaining < 0 && toDisplayStatus(q.status) !== 'Resolved' && toDisplayStatus(q.status) !== 'Closed')).length,
     };
-  }, [queries]);
+  }, [allQueries]);
 
   // ── Selection ─────────────────────────────────────────────────────────────
-  const activeOnPage = pageData.filter((q) => toDisplayStatus(q.status) !== 'Resolved');
+  const activeOnPage = pageData.filter((q) => {
+    const d = toDisplayStatus(q.status);
+    return d !== 'Resolved' && d !== 'Closed';
+  });
   const allActiveSelected = activeOnPage.length > 0 && activeOnPage.every((q) => selected.has(q.id));
 
   const toggleAll = () => {
@@ -285,7 +310,7 @@ export default function QueriesPage() {
     try {
       await sponsorQueryClient.respond(studyId, respondTarget.id, data);
       dispatch(addToast({ type: 'success', message: 'Query responded successfully. Email notification sent.' }));
-      setRespond(null); load();
+      setRespond(null); load(); loadAll();
     } catch {
       dispatch(addToast({ type: 'error', message: 'Failed to respond to query. Please try again.' }));
       throw new Error();
@@ -296,7 +321,7 @@ export default function QueriesPage() {
     try {
       await sponsorQueryClient.close(studyId, closeTarget.id, data);
       dispatch(addToast({ type: 'success', message: 'Query closed successfully.' }));
-      setClose(null); load();
+      setClose(null); load(); loadAll();
     } catch {
       dispatch(addToast({ type: 'error', message: 'Failed to close query. Please try again.' }));
       throw new Error();
@@ -307,7 +332,7 @@ export default function QueriesPage() {
     try {
       await sponsorQueryClient.reopen(studyId, reopenTarget.id, data);
       dispatch(addToast({ type: 'success', message: 'Query reopened successfully.' }));
-      setReopen(null); load();
+      setReopen(null); load(); loadAll();
     } catch {
       dispatch(addToast({ type: 'error', message: 'Failed to reopen query. Please try again.' }));
       throw new Error();
@@ -318,7 +343,7 @@ export default function QueriesPage() {
     try {
       await sponsorQueryClient.escalate(studyId, escalateTarget.id, data);
       dispatch(addToast({ type: 'success', message: 'Query escalated successfully.' }));
-      setEscalate(null); load();
+      setEscalate(null); load(); loadAll();
     } catch {
       dispatch(addToast({ type: 'error', message: 'Failed to escalate query. Please try again.' }));
       throw new Error();
@@ -329,7 +354,7 @@ export default function QueriesPage() {
     try {
       const count = await sponsorQueryClient.bulkClose(studyId, [...selected], data);
       dispatch(addToast({ type: 'success', message: `Bulk action completed successfully for ${count} queries.` }));
-      setBulkClose(false); load();
+      setBulkClose(false); load(); loadAll();
     } catch {
       dispatch(addToast({ type: 'error', message: 'Failed to close queries. Please try again.' }));
       throw new Error();
@@ -354,7 +379,7 @@ export default function QueriesPage() {
       dispatch(addToast({ type: 'success', message: `${ok} of ${ids.length} queries reassigned to ${data.assignedTo}.` }));
       setBulkReassign(false);
       setSelected(new Set());
-      load();
+      load(); loadAll();
     } else {
       dispatch(addToast({ type: 'error', message: 'Failed to reassign queries.' }));
     }
@@ -373,7 +398,7 @@ export default function QueriesPage() {
       dispatch(addToast({ type: 'success', message: `${ok} of ${ids.length} queries escalated.` }));
       setBulkEscalate(false);
       setSelected(new Set());
-      load();
+      load(); loadAll();
     } else {
       dispatch(addToast({ type: 'error', message: 'Failed to escalate queries.' }));
     }
@@ -419,18 +444,20 @@ export default function QueriesPage() {
           <p className={styles.sub}>Track and resolve data queries for this study.</p>
         </div>
         <div className={styles.headerActions}>
-          <button
-            className={styles.btnSecondary}
-            onClick={() => setSlaOpen(true)}
-            title={canEditSla ? 'Configure SLA' : 'View SLA settings'}
-          >
-            <Clock size={13} /> SLA Settings
-          </button>
+          {canEditSla && (
+            <button
+              className={styles.btnSecondary}
+              onClick={() => setSlaOpen(true)}
+              title="Configure SLA"
+            >
+              <Clock size={13} /> SLA Settings
+            </button>
+          )}
           <SnapshotButton leaf="query_manager" filename="queries" className={styles.btnSecondary} />
           <button className={styles.btnSecondary} onClick={handleExport} disabled={exporting}>
             <Download size={13} /> {exporting ? 'Exporting…' : 'Export'}
           </button>
-          <button className={styles.btnRefresh} onClick={load} title="Refresh">
+          <button className={styles.btnRefresh} onClick={() => { load(); loadAll(); }} title="Refresh">
             <RefreshCw size={14} />
           </button>
         </div>
@@ -604,29 +631,35 @@ export default function QueriesPage() {
       {selectedCount > 0 && (
         <div className={styles.bulkBar}>
           <span className={styles.bulkCount}>{selectedCount} query{selectedCount !== 1 ? 's' : ''} selected</span>
-          <button
-            className={styles.bulkClose}
-            onClick={() => setBulkClose(true)}
-            {...ro.disabledProps('Bulk close queries')}
-          >
-            <CheckCircle size={13} /> Bulk Close
-          </button>
-          <button
-            className={styles.bulkExport}
-            onClick={() => setBulkReassign(true)}
-            {...ro.disabledProps('Bulk reassign queries')}
-            title="Reassign selected queries to a different user"
-          >
-            <MessageSquare size={13} /> Bulk Reassign
-          </button>
-          <button
-            className={styles.bulkExport}
-            onClick={() => setBulkEscalate(true)}
-            {...ro.disabledProps('Bulk escalate queries')}
-            title="Escalate selected queries"
-          >
-            <AlertTriangle size={13} /> Bulk Escalate
-          </button>
+          {canEditQuery && (
+            <button
+              className={styles.bulkClose}
+              onClick={() => setBulkClose(true)}
+              {...ro.disabledProps('Bulk close queries')}
+            >
+              <CheckCircle size={13} /> Bulk Close
+            </button>
+          )}
+          {canEditQuery && (
+            <button
+              className={styles.bulkExport}
+              onClick={() => setBulkReassign(true)}
+              {...ro.disabledProps('Bulk reassign queries')}
+              title="Reassign selected queries to a different user"
+            >
+              <MessageSquare size={13} /> Bulk Reassign
+            </button>
+          )}
+          {canEditQuery && (
+            <button
+              className={styles.bulkExport}
+              onClick={() => setBulkEscalate(true)}
+              {...ro.disabledProps('Bulk escalate queries')}
+              title="Escalate selected queries"
+            >
+              <AlertTriangle size={13} /> Bulk Escalate
+            </button>
+          )}
           <button className={styles.bulkExport} onClick={handleExport}>
             <Download size={13} /> Export Selected
           </button>
@@ -692,14 +725,22 @@ export default function QueriesPage() {
               const pm = PRIORITY_META[q.priority] ?? PRIORITY_META.Medium;
               const display = toDisplayStatus(q.status);
               const sm = STATUS_META[display] ?? STATUS_META.Raised;
+              // Lifecycle: open/answered (active) → Resolved (reopenable +
+              // closable) → Closed (final). Close advances one step; Reopen is
+              // offered on the two terminal states.
               const isResolved = display === 'Resolved';
-              const isActive   = !isResolved;
+              const isClosed   = display === 'Closed';
+              const isActive   = !isResolved && !isClosed;
+              const canCloseStep = isActive || isResolved; // Close shows until final
+              const canReopenStep = isResolved || isClosed;
               const isOverdue  = q.slaRemaining < 0 && isActive;
 
               // Actioned By / Date track the latest action in the lifecycle.
-              const actionedBy   = isResolved ? (q.resolvedBy || q.respondedBy || q.raisedBy)
-                                  : display === 'Answered' ? (q.respondedBy || q.raisedBy)
-                                  : q.raisedBy;
+              // Prefer resolved names (now resolved across site/sponsor/CRO),
+              // falling back to the raw id only when no name is available.
+              const actionedBy   = isResolved ? (q.resolvedByName || q.respondedByName || q.raisedByName || q.resolvedBy || q.respondedBy || q.raisedBy)
+                                  : display === 'Answered' ? (q.respondedByName || q.raisedByName || q.respondedBy || q.raisedBy)
+                                  : (q.raisedByName || q.raisedBy);
               const actionedDate = isResolved ? (q.resolvedDate || q.responseDate || q.raisedDate)
                                   : display === 'Answered' ? (q.responseDate || q.raisedDate)
                                   : q.raisedDate;
@@ -709,9 +750,10 @@ export default function QueriesPage() {
               // siteId only as a last resort.
               const siteCode = q.siteCode || '';
               const siteName = q.siteName || '';
-              const subjectLabel = q.subjectId
-                ? `${q.subjectId}${q.subjectInitials ? ` (${q.subjectInitials})` : ''}`
-                : '—';
+              // Subjects are identified by initials in the UI; the raw
+              // subject id is internal. Show initials, falling back to the id
+              // only when initials were never captured.
+              const subjectLabel = q.subjectInitials || q.subjectId || '—';
               const sequenceLabel = sequenceById.get(q.id) ?? '—';
 
               return (
@@ -753,7 +795,7 @@ export default function QueriesPage() {
                       </>
                     ) : (q.formName || '—')}
                   </td>
-                  <td className={styles.td}><span className={styles.fieldName}>{q.fieldName || '—'}</span></td>
+                  <td className={styles.td}><span className={styles.fieldName}>{q.fieldLabel || q.fieldName || '—'}</span></td>
                   <td className={styles.td}>
                     <span className={styles.queryText} title={q.queryText}>
                       {q.queryText?.length > 50 ? `${q.queryText.slice(0, 50)}…` : (q.queryText || '—')}
@@ -792,35 +834,39 @@ export default function QueriesPage() {
                     <button className={styles.actionBtn} title="Open Study Form" onClick={() => openStudyForm(q)}>
                       <FileText size={12} />
                     </button>
-                    {isActive && (
-                      <>
-                        <button
-                          className={`${styles.actionBtn} ${styles.actionRespond}`}
-                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Respond'}
-                          onClick={() => setRespond(q)}
-                          {...ro.disabledProps('Respond to query')}
-                        >
-                          <MessageSquare size={12} />
-                        </button>
-                        <button
-                          className={`${styles.actionBtn} ${styles.actionClose}`}
-                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Close'}
-                          onClick={() => setClose(q)}
-                          {...ro.disabledProps('Close query')}
-                        >
-                          <CheckCircle  size={12} />
-                        </button>
-                        <button
-                          className={`${styles.actionBtn} ${styles.actionEscalate}`}
-                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Escalate'}
-                          onClick={() => setEscalate(q)}
-                          {...ro.disabledProps('Escalate query')}
-                        >
-                          <AlertTriangle size={12} />
-                        </button>
-                      </>
+                    {isActive && canEditQuery && (
+                      <button
+                        className={`${styles.actionBtn} ${styles.actionRespond}`}
+                        title={ro.isReadOnly ? ro.readOnlyMessage : 'Respond'}
+                        onClick={() => setRespond(q)}
+                        {...ro.disabledProps('Respond to query')}
+                      >
+                        <MessageSquare size={12} />
+                      </button>
                     )}
-                    {!isActive && (
+                    {/* Close advances the lifecycle: open/answered → Resolved,
+                        then Resolved → Closed. Shown until the query is Closed. */}
+                    {canCloseStep && (canCloseQuery || canEditQuery) && (
+                      <button
+                        className={`${styles.actionBtn} ${styles.actionClose}`}
+                        title={ro.isReadOnly ? ro.readOnlyMessage : (isResolved ? 'Close (finalise)' : 'Close')}
+                        onClick={() => setClose(q)}
+                        {...ro.disabledProps('Close query')}
+                      >
+                        <CheckCircle  size={12} />
+                      </button>
+                    )}
+                    {isActive && canEditQuery && (
+                      <button
+                        className={`${styles.actionBtn} ${styles.actionEscalate}`}
+                        title={ro.isReadOnly ? ro.readOnlyMessage : 'Escalate'}
+                        onClick={() => setEscalate(q)}
+                        {...ro.disabledProps('Escalate query')}
+                      >
+                        <AlertTriangle size={12} />
+                      </button>
+                    )}
+                    {canReopenStep && canEditQuery && (
                       <button
                         className={`${styles.actionBtn} ${styles.actionReopen}`}
                         title={ro.isReadOnly ? ro.readOnlyMessage : 'Reopen'}
@@ -867,8 +913,8 @@ export default function QueriesPage() {
 
       {detailsTarget && (
         <QueryDetailsModal
-          studyId={studyId}
           query={detailsTarget}
+          displayId={sequenceById.get(detailsTarget.id)}
           onClose={() => setDetails(null)}
           onAction={handleDetailAction}
         />

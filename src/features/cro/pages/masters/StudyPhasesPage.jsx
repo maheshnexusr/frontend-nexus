@@ -8,12 +8,17 @@ import StatusBadge           from '@/components/feedback/StatusBadge';
 import ConfirmDialog         from '@/components/feedback/ConfirmDialog';
 import StudyPhaseModal       from '@/features/cro/components/study-phases/StudyPhaseModal';
 import { formatDate }        from '@/utils/formatDate';
+import { usePermissions }    from '@/features/auth/usePermissions';
 import styles from './StudyPhasesPage.module.css';
 
 const fmt = (iso) => formatDate(iso) || '—';
 
 export default function StudyPhasesPage() {
   const dispatch = useDispatch();
+  const { has }  = usePermissions();
+  const canCreate = has('studyPhases', 'create');
+  const canEdit   = has('studyPhases', 'edit');
+  const canDelete = has('studyPhases', 'delete');
 
   const [phases, setPhases]       = useState([]);
   const [loading, setLoading]     = useState(true);
@@ -134,21 +139,25 @@ export default function StudyPhasesPage() {
       width: '90px',
       render: (_, row) => (
         <div className={styles.actions}>
-          <button className={styles.actionBtn} title="Edit" onClick={() => openEdit(row)}>
-            <Pencil size={14} />
-          </button>
-          <button
-            className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
-            title="Delete"
-            onClick={() => handleDeleteClick(row)}
-          >
-            <Trash2 size={14} />
-          </button>
+          {canEdit && (
+            <button className={styles.actionBtn} title="Edit" onClick={() => openEdit(row)}>
+              <Pencil size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+              title="Delete"
+              onClick={() => handleDeleteClick(row)}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       ),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+  ], [canEdit, canDelete]);
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
@@ -159,10 +168,12 @@ export default function StudyPhasesPage() {
           <h1 className={styles.title}>Study Phases</h1>
           <p className={styles.sub}>Manage clinical study phase classifications.</p>
         </div>
-        <button className={styles.btnPrimary} onClick={openCreate}>
-          <Plus size={15} />
-          Add Phase
-        </button>
+        {canCreate && (
+          <button className={styles.btnPrimary} onClick={openCreate}>
+            <Plus size={15} />
+            Add Phase
+          </button>
+        )}
       </div>
 
       <DataTable

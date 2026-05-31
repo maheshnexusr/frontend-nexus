@@ -11,13 +11,17 @@
  *
  * 401 handling:
  *  - On a session-token route → silent refresh against /site/auth/refresh.
- *  - On a workspace-token route → the workspace token is not refreshable;
- *    drop the study context and bounce to the study picker (session intact).
+ *  - On a workspace-token route → silent re-mint against /site/studies/choose
+ *    (idempotent for an active assignment). Falls back to the picker only if
+ *    the re-mint itself fails (assignment revoked, session also dead, etc.).
+ *    Without this, every 15-minute idle window kicked the user out of the
+ *    study workspace they were in, even on a simple page refresh.
  */
 
 import axios from 'axios';
 import { normalizeError } from './apiHelpers';
 import { handleLocked } from './apiInterceptors';
+import { setSiteStudyContext } from '@/features/site/authStore';
 
 const BASE_URL = import.meta.env.VITE_USE_LOCAL === 'true'
   ? (import.meta.env.VITE_LOCAL_API_URL ?? 'http://187.127.139.10:8080')
@@ -120,6 +124,14 @@ let refreshSubscribers = [];
 function subscribe(cb)    { refreshSubscribers.push(cb); }
 function notify(newToken) { refreshSubscribers.forEach((cb) => cb(newToken)); refreshSubscribers = []; }
 
+// Parallel queue for the workspace-token re-mint flow. A page refresh fires
+// many workspace requests in parallel; only the first triggers /studies/choose
+// and the rest wait on it.
+let rebinding         = false;
+let rebindSubscribers = [];
+function subscribeRebind(cb)   { rebindSubscribers.push(cb); }
+function notifyRebind(newTok)  { rebindSubscribers.forEach((cb) => cb(newTok)); rebindSubscribers = []; }
+
 function clearSiteSession() {
   [SESSION_TOKEN_KEY, REFRESH_TOKEN_KEY, WORKSPACE_TOKEN_KEY, CONTEXT_KEY, 'siteAuthUser', 'siteStudies']
     .forEach((k) => localStorage.removeItem(k));
@@ -138,6 +150,40 @@ function redirectToStudyPicker() {
   window.location.href = '/site/studies';
 }
 
+/**
+ * Silently re-mint the workspace token by replaying /site/studies/choose with
+ * the cached study context. Returns the new token on success, or null on any
+ * failure (no study context, session also expired AND refresh dead, assignment
+ * revoked, study unpublished, network error, …).
+ *
+ * Uses siteAxiosClient rather than raw axios so the session-token refresh path
+ * runs transparently: if both the workspace token AND the session token have
+ * expired (common — they're both 15-min JWTs minted close together), the
+ * client's own interceptor refreshes the session via siteRefreshToken first,
+ * then retries this /choose call. Recursion is safe because /studies/choose
+ * is NOT a workspace-token route — the response interceptor's workspace branch
+ * won't fire on it, so it can't re-enter rebindWorkspaceToken from inside.
+ */
+async function rebindWorkspaceToken() {
+  const ctx = readContext();
+  if (!ctx?.studyId || !ctx?.environment) return null;
+  if (!getSessionToken() && !getRefreshToken()) return null;
+  try {
+    const data = await siteAxiosClient.post(
+      '/api/v1/site/studies/choose',
+      { study_id: ctx.studyId, environment: ctx.environment },
+    );
+    // Re-use the same persister the picker uses on initial choose — it writes
+    // the workspace token AND refreshes the cached permission tree so the
+    // sidebar picks up any role changes that happened during idle.
+    const persisted = setSiteStudyContext(data ?? {});
+    const newToken  = localStorage.getItem(WORKSPACE_TOKEN_KEY);
+    return persisted && newToken ? newToken : null;
+  } catch {
+    return null;
+  }
+}
+
 siteAxiosClient.interceptors.response.use(
   (response) => response.data,
   async (error) => {
@@ -152,11 +198,35 @@ siteAxiosClient.interceptors.response.use(
     if (error.response?.status === 401 && !original._retry && !isAuthEndpoint) {
       original._retry = true;
 
-      // A workspace-token route 401'd — the workspace token is not silently
-      // refreshable. Send the user back to the picker to re-choose the study.
+      // Workspace-token route 401 → try a silent re-mint via /studies/choose
+      // first (the common case is just 15-min JWT expiry; the assignment is
+      // still good). Only bounce to the picker if the re-mint itself fails.
       if (needsWorkspaceToken(original.url)) {
-        redirectToStudyPicker();
-        return Promise.reject(normalizeError(error));
+        if (rebinding) {
+          return new Promise((resolve, reject) => {
+            subscribeRebind((newToken) => {
+              if (newToken) {
+                original.headers.Authorization = `Bearer ${newToken}`;
+                resolve(siteAxiosClient(original));
+              } else {
+                reject(normalizeError(error));
+              }
+            });
+          });
+        }
+        rebinding = true;
+        try {
+          const newToken = await rebindWorkspaceToken();
+          notifyRebind(newToken);
+          if (newToken) {
+            original.headers.Authorization = `Bearer ${newToken}`;
+            return siteAxiosClient(original);
+          }
+          redirectToStudyPicker();
+          return Promise.reject(normalizeError(error));
+        } finally {
+          rebinding = false;
+        }
       }
 
       const refresh = getRefreshToken();

@@ -12,6 +12,7 @@ import { sponsorPersonnelClient }    from '../api/sponsorPersonnelClient';
 import PersonnelDetailsModal         from '../components/personnel/PersonnelDetailsModal';
 import ConfirmDialog                 from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }           from '@/features/workspace/hooks/useReadOnlyView';
+import { usePermissions }            from '@/features/auth/usePermissions';
 import css from './PersonnelPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -63,6 +64,11 @@ export default function PersonnelPage() {
   const dispatch    = useDispatch();
   const importRef   = useRef(null);
   const ro          = useReadOnlyView();
+  const { has }     = usePermissions();
+  const canCreate   = has('site_personnel', 'create');
+  const canEdit     = has('site_personnel', 'edit');
+  const canDelete   = has('site_personnel', 'delete');
+  const canExport   = has('site_personnel', 'export');
 
   // Data
   const [personnel,  setPersonnel]  = useState([]);
@@ -265,17 +271,23 @@ export default function PersonnelPage() {
           <p  className={css.sub}>Manage site teams, investigators, coordinators, and enrolled subjects.</p>
         </div>
         <div className={css.headerActions}>
-          <button
-            className={css.btnSecondary}
-            onClick={() => importRef.current?.click()}
-            {...ro.disabledProps('Bulk Import')}
-          >
-            <Upload size={14} /> Bulk Import
-          </button>
-          <input ref={importRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleImport} />
-          <button className={css.btnSecondary} onClick={handleExport}>
-            <Download size={14} /> Export
-          </button>
+          {canCreate && (
+            <button
+              className={css.btnSecondary}
+              onClick={() => importRef.current?.click()}
+              {...ro.disabledProps('Bulk Import')}
+            >
+              <Upload size={14} /> Bulk Import
+            </button>
+          )}
+          {canCreate && (
+            <input ref={importRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleImport} />
+          )}
+          {canExport && (
+            <button className={css.btnSecondary} onClick={handleExport}>
+              <Download size={14} /> Export
+            </button>
+          )}
           <button
             className={css.btnRefresh}
             onClick={() => loadData(true)}
@@ -284,13 +296,15 @@ export default function PersonnelPage() {
           >
             <RefreshCw size={15} style={refreshing ? { animation: 'spin .7s linear infinite' } : {}} />
           </button>
-          <button
-            className={css.btnPrimary}
-            onClick={() => navigate(`/sponsor/${studyId}/personnel/new`)}
-            {...ro.disabledProps('Invite User')}
-          >
-            <UserPlus size={15} /> Invite User
-          </button>
+          {canCreate && (
+            <button
+              className={css.btnPrimary}
+              onClick={() => navigate(`/sponsor/${studyId}/personnel/new`)}
+              {...ro.disabledProps('Invite User')}
+            >
+              <UserPlus size={15} /> Invite User
+            </button>
+          )}
         </div>
       </div>
 
@@ -363,13 +377,15 @@ export default function PersonnelPage() {
       {selectedCount > 0 && (
         <div className={css.bulkBar}>
           <span className={css.bulkCount}>{selectedCount} selected</span>
-          <button
-            className={css.bulkResend}
-            onClick={handleBulkResend}
-            {...ro.disabledProps('Resend invitations')}
-          >
-            <Send size={13} /> Resend Invitations
-          </button>
+          {canEdit && (
+            <button
+              className={css.bulkResend}
+              onClick={handleBulkResend}
+              {...ro.disabledProps('Resend invitations')}
+            >
+              <Send size={13} /> Resend Invitations
+            </button>
+          )}
           <button className={css.bulkClear} onClick={() => setSelected(new Set())}>
             Clear
           </button>
@@ -489,30 +505,36 @@ export default function PersonnelPage() {
                       <button className={css.actionBtn} title="View Details" onClick={() => setDetailTarget(p)}>
                         <Eye size={13} />
                       </button>
-                      <button
-                        className={css.actionBtn}
-                        title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
-                        onClick={() => navigate(`/sponsor/${studyId}/personnel/${p.id}/edit`)}
-                        {...ro.disabledProps('Edit personnel')}
-                      >
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        className={`${css.actionBtn} ${css.actionResend}`}
-                        title={ro.isReadOnly ? ro.readOnlyMessage : 'Resend Invitation'}
-                        onClick={() => setResendTarget(p)}
-                        {...ro.disabledProps('Resend invitation')}
-                      >
-                        <Send size={13} />
-                      </button>
-                      <button
-                        className={`${css.actionBtn} ${css.actionDelete}`}
-                        title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
-                        onClick={() => setDeleteTarget(p)}
-                        {...ro.disabledProps('Delete personnel')}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {canEdit && (
+                        <button
+                          className={css.actionBtn}
+                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
+                          onClick={() => navigate(`/sponsor/${studyId}/personnel/${p.id}/edit`)}
+                          {...ro.disabledProps('Edit personnel')}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                      )}
+                      {canEdit && (
+                        <button
+                          className={`${css.actionBtn} ${css.actionResend}`}
+                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Resend Invitation'}
+                          onClick={() => setResendTarget(p)}
+                          {...ro.disabledProps('Resend invitation')}
+                        >
+                          <Send size={13} />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          className={`${css.actionBtn} ${css.actionDelete}`}
+                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
+                          onClick={() => setDeleteTarget(p)}
+                          {...ro.disabledProps('Delete personnel')}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

@@ -13,7 +13,7 @@
  *     consentManager      (legacy: consentEnabled)     → Consent Management section
  *     queryManager        (legacy: queryEnabled)       → Quality Management → Query Manager
  *     dataManager         (legacy: dataManagerEnabled) → Data Capture menu (EDC scope)
- *     verificationManager                              → Quality Management → Data Verification Manager
+ *     verificationManager                              → Quality Management → Verification Manager
  *     navigationBar       (legacy: navBarEnabled)      → reserved (not yet wired to a nav item)
  *
  * A section with no remaining children after filtering is dropped entirely.
@@ -128,7 +128,7 @@ export default function SponsorLayout() {
 
   const qualityChildren = [
     cfg.queryManager        && allowed('query_manager')     && { key: 'queries',      label: 'Query Manager',             path: `${base}/queries`      },
-    cfg.verificationManager && allowed('data_verification') && { key: 'verification', label: 'Data Verification Manager', path: `${base}/verification` },
+    cfg.verificationManager && allowed('data_verification') && { key: 'verification', label: 'Verification Manager', path: `${base}/verification` },
   ].filter(Boolean);
 
   const siteMgmtChildren = [

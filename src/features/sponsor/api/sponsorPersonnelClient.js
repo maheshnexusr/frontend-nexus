@@ -25,6 +25,8 @@ function normalizePersonnel(raw) {
     role:                raw.role                  ?? raw.role_name         ?? '',
     roleId:              raw.role_id               ?? raw.roleId            ?? '',
     siteId:              raw.site_id               ?? raw.siteId            ?? '',
+    siteIds:             raw.site_ids              ?? raw.siteIds
+                          ?? [raw.site_id ?? raw.siteId, ...(raw.additional_site_ids ?? raw.additionalSiteIds ?? [])].filter(Boolean),
     siteName:            raw.site_name             ?? raw.siteName          ?? '',
     contactNumber:       raw.contact_number        ?? raw.contactNumber     ?? '',
     status:              raw.status                ?? 'Active',

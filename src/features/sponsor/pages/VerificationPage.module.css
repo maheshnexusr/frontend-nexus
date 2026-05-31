@@ -254,9 +254,15 @@
 .tdActions { text-align: center; white-space: nowrap; }
 
 /* Cell styles */
-.subjectId { font-size: 12px; font-weight: 700; font-family: monospace; }
-.siteCode  { font-size: 11.5px; font-weight: 600; font-family: monospace; background: var(--bg-subtle, #f1f5f9); padding: 1px 5px; border-radius: 4px; }
-.siteName  { font-size: 11px; color: var(--text-secondary, #94a3b8); }
+/* Subject + Site cells: stacked identifier over a secondary line, matching the
+   Query Manager table for cross-screen consistency. */
+.subjectId       { display: block; font-size: 12px; font-weight: 700; font-family: monospace; color: #0f172a; }
+.subjectInitials { display: block; font-size: 11px; color: var(--text-secondary, #64748b); }
+/* Matches QM .siteCode exactly: inherits the table's 12.5px, sans-serif, 600. */
+.siteCode        { display: block; font-weight: 600; color: #0f172a; }
+.siteName        { display: block; font-size: 11.5px; color: var(--text-secondary, #64748b); }
+/* Subject pill — mirrors the Query Manager's .pill for identical presentation. */
+.pill            { font-size: 11.5px; font-weight: 600; font-family: monospace; background: var(--bg-subtle, #f1f5f9); padding: 1px 6px; border-radius: 4px; color: #0f172a; }
 
 .completenessCell { display: flex; align-items: center; gap: 6px; }
 .progressBarSmall {

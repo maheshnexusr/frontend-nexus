@@ -4,6 +4,7 @@ import { useDispatch } from 'react-redux';
 import { Plus, Pencil, Trash2, Globe2, Filter } from 'lucide-react';
 import { sponsorRegionsClient } from '@/features/sponsor/api/sponsorRegionsClient';
 import { useReadOnlyView }      from '@/features/workspace/hooks/useReadOnlyView';
+import { usePermissions }       from '@/features/auth/usePermissions';
 import { addToast }             from '@/app/notificationSlice';
 import DataTable                from '@/components/data-table/DataTable';
 import StatusBadge              from '@/components/feedback/StatusBadge';
@@ -15,6 +16,10 @@ export default function MasterRegionsPage() {
   const { studyId } = useParams();
   const dispatch    = useDispatch();
   const ro          = useReadOnlyView();
+  const { has }     = usePermissions();
+  const canCreate   = has('regions', 'create');
+  const canEdit     = has('regions', 'edit');
+  const canDelete   = has('regions', 'delete');
 
   const [regions,      setRegions]    = useState([]);
   const [loading,      setLoading]    = useState(true);
@@ -131,27 +136,31 @@ export default function MasterRegionsPage() {
       width: '90px',
       render: (_, row) => (
         <div className={styles.actions}>
-          <button
-            className={styles.actionBtn}
-            title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
-            onClick={() => openEdit(row)}
-            {...ro.disabledProps('Edit region')}
-          >
-            <Pencil size={14} />
-          </button>
-          <button
-            className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
-            title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
-            onClick={() => handleDeleteClick(row)}
-            {...ro.disabledProps('Delete region')}
-          >
-            <Trash2 size={14} />
-          </button>
+          {canEdit && (
+            <button
+              className={styles.actionBtn}
+              title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
+              onClick={() => openEdit(row)}
+              {...ro.disabledProps('Edit region')}
+            >
+              <Pencil size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+              title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
+              onClick={() => handleDeleteClick(row)}
+              {...ro.disabledProps('Delete region')}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       ),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [ro.isReadOnly]);
+  ], [ro.isReadOnly, canEdit, canDelete]);
 
   return (
     <div className={styles.page}>
@@ -161,10 +170,12 @@ export default function MasterRegionsPage() {
           <p className={styles.sub}>Manage geographical regions scoped to this study.</p>
         </div>
         <div className={styles.headerActions}>
-          <button className={styles.btnPrimary} onClick={openCreate} {...ro.disabledProps('Add region')}>
-            <Plus size={15} />
-            Add Region
-          </button>
+          {canCreate && (
+            <button className={styles.btnPrimary} onClick={openCreate} {...ro.disabledProps('Add region')}>
+              <Plus size={15} />
+              Add Region
+            </button>
+          )}
         </div>
       </div>
 

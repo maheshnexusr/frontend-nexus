@@ -27,6 +27,7 @@ import ExportMenu             from '@/components/data-table/ExportMenu';
 import { exportTable }        from '@/utils/exportTable';
 import { formatDateTime }     from '@/utils/formatDate';
 import PlatformDatePicker     from '@/components/form/PlatformDatePicker';
+import { usePermissions }     from '@/features/auth/usePermissions';
 import styles from './ActivityLogPage.module.css';
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
@@ -212,6 +213,8 @@ function DetailModal({ logId, onClose }) {
 /* ── Page ────────────────────────────────────────────────────────────────── */
 export default function ActivityLogPage() {
   const dispatch = useDispatch();
+  const { has }  = usePermissions();
+  const canExport = has('activityLog', 'export');
 
   /* ── Filters ── */
   const [dateFrom,    setDateFrom]    = useState(sevenDaysAgoISO);
@@ -351,11 +354,13 @@ export default function ActivityLogPage() {
           <p className={styles.sub}>Audit trail of all user actions and system events.</p>
         </div>
 
-        <ExportMenu
-          disabled={exporting || items.length === 0}
-          label={exporting ? 'Exporting…' : 'Export'}
-          onExport={handleExport}
-        />
+        {canExport && (
+          <ExportMenu
+            disabled={exporting || items.length === 0}
+            label={exporting ? 'Exporting…' : 'Export'}
+            onExport={handleExport}
+          />
+        )}
       </div>
 
       {/* ── Filter card ── */}

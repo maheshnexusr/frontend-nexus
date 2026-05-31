@@ -53,9 +53,9 @@ export default function StudyListPage() {
   const { has }      = usePermissions();
   const canCreate    = has('studies', 'create');
   const canEdit      = has('studies', 'edit');
-  const canConfigure = has('studies', 'configure');
+  const canConfigure = has('studies', 'configuration');
   const canDelete    = has('studies', 'delete');
-  const canPublish   = has('studies', 'publish');
+  const canPublish   = has('studies', 'publish_uat') || has('studies', 'publish_production');
   const showActions  = canEdit || canConfigure || canDelete || canPublish;
 
   const [studies, setStudies]   = useState([]);

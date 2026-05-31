@@ -6,7 +6,7 @@
  * CaptureFormPage with the appropriate formId and subjectId.
  *
  * Columns:
- *   Subject ID | Site | Status | Visits (completed/total) | Last Entry | Actions
+ *   Subject | Site | Screening Status | Enrollment Date | Actions
  *
  * Actions:
  *   Enter Data → /sponsor/:studyId/capture/form?formId=...&subjectId=...
@@ -19,7 +19,7 @@ import { useDispatch } from 'react-redux';
 import {
   Database, RefreshCw, Search, X, Filter,
   ClipboardList, FileText, UserCheck, AlertCircle,
-  Clock, CheckCircle2, PauseCircle, XCircle, History,
+  Clock, CheckCircle2, PauseCircle, XCircle, History, Trash2,
 } from 'lucide-react';
 import axiosClient  from '@/api/sponsorAxiosClient';
 import { addToast } from '@/app/notificationSlice';
@@ -30,59 +30,72 @@ import { usePermissions } from '@/features/auth/usePermissions';
 import css from './CapturePage.module.css';
 
 /* ── Status meta ─────────────────────────────────────────────────────────── */
+// Covers BOTH vocabularies the BE returns:
+//   screening_status  : Screening / Screen Failed / Eligible / Ineligible
+//   enrollment_status : Pending / Enrolled / Withdrawn / Completed
+// Plus the legacy `status` values (Active / On Hold) for back-compat.
 const STATUS_META = {
-  Enrolled:   { label: 'Enrolled',   cls: css.sEnrolled,   icon: <UserCheck size={11} /> },
-  Screening:  { label: 'Screening',  cls: css.sScreening,  icon: <Clock size={11} /> },
-  Active:     { label: 'Active',     cls: css.sActive,     icon: <CheckCircle2 size={11} /> },
-  Completed:  { label: 'Completed',  cls: css.sCompleted,  icon: <CheckCircle2 size={11} /> },
-  Withdrawn:  { label: 'Withdrawn',  cls: css.sWithdrawn,  icon: <XCircle size={11} /> },
-  'On Hold':  { label: 'On Hold',    cls: css.sOnHold,     icon: <PauseCircle size={11} /> },
-  Ineligible: { label: 'Ineligible', cls: css.sIneligible, icon: <AlertCircle size={11} /> },
+  // Enrollment / lifecycle
+  Enrolled:        { label: 'Enrolled',        cls: css.sEnrolled,   icon: <UserCheck size={11} /> },
+  Pending:         { label: 'Pending',         cls: css.sScreening,  icon: <Clock size={11} /> },
+  Active:          { label: 'Active',          cls: css.sActive,     icon: <CheckCircle2 size={11} /> },
+  Completed:       { label: 'Completed',       cls: css.sCompleted,  icon: <CheckCircle2 size={11} /> },
+  Withdrawn:       { label: 'Withdrawn',       cls: css.sWithdrawn,  icon: <XCircle size={11} /> },
+  Discontinued:    { label: 'Discontinued',    cls: css.sWithdrawn,  icon: <XCircle size={11} /> },
+  'On Hold':       { label: 'On Hold',         cls: css.sOnHold,     icon: <PauseCircle size={11} /> },
+  // Screening pipeline
+  Screening:       { label: 'Screening',       cls: css.sScreening,  icon: <Clock size={11} /> },
+  Eligible:        { label: 'Eligible',        cls: css.sActive,     icon: <CheckCircle2 size={11} /> },
+  Ineligible:      { label: 'Ineligible',      cls: css.sIneligible, icon: <AlertCircle size={11} /> },
+  'Screen Failed': { label: 'Screen Failed',   cls: css.sIneligible, icon: <XCircle size={11} /> },
 };
+
+function StatusBadge({ value }) {
+  if (!value) return <span className={css.na}>—</span>;
+  const meta = STATUS_META[value] ?? { label: value, cls: css.sEnrolled, icon: null };
+  return (
+    <span className={`${css.statusBadge} ${meta.cls}`}>
+      {meta.icon}{meta.label}
+    </span>
+  );
+}
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 const fmtDate = (ts) => formatDate(ts) || '—';
 
 function normalize(raw) {
   return {
-    id:             raw.subject_id   ?? raw.id,
-    subjectCode:    raw.subject_code ?? raw.subjectCode ?? raw.subjectId ?? raw.id,
-    siteName:       raw.site_name    ?? raw.siteName    ?? '—',
-    siteId:         raw.site_id      ?? raw.siteId,
-    status:         raw.status       ?? 'Enrolled',
-    visitsTotal:    raw.visits_total    ?? raw.visitsTotal    ?? 0,
-    visitsCompleted:raw.visits_completed?? raw.visitsCompleted ?? 0,
-    lastEntryAt:    raw.last_entry_at   ?? raw.lastEntryAt,
-    formId:         raw.form_id         ?? raw.formId,
-    hasData:        raw.has_data        ?? raw.hasData ?? false,
+    id:                raw.subject_id        ?? raw.id,
+    // Visible subject identifier is the initials; subject_number is the
+    // formatted internal code (S001…) kept as a fallback for search + edge
+    // cases where initials were never captured.
+    subjectInitials:   raw.subject_initials  ?? raw.subjectInitials  ?? '',
+    subjectCode:       raw.subject_number    ?? raw.subject_code     ?? raw.subjectCode    ?? raw.subjectNumber ?? '',
+    siteCode:          raw.site_code         ?? raw.siteCode         ?? raw.site_number   ?? '',
+    siteName:          raw.site_name         ?? raw.siteName         ?? '',
+    siteId:            raw.site_id           ?? raw.siteId,
+    // Unified subject status = the enrollment LIFECYCLE (Enrolled → Screening →
+    // Completed), the single source of truth shown identically on the site +
+    // sponsor portals. (Was previously split: sponsor showed screening_status,
+    // site showed enrollment_status — they drifted. Option A: one field.)
+    status:            raw.enrollment_status ?? raw.enrollmentStatus ?? raw.status ?? 'Enrolled',
+    enrolledAt:        raw.enrolled_at       ?? raw.enrolledAt       ?? '',
+    formId:            raw.form_id           ?? raw.formId,
+    hasData:           raw.has_data          ?? raw.hasData ?? false,
   };
 }
 
 /* ── Skeleton row ────────────────────────────────────────────────────────── */
 function SkeletonRow() {
+  // 5 columns: Subject, Site, Screening Status, Enrollment Date, Actions.
   return (
     <tr className={css.row}>
-      {[1,2,3,4,5,6].map((i) => (
+      {[1,2,3,4,5].map((i) => (
         <td key={i} className={css.td}>
-          <div className={css.skeleton} style={{ width: i === 1 ? '80px' : i === 6 ? '80px' : '120px' }} />
+          <div className={css.skeleton} style={{ width: i === 1 ? '80px' : i === 5 ? '80px' : '120px' }} />
         </td>
       ))}
     </tr>
-  );
-}
-
-/* ── Progress bar ────────────────────────────────────────────────────────── */
-function VisitProgress({ completed, total }) {
-  if (total === 0) return <span className={css.na}>—</span>;
-  const pct = Math.round((completed / total) * 100);
-  const cls = pct >= 80 ? css.barGreen : pct >= 40 ? css.barAmber : css.barRed;
-  return (
-    <div className={css.visitCell}>
-      <div className={css.visitBar}>
-        <div className={`${css.visitFill} ${cls}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className={css.visitLabel}>{completed}/{total}</span>
-    </div>
   );
 }
 
@@ -97,7 +110,10 @@ export default function CapturePage() {
   // migration 030, so the audit gate collapsed to a single leaf as well.
   const { has } = usePermissions();
   const canViewSubjectActivity = has('data_capture', 'activity_log');
+  const canOpenForm            = has('data_capture', 'subject_data_capture');
+  const canDeleteSubject       = has('data_capture', 'subject_delete');
   const [activitySubject, setActivitySubject] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const [subjects,     setSubjects]     = useState([]);
   const [loading,      setLoading]      = useState(true);
@@ -127,6 +143,27 @@ export default function CapturePage() {
   }, [studyId, dispatch]);
 
   useEffect(() => { loadSubjects(); }, [loadSubjects]);
+
+  /* ── Delete subject (hard delete + all its data) ── */
+  const handleDelete = useCallback(async (subject) => {
+    const label = subject.subjectCode || subject.subjectInitials || 'this subject';
+    if (!window.confirm(
+      `Delete ${label} and ALL of its data (forms, queries, verifications)?\n\nThis cannot be undone.`
+    )) return;
+    setDeletingId(subject.id);
+    try {
+      await axiosClient.delete(`/api/v1/sponsor/workspace/subjects/${subject.id}`);
+      dispatch(addToast({ type: 'success', message: `Subject ${label} deleted.` }));
+      setSubjects((prev) => prev.filter((s) => s.id !== subject.id));
+    } catch (err) {
+      dispatch(addToast({
+        type: 'error',
+        message: err?.response?.data?.message || err?.message || 'Failed to delete subject.',
+      }));
+    } finally {
+      setDeletingId(null);
+    }
+  }, [dispatch]);
 
   /* ── Resolve the study's form (per-study eCRF). Picks the first form
         returned by the sponsor forms endpoint and caches its id. ── */
@@ -158,7 +195,8 @@ export default function CapturePage() {
     subjects.forEach((s) => {
       if (s.siteId && !seen.has(s.siteId)) {
         seen.add(s.siteId);
-        opts.push({ value: s.siteId, label: s.siteName });
+        const label = [s.siteCode, s.siteName].filter(Boolean).join(' — ') || s.siteId;
+        opts.push({ value: s.siteId, label });
       }
     });
     return opts.sort((a, b) => a.label.localeCompare(b.label));
@@ -168,7 +206,14 @@ export default function CapturePage() {
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
     return subjects.filter((s) => {
-      const matchQ    = !q || s.subjectCode.toLowerCase().includes(q) || s.siteName.toLowerCase().includes(q);
+      // Match against every human-readable identifier so a study coordinator
+      // can search by initials, the formatted code, the site code, or the
+      // site name interchangeably.
+      const matchQ    = !q || [s.subjectInitials, s.subjectCode, s.siteCode, s.siteName]
+        .some((v) => (v ?? '').toLowerCase().includes(q));
+      // Status quick-filter matches the screening pipeline (the column the
+      // table renders). Falls back to the legacy single status field for
+      // older subject rows that don't carry a screening_status yet.
       const matchStat = statusFilter === 'All' || s.status === statusFilter;
       const matchSite = !siteFilter  || s.siteId === siteFilter;
       return matchQ && matchStat && matchSite;
@@ -256,7 +301,7 @@ export default function CapturePage() {
             <Search size={14} className={css.searchIcon} />
             <input
               className={css.searchInput}
-              placeholder="Search by subject ID or site…"
+              placeholder="Search by subject initials, code or site…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -267,7 +312,8 @@ export default function CapturePage() {
 
           <div className={css.filterRow}>
             <Filter size={13} className={css.filterIcon} />
-            {['All', 'Enrolled', 'Screening', 'Active', 'Completed', 'Withdrawn'].map((s) => (
+            {/* Pills filter by the enrollment lifecycle (the unified status). */}
+            {['All', 'Enrolled', 'Screening', 'Completed', 'Withdrawn', 'Discontinued'].map((s) => (
               <button
                 key={s}
                 className={`${css.filterBtn} ${statusFilter === s ? css.filterBtnActive : ''}`}
@@ -293,11 +339,10 @@ export default function CapturePage() {
         <table className={css.table}>
           <thead>
             <tr>
-              <th className={css.th}>Subject ID</th>
+              <th className={css.th}>Subject</th>
               <th className={css.th}>Site</th>
-              <th className={css.th}>Status</th>
-              <th className={css.th}>Visit Progress</th>
-              <th className={css.th}>Last Entry</th>
+              <th className={css.th}>Screening Status</th>
+              <th className={css.th}>Enrollment Date</th>
               <th className={css.thActions}>Actions</th>
             </tr>
           </thead>
@@ -306,7 +351,7 @@ export default function CapturePage() {
               Array.from({ length: 8 }, (_, i) => <SkeletonRow key={i} />)
             ) : pageData.length === 0 ? (
               <tr>
-                <td colSpan={6} className={css.emptyCell}>
+                <td colSpan={5} className={css.emptyCell}>
                   <div className={css.empty}>
                     <Database size={40} strokeWidth={1.25} className={css.emptyIcon} />
                     <p className={css.emptyTitle}>
@@ -322,28 +367,38 @@ export default function CapturePage() {
               </tr>
             ) : (
               pageData.map((subject) => {
-                const meta = STATUS_META[subject.status] ?? STATUS_META.Enrolled;
                 return (
                   <tr key={subject.id} className={css.row}>
                     <td className={css.td}>
                       <div className={css.subjectCell}>
                         <ClipboardList size={14} className={css.subjectIcon} />
-                        <span className={css.subjectCode}>{subject.subjectCode}</span>
+                        {/* Primary visible identifier is initials per study
+                            convention; the formatted subject_number (S001…)
+                            shows underneath when both exist. */}
+                        <div>
+                          <span className={css.subjectCode}>
+                            {subject.subjectInitials || subject.subjectCode || '—'}
+                          </span>
+                          {subject.subjectInitials && subject.subjectCode && (
+                            <div className={css.subjectSubLabel}>{subject.subjectCode}</div>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className={css.td}>
-                      <span className={css.siteName}>{subject.siteName}</span>
+                      {/* Site cell stacks code (primary) + name (secondary).
+                          Either may be missing depending on what was captured. */}
+                      <span className={css.siteCode}>{subject.siteCode || '—'}</span>
+                      {subject.siteName && (
+                        <div className={css.siteName}>{subject.siteName}</div>
+                      )}
+                    </td>
+                    {/* Screening pipeline (Screening / Eligible / Screen Failed / Ineligible). */}
+                    <td className={css.td}>
+                      <StatusBadge value={subject.status} />
                     </td>
                     <td className={css.td}>
-                      <span className={`${css.statusBadge} ${meta.cls}`}>
-                        {meta.icon}{meta.label}
-                      </span>
-                    </td>
-                    <td className={css.td}>
-                      <VisitProgress completed={subject.visitsCompleted} total={subject.visitsTotal} />
-                    </td>
-                    <td className={css.td}>
-                      <span className={css.dateCell}>{fmtDate(subject.lastEntryAt)}</span>
+                      <span className={css.dateCell}>{fmtDate(subject.enrolledAt)}</span>
                     </td>
                     <td className={css.tdActions}>
                       {canViewSubjectActivity && (
@@ -357,15 +412,29 @@ export default function CapturePage() {
                           <History size={16} />
                         </button>
                       )}
-                      <button
-                        type="button"
-                        className={css.iconBtn}
-                        onClick={() => openForm(subject)}
-                        title="Enter / Edit CRF Data"
-                        aria-label="Enter / Edit CRF Data"
-                      >
-                        <FileText size={16} />
-                      </button>
+                      {canOpenForm && (
+                        <button
+                          type="button"
+                          className={css.iconBtn}
+                          onClick={() => openForm(subject)}
+                          title="Enter / Edit CRF Data"
+                          aria-label="Enter / Edit CRF Data"
+                        >
+                          <FileText size={16} />
+                        </button>
+                      )}
+                      {canDeleteSubject && (
+                        <button
+                          type="button"
+                          className={css.iconBtn}
+                          onClick={() => handleDelete(subject)}
+                          disabled={deletingId === subject.id}
+                          title="Delete subject and all its data"
+                          aria-label="Delete subject"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

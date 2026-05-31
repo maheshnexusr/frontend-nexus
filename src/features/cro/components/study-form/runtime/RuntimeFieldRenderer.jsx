@@ -51,6 +51,12 @@ export default function RuntimeFieldRenderer({
   onChange: extOnChange,
   allValues,
   children,
+  // Persisted SDV (capture context). When `onVerifyField` is provided, the
+  // field's Verify popover performs a REAL persisted verify instead of the
+  // legacy client-only one, and shows `verifiedInfo` (status + real verifier
+  // name). Omitted in the CRO designer preview (no subject) → legacy behavior.
+  verifiedInfo = null,
+  onVerifyField,
 }) {
   const dispatch = useDispatch();
   const user     = useSelector(selectCurrentUser);
@@ -241,6 +247,8 @@ export default function RuntimeFieldRenderer({
           fieldLabel={field.label || field.id}
           fieldValue={value}
           anchorRect={anchorRect}
+          verifiedInfo={verifiedInfo}
+          onVerifyField={onVerifyField}
           onClose={() => setOpen(null)}
         />
       )}

@@ -21,10 +21,13 @@ import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
 let cache = null;
 
 function detectScope() {
-  // sponsorAccessToken trumps siteAccessToken — a CRO impersonator entering a
-  // sponsor workspace has BOTH, but should query via the sponsor endpoint.
+  // Sponsor scope wins over site. A CRO operator impersonating a sponsor holds
+  // a `sponsorViewToken` (NOT a `sponsorAccessToken`), so we must accept either
+  // — same rule used by every other sponsor-scope client (pickScope, axios,
+  // useSiteRolePermissions, …). Checking only sponsorAccessToken left the Raise
+  // Query "Associated" dropdown empty for CRO-as-sponsor users.
   try {
-    if (localStorage.getItem('sponsorAccessToken')) return 'sponsor';
+    if (localStorage.getItem('sponsorAccessToken') || localStorage.getItem('sponsorViewToken')) return 'sponsor';
     if (localStorage.getItem('siteAccessToken'))    return 'site';
   } catch { /* ignore */ }
   return null;
@@ -47,6 +50,8 @@ async function fetchAssignees() {
       email:    r.email ?? r.emailAddress ?? r.email_address ?? '',
       role:     r.role ?? r.roleName ?? r.role_name ?? '',
       siteId:   r.siteId ?? r.site_id ?? '',
+      siteIds:  r.siteIds ?? r.site_ids
+                  ?? [r.siteId ?? r.site_id, ...(r.additional_site_ids ?? r.additionalSiteIds ?? [])].filter(Boolean),
       siteName: r.siteName ?? r.site_name ?? '',
       status:   r.status ?? r.activeStatus ?? r.active_status ?? 'Active',
     }));
@@ -60,6 +65,8 @@ async function fetchAssignees() {
       email:    r.email_address ?? r.email ?? '',
       role:     r.role_name ?? r.role ?? r.roleName ?? '',
       siteId:   r.site_id ?? r.siteId ?? '',
+      siteIds:  r.site_ids ?? r.siteIds
+                  ?? [r.site_id ?? r.siteId, ...(r.additional_site_ids ?? r.additionalSiteIds ?? [])].filter(Boolean),
       siteName: r.site_name ?? r.siteName ?? '',
       status:   r.status ?? r.active_status ?? r.activeStatus ?? 'Active',
     }));

@@ -88,6 +88,45 @@ const _storedPermTree = (() => {
   try { return JSON.parse(localStorage.getItem('authPermissionsTree')) ?? null; } catch { return null; }
 })();
 
+// Sponsor and site sessions persist their user blob under separate keys
+// (`sponsorAuthUser` / `siteAuthUser`) with workspace-specific field names.
+// Read them too so `state.auth.user` survives a hard refresh in those scopes
+// instead of going back to `null` until the next mutation.
+const _storedSponsorUser = (() => {
+  try { return JSON.parse(localStorage.getItem('sponsorAuthUser')) ?? null; } catch { return null; }
+})();
+const _storedSiteUser = (() => {
+  try { return JSON.parse(localStorage.getItem('siteAuthUser')) ?? null; } catch { return null; }
+})();
+const _storedSiteContext = (() => {
+  try { return JSON.parse(localStorage.getItem('siteStudyContext')) ?? null; } catch { return null; }
+})();
+const _storedSponsorContext = (() => {
+  try { return JSON.parse(localStorage.getItem('sponsorStudyContext')) ?? null; } catch { return null; }
+})();
+
+/* Normalize a scope-specific user object to the shared shape consumers expect
+   from `selectCurrentUser`. Different scopes store different field names
+   (site uses `siteUserId`/`emailAddress`; sponsor varies by provider). We map
+   them all to `{ id, email, fullName, username, role, photograph, ...raw }` so
+   `currentUser?.id` / `.email` etc. work everywhere. The raw fields are kept
+   too for backwards compatibility. Named `_hydrateUserShape` to avoid clashing
+   with the richer `normalizeUser()` below that handles CRO login responses
+   end-to-end (this one is only used at slice init for rehydration). */
+function _hydrateUserShape(raw, scope) {
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    ...raw,
+    id:        raw.id        ?? raw.userId      ?? raw.siteUserId   ?? raw.sponsorUserId ?? raw.user_id ?? null,
+    email:     raw.email     ?? raw.emailAddress ?? raw.email_address ?? null,
+    fullName:  raw.fullName  ?? raw.full_name   ?? raw.name          ?? null,
+    username:  raw.username  ?? raw.userName    ?? raw.user_name     ?? null,
+    role:      raw.role      ?? raw.role_name   ?? raw.roleName      ?? null,
+    photograph:raw.photograph?? raw.photo       ?? raw.avatar        ?? null,
+    scope,
+  };
+}
+
 // Scope-aware hydration: if a sponsor or site session is active in localStorage
 // but the CRO `accessToken` is ALSO present, the CRO blob is almost certainly
 // stale from a prior sign-in that was never explicitly logged out. Drop the CRO
@@ -96,7 +135,9 @@ const _storedPermTree = (() => {
 const _hasCroAccess     = typeof window !== 'undefined' && !!localStorage.getItem('accessToken');
 const _hasSponsorAccess = typeof window !== 'undefined' && !!localStorage.getItem('sponsorAccessToken');
 const _hasSiteAccess    = typeof window !== 'undefined' && !!localStorage.getItem('siteAccessToken');
-const _croScopeIsActive = _hasCroAccess && !_hasSponsorAccess && !_hasSiteAccess;
+const _croScopeIsActive     = _hasCroAccess     && !_hasSponsorAccess && !_hasSiteAccess;
+const _sponsorScopeIsActive = _hasSponsorAccess && !_hasSiteAccess; // sponsor wins over CRO when both present
+const _siteScopeIsActive    = _hasSiteAccess;                       // site wins over both
 
 if (typeof window !== 'undefined' && !_croScopeIsActive) {
   // Best-effort wipe — keeps siteAuthUser / sponsorAuthUser intact (those
@@ -112,13 +153,52 @@ if (typeof window !== 'undefined' && !_croScopeIsActive) {
   } catch { /* ignore quota errors */ }
 }
 
+// Pick whichever scope owns the live session and hydrate Redux from its
+// localStorage slots. Without this, sponsor/site sessions would land on a
+// blank `state.auth.user` after a hard refresh until the next API call
+// repopulates it, breaking anything that reads `currentUser` synchronously
+// (e.g. "My Queries" toggle, header avatar, role-driven view checks).
+const _hydratedScope = _siteScopeIsActive
+  ? 'site'
+  : _sponsorScopeIsActive
+    ? 'sponsor'
+    : _croScopeIsActive
+      ? 'cro'
+      : null;
+
+const _hydratedUser =
+  _hydratedScope === 'site'    ? _hydrateUserShape(_storedSiteUser,    'site')
+  : _hydratedScope === 'sponsor' ? _hydrateUserShape(_storedSponsorUser, 'sponsor')
+  : _hydratedScope === 'cro'    ? _hydrateUserShape(_storedUser,        'cro')
+  : null;
+
+// Permissions tree by scope. Site session uses the per-study tree inside
+// siteStudyContext (study-scoped) and falls back to user.permissions; sponsor
+// uses sponsorStudyContext.permissions; CRO uses the persisted flat blob.
+const _hydratedPermTree =
+  _hydratedScope === 'site'    ? (_storedSiteContext?.permissions ?? _storedSiteUser?.permissions ?? null)
+  : _hydratedScope === 'sponsor' ? (_storedSponsorContext?.permissions ?? _storedSponsorUser?.permissions ?? null)
+  : _hydratedScope === 'cro'    ? _storedPermTree
+  : null;
+
+// Flat permissions array — only meaningful for the CRO sidebar's `Array.includes`
+// checks. Sponsor/site sidebars read the tree directly, so leaving this empty
+// for non-CRO scopes is correct.
+const _hydratedPerms = _hydratedScope === 'cro' ? _storedPerms : [];
+
+const _hydratedAccessToken =
+  _hydratedScope === 'site'    ? (localStorage.getItem('siteAccessToken')    || null)
+  : _hydratedScope === 'sponsor' ? (localStorage.getItem('sponsorAccessToken') || null)
+  : _hydratedScope === 'cro'    ? (localStorage.getItem('accessToken')        || null)
+  : null;
+
 const initialState = {
-  user:            _croScopeIsActive ? _storedUser     : null,
-  accessToken:     _croScopeIsActive ? (localStorage.getItem('accessToken')  || null) : null,
+  user:            _hydratedUser,
+  accessToken:     _hydratedAccessToken,
   refreshToken:    _croScopeIsActive ? (localStorage.getItem('refreshToken') || null) : null,
-  permissions:     _croScopeIsActive ? _storedPerms     : [],   // flat dot-notation — CRO sidebar
-  permissionsTree: _croScopeIsActive ? _storedPermTree  : null, // raw backend tree
-  isAuthenticated: _croScopeIsActive && Boolean(_storedUser && localStorage.getItem('accessToken')),
+  permissions:     _hydratedPerms,
+  permissionsTree: _hydratedPermTree,
+  isAuthenticated: Boolean(_hydratedUser && _hydratedAccessToken),
   status:          'idle',
   error:           null,
   geoInfo:         null,

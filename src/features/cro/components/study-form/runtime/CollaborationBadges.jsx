@@ -1,5 +1,5 @@
 import { useSelector } from 'react-redux';
-import { AlertCircle, Paperclip, StickyNote, CheckCircle2, Clock } from 'lucide-react';
+import { AlertCircle, Paperclip, StickyNote } from 'lucide-react';
 import { selectFieldBucket } from '@/features/cro/store/formRuntimeSlice';
 import s from './runtime.module.css';
 
@@ -30,13 +30,12 @@ export default function CollaborationBadges({ fieldId, onOpen }) {
   // Annotations are a global master now — no per-field count badge.
   const attachmentCount = bucket.attachments.length;
   const noteCount       = bucket.notes.length;
-  const verified        = !!bucket.verification?.verified;
 
   const byStatus = { Raised: [], Answered: [], Resolved: [] };
   for (const q of bucket.queries) byStatus[normalizeStatus(q.status)].push(q);
 
   const totalActiveQueries = byStatus.Raised.length + byStatus.Answered.length;
-  const has = totalActiveQueries + attachmentCount + noteCount + byStatus.Resolved.length > 0 || verified;
+  const has = totalActiveQueries + attachmentCount + noteCount + byStatus.Resolved.length > 0;
   if (!has) return null;
 
   const handle = (kind) => (e) => {
@@ -89,16 +88,9 @@ export default function CollaborationBadges({ fieldId, onOpen }) {
           <StickyNote size={11} /> {noteCount}
         </button>
       )}
-      {verified && (
-        <button type="button" className={`${s.badge} ${s.badgeVerified}`} title="Verified" onClick={handle('verification')}>
-          <CheckCircle2 size={11} /> Verified
-        </button>
-      )}
-      {!verified && totalActiveQueries > 0 && (
-        <span className={`${s.badge} ${s.badgePending}`} title="Pending verification">
-          <Clock size={11} /> Pending
-        </span>
-      )}
+      {/* Verification badge removed — SDV now uses the persisted data_verifications
+          flow (green "Verified · <name>" tag in StudyFormRunner), not the legacy
+          client-only formRuntimeSlice bucket. Showing both produced two tags. */}
     </div>
   );
 }

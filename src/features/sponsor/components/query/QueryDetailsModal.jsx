@@ -9,6 +9,10 @@ import { sponsorQueryClient, PRIORITY_SLA_DAYS } from '@/features/sponsor/api/sp
 import { formatDate, formatDateTime } from '@/utils/formatDate';
 import styles from './QueryDetailsModal.module.css';
 
+// Both sponsor and site query clients expose getById(queryId) with the same
+// normalized shape. The site page injects siteQueryClient via the `client`
+// prop; sponsor callers omit it and pick up sponsorQueryClient by default.
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const PRIORITY_META = {
   High:   { color: '#dc2626', bg: '#fef2f2' },
@@ -41,7 +45,7 @@ const AUDIT_ICONS = {
   'query escalated': <AlertTriangle size={13} style={{ color: '#dc2626' }} />,
 };
 
-export default function QueryDetailsModal({ studyId, query, onClose, onAction }) {
+export default function QueryDetailsModal({ query, onClose, onAction, client = sponsorQueryClient, displayId }) {
   const [activeTab, setActiveTab] = useState('info');
   const [details,   setDetails]   = useState(null);
   const [loading,   setLoading]   = useState(true);
@@ -49,11 +53,11 @@ export default function QueryDetailsModal({ studyId, query, onClose, onAction })
   useEffect(() => {
     if (!query) return;
     setLoading(true);
-    sponsorQueryClient.getById(studyId, query.id)
+    client.getById(query.id)
       .then(setDetails)
       .catch(() => setDetails({ ...query, responses: [], auditTrail: [] }))
       .finally(() => setLoading(false));
-  }, [studyId, query]);
+  }, [client, query]);
 
   const d = details ?? query;
   const pm = PRIORITY_META[d?.priority] ?? PRIORITY_META.Medium;
@@ -65,13 +69,13 @@ export default function QueryDetailsModal({ studyId, query, onClose, onAction })
       <div className={styles.section}>
         {/* Header grid */}
         <div className={styles.infoGrid}>
-          <div className={styles.infoItem}><span className={styles.infoLabel}>Query ID</span><span className={styles.infoValue}><code className={styles.qid}>{d.id}</code></span></div>
+          <div className={styles.infoItem}><span className={styles.infoLabel}>Query ID</span><span className={styles.infoValue}><code className={styles.qid} title={d.id}>{displayId ?? d.id}</code></span></div>
           <div className={styles.infoItem}><span className={styles.infoLabel}>Site</span><span className={styles.infoValue}>{d.siteName ? `${d.siteName}${d.siteCode ? ` (${d.siteCode})` : ''}` : '—'}</span></div>
-          <div className={styles.infoItem}><span className={styles.infoLabel}>Subject ID</span><span className={styles.infoValue}>{d.subjectId || '—'}</span></div>
+          <div className={styles.infoItem}><span className={styles.infoLabel}>Subject</span><span className={styles.infoValue} title={d.subjectId}>{d.subjectInitials || d.subjectId || '—'}</span></div>
           <div className={styles.infoItem}><span className={styles.infoLabel}>Form / CRF</span><span className={styles.infoValue}>{d.formName || '—'}</span></div>
-          <div className={styles.infoItem}><span className={styles.infoLabel}>Field Name</span><span className={styles.infoValue}>{d.fieldName || '—'}</span></div>
+          <div className={styles.infoItem}><span className={styles.infoLabel}>Field Name</span><span className={styles.infoValue}>{d.fieldLabel || d.fieldName || '—'}</span></div>
           <div className={styles.infoItem}><span className={styles.infoLabel}>Current Value</span><span className={styles.infoValue}>{d.currentFieldValue || '—'}</span></div>
-          <div className={styles.infoItem}><span className={styles.infoLabel}>Raised By</span><span className={styles.infoValue}>{d.raisedBy || '—'}</span></div>
+          <div className={styles.infoItem}><span className={styles.infoLabel}>Raised By</span><span className={styles.infoValue}>{d.raisedByName || d.raisedBy || '—'}{d.raisedByRole ? ` · ${d.raisedByRole}` : ''}</span></div>
           <div className={styles.infoItem}><span className={styles.infoLabel}>Raised Date</span><span className={styles.infoValue}>{fmtDate(d.raisedDate)}</span></div>
           <div className={styles.infoItem}>
             <span className={styles.infoLabel}>Priority</span>
@@ -117,10 +121,10 @@ export default function QueryDetailsModal({ studyId, query, onClose, onAction })
               <span className={styles.detailValue}>{d.referenceSource}</span>
             </div>
           )}
-          {d.assignedTo && (
+          {(d.assignedToName || d.assignedTo) && (
             <div className={styles.detailRow}>
               <span className={styles.detailLabel}>Assigned To</span>
-              <span className={styles.detailValue}>{d.assignedTo}</span>
+              <span className={styles.detailValue}>{d.assignedToName || d.assignedTo}{d.assignedToRole ? ` · ${d.assignedToRole}` : ''}</span>
             </div>
           )}
         </div>
@@ -145,8 +149,8 @@ export default function QueryDetailsModal({ studyId, query, onClose, onAction })
           <div className={styles.bubbleAvatar}><User size={13} /></div>
           <div className={styles.bubbleBody}>
             <div className={styles.bubbleMeta}>
-              <span className={styles.bubbleName}>{d.raisedBy}</span>
-              <span className={styles.bubbleRole}>Query Raiser</span>
+              <span className={styles.bubbleName}>{d.raisedByName || d.raisedBy}</span>
+              <span className={styles.bubbleRole}>{d.raisedByRole || 'Query Raiser'}</span>
               <span className={styles.bubbleTime}>{fmtDate(d.raisedDate)}</span>
             </div>
             <div className={styles.bubbleText}>{d.queryText}</div>
@@ -223,7 +227,9 @@ export default function QueryDetailsModal({ studyId, query, onClose, onAction })
   }
 
   const isPending = d?.status === 'Open' || d?.status === 'In Progress' || d?.status === 'Overdue';
-  const isClosed  = d?.status === 'Closed';
+  // Normal close sets 'Resolved'; legacy/cancelled rows may be 'Closed'. Both
+  // are terminal and reopenable.
+  const isClosed  = d?.status === 'Closed' || d?.status === 'Resolved';
 
   return (
     <Modal
@@ -261,8 +267,8 @@ export default function QueryDetailsModal({ studyId, query, onClose, onAction })
         {/* Status strip */}
         <div className={styles.strip} style={{ background: sm.bg, borderColor: sm.color }}>
           <div className={styles.stripLeft}>
-            <code className={styles.stripId}>{d?.id}</code>
-            <span className={styles.stripField}>{d?.fieldName && `${d?.formName} → ${d?.fieldName}`}</span>
+            <code className={styles.stripId} title={d?.id}>{displayId ?? d?.id}</code>
+            <span className={styles.stripField}>{(d?.fieldLabel || d?.fieldName) && `${d?.formName} → ${d?.fieldLabel || d?.fieldName}`}</span>
           </div>
           <div className={styles.stripRight}>
             <span className={styles.badge} style={{ color: pm.color, background: pm.bg, marginRight: 6 }}>{d?.priority}</span>

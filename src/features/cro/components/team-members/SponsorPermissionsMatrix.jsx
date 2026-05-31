@@ -2,29 +2,12 @@ import { useState, useCallback, useMemo } from 'react';
 import { ChevronDown, ChevronUp, Info } from 'lucide-react';
 import {
   FEATURE_TREE,
+  PERM_LABELS,
   buildEmptyPermissions,
   buildFullPermissions,
 } from '@/features/sponsor/components/roles/permissionsTree';
 import { filterFeatureTreeByConfig } from '@/features/cro/utils/studyConfigGating';
 import css from './SponsorPermissionsMatrix.module.css';
-
-const PERM_LABELS = {
-  view:        'View',
-  create:      'Create',
-  edit:        'Edit',
-  delete:      'Delete',
-  import:      'Import',
-  export:      'Export',
-  screenshot:  'Screenshot',
-  complete:    'Mark Completed',
-  review:      'Mark Reviewed',
-  verify:      'Verify',
-  sign:        'Sign',
-  freeze:      'Freeze',
-  lock:        'Lock',
-  raise_query: 'Raise Query',
-  close_query: 'Close Query',
-};
 
 // ── State helpers ─────────────────────────────────────────────────────────────
 function setNested(obj, leafKey, permKey, value) {

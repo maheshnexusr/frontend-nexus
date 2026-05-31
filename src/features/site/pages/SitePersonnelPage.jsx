@@ -22,6 +22,7 @@ import { siteSitePersonnelClient }   from '@/features/site/api/siteSitePersonnel
 import PersonnelDetailsModal         from '@/features/sponsor/components/personnel/PersonnelDetailsModal';
 import SitePersonnelModal            from '@/features/site/components/SitePersonnelModal';
 import ConfirmDialog                 from '@/components/feedback/ConfirmDialog';
+import { usePermissions }            from '@/features/auth/usePermissions';
 import css from '@/features/sponsor/pages/PersonnelPage.module.css';
 
 const ROLES_FILTER   = ['All', 'Principal Investigator', 'Site Coordinator', 'Study Nurse', 'Subject/Patient', 'Pharmacist', 'Lab Technician', 'Other'];
@@ -64,6 +65,11 @@ function SortIcon({ colKey, sort }) {
 export default function SitePersonnelPage() {
   const dispatch  = useDispatch();
   const importRef = useRef(null);
+  const { has }   = usePermissions();
+  const canCreate = has('site_personnel', 'create');
+  const canEdit   = has('site_personnel', 'edit');
+  const canDelete = has('site_personnel', 'delete');
+  const canExport = has('site_personnel', 'export');
 
   // Data
   const [personnel,  setPersonnel]  = useState([]);
@@ -255,13 +261,19 @@ export default function SitePersonnelPage() {
           <p  className={css.sub}>Manage your site team — investigators, coordinators, and study staff.</p>
         </div>
         <div className={css.headerActions}>
-          <button className={css.btnSecondary} onClick={() => importRef.current?.click()}>
-            <Upload size={14} /> Bulk Import
-          </button>
-          <input ref={importRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleImport} />
-          <button className={css.btnSecondary} onClick={handleExport}>
-            <Download size={14} /> Export
-          </button>
+          {canCreate && (
+            <button className={css.btnSecondary} onClick={() => importRef.current?.click()}>
+              <Upload size={14} /> Bulk Import
+            </button>
+          )}
+          {canCreate && (
+            <input ref={importRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleImport} />
+          )}
+          {canExport && (
+            <button className={css.btnSecondary} onClick={handleExport}>
+              <Download size={14} /> Export
+            </button>
+          )}
           <button
             className={css.btnRefresh}
             onClick={() => loadData(true)}
@@ -270,9 +282,11 @@ export default function SitePersonnelPage() {
           >
             <RefreshCw size={15} style={refreshing ? { animation: 'spin .7s linear infinite' } : {}} />
           </button>
-          <button className={css.btnPrimary} onClick={() => setInviteOpen(true)}>
-            <UserPlus size={15} /> Invite User
-          </button>
+          {canCreate && (
+            <button className={css.btnPrimary} onClick={() => setInviteOpen(true)}>
+              <UserPlus size={15} /> Invite User
+            </button>
+          )}
         </div>
       </div>
 
@@ -455,23 +469,29 @@ export default function SitePersonnelPage() {
                       <button className={css.actionBtn} title="View Details" onClick={() => setDetailTarget(p)}>
                         <Eye size={13} />
                       </button>
-                      <button className={css.actionBtn} title="Edit" onClick={() => setEditTarget(p)}>
-                        <Pencil size={13} />
-                      </button>
-                      <button
-                        className={`${css.actionBtn} ${css.actionResend}`}
-                        title="Resend Invitation"
-                        onClick={() => setResendTarget(p)}
-                      >
-                        <Send size={13} />
-                      </button>
-                      <button
-                        className={`${css.actionBtn} ${css.actionDelete}`}
-                        title="Delete"
-                        onClick={() => setDeleteTarget(p)}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {canEdit && (
+                        <button className={css.actionBtn} title="Edit" onClick={() => setEditTarget(p)}>
+                          <Pencil size={13} />
+                        </button>
+                      )}
+                      {canEdit && (
+                        <button
+                          className={`${css.actionBtn} ${css.actionResend}`}
+                          title="Resend Invitation"
+                          onClick={() => setResendTarget(p)}
+                        >
+                          <Send size={13} />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          className={`${css.actionBtn} ${css.actionDelete}`}
+                          title="Delete"
+                          onClick={() => setDeleteTarget(p)}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

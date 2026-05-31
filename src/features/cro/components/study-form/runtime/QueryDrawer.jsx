@@ -130,9 +130,15 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
   // de-emphasised by the "(Inactive)" tag. If we can't resolve the subject's
   // site, fall back to the study-wide list (status still tagged).
   const assigneeOptions = useMemo(() => {
+    // Multi-site personnel: the BE returns `site_ids` = [primary, ...additional].
+    // Match on membership in that list (or fall back to the primary fields if
+    // the array wasn't surfaced). Without this, a person invited to "All" or
+    // "Multiple" sites only matches their primary site and disappears from the
+    // dropdown when the subject is on one of their *additional* sites.
     const sameSite = (p) => {
       if (!subjectSiteId && !subjectSiteName) return true;
-      if (subjectSiteId   && p.siteId   && p.siteId   === subjectSiteId)   return true;
+      const ids = Array.isArray(p.siteIds) ? p.siteIds : [];
+      if (subjectSiteId   && (ids.includes(subjectSiteId) || p.siteId === subjectSiteId))   return true;
       if (subjectSiteName && p.siteName && p.siteName === subjectSiteName) return true;
       return false;
     };
@@ -211,10 +217,19 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
     try {
       // Both sponsor and site clients accept the same payload shape; the URL
       // scope picked the right one upstairs.
+      // Resolve the field's block/page titles from the form tree so the Query
+      // Manager table can show where the query was raised.
+      const loc = formQueries.fieldLocation?.(fieldId) ?? null;
       const payload = {
         subjectId,
         formId,
-        fieldName: fieldId,
+        fieldName:  fieldId,
+        // Field's display label from the form schema. Stored alongside the
+        // ID so the Queries table can render "Date of Birth" instead of the
+        // raw fieldId. Falls back to fieldId at display time if missing.
+        fieldLabel,
+        blockName: loc?.blockName || undefined,
+        pageName:  loc?.pageName  || undefined,
         queryText: text,
         priority:  draft.priority,
         assignedTo: draft.assignedTo || undefined,

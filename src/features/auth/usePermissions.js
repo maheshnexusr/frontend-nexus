@@ -90,12 +90,14 @@ function buildFlat(permissions) {
     canAccessQueryManager: can('query_manager', 'view'),
 
     // ── Verification / SDV ───────────────────────────────────────────────
-    // Field/form verification is the `verify` action on the data_capture leaf
-    // (migration 021). The data_verification leaf still gates the standalone
-    // Verification Manager screen.
-    canVerifyField:               can('data_capture', 'verify'),
-    canUnverifyField:             can('data_capture', 'verify'),
-    canViewVerificationStatus:    can('data_verification', 'view') || can('data_capture', 'verify'),
+    // SDV field/page verification is gated server-side on data_verification.edit
+    // (the verify-page route), so the FE verify-button capability must match —
+    // NOT data_capture.verify (that's the separate legacy "approve form" gate).
+    // Using data_capture.verify here let a Query-Manager role see/attempt verify
+    // and leaked the verify icon after Verification Manager was disabled.
+    canVerifyField:               can('data_verification', 'edit'),
+    canUnverifyField:             can('data_verification', 'edit'),
+    canViewVerificationStatus:    can('data_verification', 'view'),
     canAccessVerificationManager: can('data_verification', 'view'),
 
     // ── Audit Trail ──────────────────────────────────────────────────────

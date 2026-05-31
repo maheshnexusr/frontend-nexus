@@ -95,16 +95,42 @@ export default function Popover({
 
   /* Outside click + Escape close — skipped while hidden so a sub-dialog
      opened on top can't accidentally dismiss this popover when the user
-     clicks/escapes inside the sub-dialog. */
+     clicks/escapes inside the sub-dialog.
+
+     Why this is harder than it looks: the popover lives in a `createPortal`
+     subtree under `document.body`, and one of its children is a
+     SearchableDropdown whose `<li>` mousedown synchronously unmounts the
+     option (React 18 flushes inside discrete events). By the time the
+     bubble-phase document listener runs, `e.target` is detached and even
+     `e.composedPath()` may have already been recomputed.
+
+     Robust fix: use the CAPTURE phase (which fires top-down BEFORE any
+     target handler runs, so the DOM is still intact) to record whether the
+     click started inside `ref.current`. The bubble-phase handler then
+     consults that flag instead of re-inspecting a possibly-mutated DOM. */
   useEffect(() => {
     if (hidden) return undefined;
+    let pressedInside = false;
+    const onDownCapture = (e) => {
+      pressedInside = !!(ref.current && (
+        ref.current.contains(e.target) ||
+        (typeof e.composedPath === 'function' && e.composedPath().includes(ref.current))
+      ));
+    };
     const onDown = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose?.();
+      if (!ref.current) return;
+      if (pressedInside) { pressedInside = false; return; }
+      // Belt-and-braces — re-check the (possibly-stale) DOM in case some
+      // browser quirk caused the capture handler to miss the event.
+      if (ref.current.contains(e.target)) return;
+      onClose?.();
     };
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    document.addEventListener('mousedown', onDownCapture, true);
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown',   onKey);
     return () => {
+      document.removeEventListener('mousedown', onDownCapture, true);
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown',   onKey);
     };
@@ -136,6 +162,11 @@ export default function Popover({
       aria-label={title}
       aria-hidden={hidden || undefined}
       onClick={(e) => e.stopPropagation()}
+      // Stop mousedown too — without this, clicking an option in a child
+      // SearchableDropdown unmounts the option's <li> before document's
+      // outside-click listener fires, the detached node fails the
+      // ref.contains(target) check, and the popover closes.
+      onMouseDown={(e) => e.stopPropagation()}
     >
       <div className={s.popoverShellHead}>
         <span className={s.popoverShellTitle}>{title}</span>

@@ -8,6 +8,7 @@ import DataTable         from '@/components/data-table/DataTable';
 import StatusBadge       from '@/components/feedback/StatusBadge';
 import ConfirmDialog     from '@/components/feedback/ConfirmDialog';
 import SponsorViewModal  from '@/features/cro/components/sponsors/SponsorViewModal';
+import { usePermissions } from '@/features/auth/usePermissions';
 import styles from './SponsorListPage.module.css';
 
 // ── Avatar cell ───────────────────────────────────────────────────────────────
@@ -27,6 +28,10 @@ function Avatar({ photo, name }) {
 export default function SponsorListPage() {
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const { has }  = usePermissions();
+  const canCreate = has('sponsors', 'create');
+  const canEdit   = has('sponsors', 'edit');
+  const canDelete = has('sponsors', 'delete');
 
   const [sponsors, setSponsors]     = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -150,25 +155,29 @@ export default function SponsorListPage() {
       width: '90px',
       render: (_, row) => (
         <div className={styles.actions}>
-          <button
-            className={styles.actionBtn}
-            title="Edit"
-            onClick={(e) => { e.stopPropagation(); navigate(`/cro/sponsors/${row.id}`); }}
-          >
-            <Pencil size={14} />
-          </button>
-          <button
-            className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
-            title="Delete"
-            onClick={(e) => { e.stopPropagation(); handleDeleteClick(row); }}
-          >
-            <Trash2 size={14} />
-          </button>
+          {canEdit && (
+            <button
+              className={styles.actionBtn}
+              title="Edit"
+              onClick={(e) => { e.stopPropagation(); navigate(`/cro/sponsors/${row.id}`); }}
+            >
+              <Pencil size={14} />
+            </button>
+          )}
+          {canDelete && (
+            <button
+              className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+              title="Delete"
+              onClick={(e) => { e.stopPropagation(); handleDeleteClick(row); }}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
       ),
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], []);
+  ], [canEdit, canDelete]);
 
   return (
     <div className={styles.page}>
@@ -179,10 +188,12 @@ export default function SponsorListPage() {
           <h1 className={styles.title}>Sponsors</h1>
           <p className={styles.sub}>Manage all sponsor organisations registered on the platform.</p>
         </div>
-        <button className={styles.btnPrimary} onClick={() => navigate('/cro/sponsors/new')}>
-          <Plus size={15} />
-          Add Sponsor
-        </button>
+        {canCreate && (
+          <button className={styles.btnPrimary} onClick={() => navigate('/cro/sponsors/new')}>
+            <Plus size={15} />
+            Add Sponsor
+          </button>
+        )}
       </div>
 
       <DataTable

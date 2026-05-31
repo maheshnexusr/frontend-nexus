@@ -103,7 +103,7 @@ export default function SiteLayout() {
 
   const qualityChildren = [
     cfg.queryManager        && allowed('query_manager')     && { key: 'queries',      label: 'Query Manager',             path: '/site/queries'      },
-    cfg.verificationManager && allowed('data_verification') && { key: 'verification', label: 'Data Verification Manager', path: '/site/verification' },
+    cfg.verificationManager && allowed('data_verification') && { key: 'verification', label: 'Verification Manager', path: '/site/verification' },
   ].filter(Boolean);
 
   const siteMgmtChildren = [

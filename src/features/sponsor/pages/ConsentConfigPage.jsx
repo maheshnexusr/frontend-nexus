@@ -18,6 +18,7 @@ import ConfirmDialog             from '@/components/feedback/ConfirmDialog';
 import ParagraphModal            from '@/features/sponsor/components/consent/ParagraphModal';
 import FieldConfigModal          from '@/features/sponsor/components/consent/FieldConfigModal';
 import { useReadOnlyView }       from '@/features/workspace/hooks/useReadOnlyView';
+import { usePermissions }        from '@/features/auth/usePermissions';
 import styles from './ConsentConfigPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -166,6 +167,10 @@ export default function ConsentConfigPage() {
   const dispatch    = useDispatch();
   const docRef      = useRef(null);
   const ro          = useReadOnlyView();
+  const { has }     = usePermissions();
+  const canCreate   = has('consent_builder', 'create');
+  const canEdit     = has('consent_builder', 'edit');
+  const canDelete   = has('consent_builder', 'delete');
 
   // ── State ────────────────────────────────────────────────────────────────
   const [roles,       setRoles]      = useState([]);
@@ -361,13 +366,15 @@ export default function ConsentConfigPage() {
     return (
       <div className={styles.tabBody}>
         <div className={styles.tabToolbar}>
-          <button
-            className={styles.btnAdd}
-            onClick={() => setParaModal('create')}
-            {...ro.disabledProps('Add paragraph')}
-          >
-            <Plus size={14} /> Add Paragraph
-          </button>
+          {canCreate && (
+            <button
+              className={styles.btnAdd}
+              onClick={() => setParaModal('create')}
+              {...ro.disabledProps('Add paragraph')}
+            >
+              <Plus size={14} /> Add Paragraph
+            </button>
+          )}
         </div>
 
         {sortedParagraphs.length === 0 ? (
@@ -394,22 +401,26 @@ export default function ConsentConfigPage() {
                   </p>
                 </div>
                 <div className={styles.paraActions}>
-                  <button
-                    className={styles.actionBtn}
-                    title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
-                    onClick={() => setParaModal(p)}
-                    {...ro.disabledProps('Edit paragraph')}
-                  >
-                    <Pencil size={13} />
-                  </button>
-                  <button
-                    className={`${styles.actionBtn} ${styles.actionDanger}`}
-                    title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
-                    onClick={() => setDeleteTgt({ type: 'paragraph', item: p })}
-                    {...ro.disabledProps('Delete paragraph')}
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                  {canEdit && (
+                    <button
+                      className={styles.actionBtn}
+                      title={ro.isReadOnly ? ro.readOnlyMessage : 'Edit'}
+                      onClick={() => setParaModal(p)}
+                      {...ro.disabledProps('Edit paragraph')}
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      className={`${styles.actionBtn} ${styles.actionDanger}`}
+                      title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
+                      onClick={() => setDeleteTgt({ type: 'paragraph', item: p })}
+                      {...ro.disabledProps('Delete paragraph')}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -470,7 +481,7 @@ export default function ConsentConfigPage() {
                         )}
                       </div>
 
-                      {f.enabled && (
+                      {f.enabled && canEdit && (
                         <button
                           className={styles.configBtn}
                           title={ro.isReadOnly ? ro.readOnlyMessage : 'Configure field'}
@@ -575,14 +586,16 @@ export default function ConsentConfigPage() {
                 <FileIcon size={15} className={styles.docIcon} />
                 <span className={styles.docName}>{d.name}</span>
                 {d.size > 0 && <span className={styles.docSize}>{fmtSize(d.size)}</span>}
-                <button
-                  className={`${styles.actionBtn} ${styles.actionDanger}`}
-                  title={ro.isReadOnly ? ro.readOnlyMessage : 'Remove'}
-                  onClick={() => setDeleteTgt({ type: 'document', item: d })}
-                  {...ro.disabledProps('Remove document')}
-                >
-                  <X size={13} />
-                </button>
+                {canDelete && (
+                  <button
+                    className={`${styles.actionBtn} ${styles.actionDanger}`}
+                    title={ro.isReadOnly ? ro.readOnlyMessage : 'Remove'}
+                    onClick={() => setDeleteTgt({ type: 'document', item: d })}
+                    {...ro.disabledProps('Remove document')}
+                  >
+                    <X size={13} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -698,7 +711,7 @@ export default function ConsentConfigPage() {
         </div>
         <div className={styles.headerActions}>
           <SnapshotButton leaf="consent_builder" filename="consent_builder" className={styles.btnSecondary} />
-          {selectedRole && (
+          {selectedRole && canCreate && (
             <button
               className={styles.btnSecondary}
               onClick={() => { setCopySource(''); setCopyModal(true); }}
@@ -708,15 +721,17 @@ export default function ConsentConfigPage() {
               <Copy size={14} /> Copy from Role
             </button>
           )}
-          <button
-            className={styles.btnPrimary}
-            onClick={() => !ro.isReadOnly && handleSave()}
-            disabled={!selectedRole || saving || ro.isReadOnly}
-            aria-disabled={!selectedRole || saving || ro.isReadOnly}
-            title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </button>
+          {(canCreate || canEdit) && (
+            <button
+              className={styles.btnPrimary}
+              onClick={() => !ro.isReadOnly && handleSave()}
+              disabled={!selectedRole || saving || ro.isReadOnly}
+              aria-disabled={!selectedRole || saving || ro.isReadOnly}
+              title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          )}
         </div>
       </div>
 
