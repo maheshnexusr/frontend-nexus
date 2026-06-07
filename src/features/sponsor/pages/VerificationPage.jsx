@@ -4,7 +4,7 @@ import { useDispatch }  from 'react-redux';
 import {
   CheckCircle, Clock, AlertTriangle, XCircle, BarChart2,
   Search, X, RefreshCw, Download, Filter, ChevronUp, ChevronDown,
-  ChevronsUpDown, Eye, Shield, ThumbsUp, ThumbsDown, FileText,
+  ChevronsUpDown, Eye, Shield, FileText,
 } from 'lucide-react';
 
 import { addToast }                   from '@/app/notificationSlice';
@@ -33,8 +33,10 @@ import VerifyActionModal              from '../components/verification/VerifyAct
 import { useReadOnlyView }            from '@/features/workspace/hooks/useReadOnlyView';
 import { formatDate }                 from '@/utils/formatDate';
 import PlatformDatePicker             from '@/components/form/PlatformDatePicker';
+import SearchableDropdown             from '@/components/form/SearchableDropdown';
 import SlaSettingsModal               from '@/features/sponsor/components/sla/SlaSettingsModal';
 import SnapshotButton                 from '@/components/feedback/SnapshotButton';
+import StatCard                       from '@/components/feedback/StatCard';
 import { usePermissions }             from '@/features/auth/usePermissions';
 import css from './VerificationPage.module.css';
 
@@ -63,6 +65,18 @@ const STATUS_META = {
 };
 
 const ALL_STATUSES = ['Not Verified', 'In Verification', 'Partially Verified', 'Verified', 'Overdue'];
+// Single-select status filter options — mirrors the Query Manager ('All' + each).
+const STATUS_OPTIONS = ['All', ...ALL_STATUSES];
+
+// Map legacy/raw backend statuses onto the spec palette so the status filter
+// chips (which use the display names) match rows that still carry old values.
+const STATUS_DISPLAY = {
+  Pending:     'Not Verified',
+  'In Review': 'In Verification',
+  Approved:    'Verified',
+  Queried:     'Partially Verified',
+};
+const toDisplayStatus = (st) => STATUS_DISPLAY[st] ?? st ?? 'Not Verified';
 
 // Column order follows spec §VM list table:
 //   Subject Details (Subject ID + Initials) · Site Details · Enrolment Date ·
@@ -70,13 +84,11 @@ const ALL_STATUSES = ['Not Verified', 'In Verification', 'Partially Verified', '
 // Verified By + Verified On stay as supplementary columns so existing
 // reviewer info is still visible — not on the spec table but useful day-to-day.
 const COLS = [
-  { key: 'id',               label: 'Subject',          sortable: true  },
-  { key: 'siteCode',         label: 'Site',             sortable: true  },
-  { key: 'enrollmentDate',   label: 'Enrolled',         sortable: true  },
-  { key: 'blockPage',        label: 'Block / Page',     sortable: true  },
+  { key: 'siteCode',         label: 'Site Details',     sortable: true  },
+  { key: 'id',               label: 'Subject Details',  sortable: true  },
+  { key: 'blockPage',        label: 'CRF Block / Page', sortable: true  },
   { key: 'completeness',     label: 'Verified %',       sortable: true  },
-  { key: 'ageDays',          label: 'Age',              sortable: true  },
-  { key: 'openQueries',      label: 'Queries',          sortable: true  },
+  { key: 'ageDays',          label: 'Aging',            sortable: true  },
   { key: 'status',           label: 'Status',           sortable: true  },
   { key: 'verifiedBy',       label: 'Verified By',      sortable: false },
   { key: 'verificationDate', label: 'Verified On',      sortable: true  },
@@ -111,9 +123,13 @@ export default function VerificationPage() {
   // data_verification leaf.
   const { has } = usePermissions();
   const canEditSla = has('data_verification', 'sla_settings');
-  const canVerify  = has('data_verification', 'create') || has('data_verification', 'edit');
-  const canApprove = has('data_capture', 'verify');
-  const canReject  = has('data_verification', 'edit');
+  // All Verification Manager actions require a Verification Manager permission:
+  // the discrete `verify` leaf (migration 035), with `edit` as the only fallback
+  // for pre-split / site roles. NOTE: approve previously keyed off
+  // data_capture.verify — a DIFFERENT module — which leaked the Approve buttons
+  // to data-capture roles with no VM access. Reject previously keyed off edit
+  // only. Both now match Verify so no permission → no VM action.
+  const canVerify  = has('data_verification', 'verify') || has('data_verification', 'edit');
   const [slaOpen,  setSlaOpen]  = useState(false);
 
   // Data
@@ -129,11 +145,10 @@ export default function VerificationPage() {
   // Default: all statuses selected (= show everything). Legacy seed of
   // ['Pending','In Review'] hid every new row, since those aren't in the chip
   // set and the backend status filter is an exact match.
-  const [activeStatuses, setActiveStatuses] = useState([...ALL_STATUSES]);
+  const [statusFilter, setStatusFilter] = useState('All');
   const [siteFilter,     setSiteFilter]     = useState('');
   const [dateFrom,       setDateFrom]       = useState('');
   const [dateTo,         setDateTo]         = useState('');
-  const [minComplete,    setMinComplete]    = useState('');
   const [search,         setSearch]         = useState('');
 
   // Sort / Pagination
@@ -227,23 +242,19 @@ export default function VerificationPage() {
     // detail records surfaced when drilling into a page, not table rows.
     let list = subjects.filter((s) => !s.fieldName);
 
-    // Status chips — a subset narrows the list; all-selected = no filter.
-    if (activeStatuses.length < ALL_STATUSES.length) {
-      const set = new Set(activeStatuses);
-      list = list.filter((s) => set.has(s.status));
+    // Status filter — single-select like the Query Manager. 'All' = no filter.
+    if (statusFilter !== 'All') {
+      list = list.filter((s) => toDisplayStatus(s.status) === statusFilter);
     }
     // Site dropdown (match by code or id — depends on the option value).
     if (siteFilter) {
       list = list.filter((s) => s.siteCode === siteFilter || s.siteId === siteFilter);
     }
-    // Min verified % (per-page verification completeness).
-    if (minComplete) {
-      const min = Number(minComplete);
-      list = list.filter((s) => (s.completeness ?? 0) >= min);
-    }
-    // Enrollment date range.
-    if (dateFrom) list = list.filter((s) => (s.enrollmentDate || '').slice(0, 10) >= dateFrom);
-    if (dateTo)   list = list.filter((s) => (s.enrollmentDate || '').slice(0, 10) <= dateTo);
+    // Date range — filter by the verification/eligible date the row carries
+    // (verified date when present, else the row's eligibility date).
+    const rowDate = (s) => (s.verificationDate || s.enrollmentDate || '').slice(0, 10);
+    if (dateFrom) list = list.filter((s) => rowDate(s) && rowDate(s) >= dateFrom);
+    if (dateTo)   list = list.filter((s) => rowDate(s) && rowDate(s) <= dateTo);
 
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -264,7 +275,7 @@ export default function VerificationPage() {
       bv = String(bv).toLowerCase();
       return sort.dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
     });
-  }, [subjects, search, sort, activeStatuses, siteFilter, minComplete, dateFrom, dateTo]);
+  }, [subjects, search, sort, statusFilter, siteFilter, dateFrom, dateTo]);
 
   // Metric cards are derived from the SAME page-level rows the table lists (one
   // row per page work-item), so "Total" equals the table's row count. The
@@ -298,10 +309,8 @@ export default function VerificationPage() {
     setPage(1);
   }
 
-  function toggleStatus(st) {
-    setActiveStatuses((prev) =>
-      prev.includes(st) ? prev.filter((x) => x !== st) : [...prev, st],
-    );
+  function selectStatus(st) {
+    setStatusFilter(st);
     setPage(1);
     setSelected(new Set());
   }
@@ -360,11 +369,15 @@ export default function VerificationPage() {
     const ids = [...selected];
     setActionLoading(true);
     try {
-      await sponsorVerificationClient.bulkVerify(studyId, ids);
-      dispatch(addToast({ type: 'success', message: `${ids.length} subjects marked as verified.` }));
+      const { verified, processed } = await sponsorVerificationClient.bulkVerify(studyId, ids);
+      if (processed === 0) {
+        dispatch(addToast({ type: 'warning', message: 'No completed pages found for the selected subject(s). A page must be Marked Completed before it can be verified.' }));
+      } else {
+        dispatch(addToast({ type: 'success', message: `${verified} of ${processed} page(s) verified.` }));
+      }
       loadData(true);
     } catch (e) {
-      dispatch(addToast({ type: 'error', message: e?.message ?? 'Bulk verify failed.' }));
+      dispatch(addToast({ type: 'error', message: e?.response?.data?.message ?? e?.message ?? 'Bulk verify failed.' }));
     } finally {
       setActionLoading(false);
     }
@@ -431,9 +444,6 @@ export default function VerificationPage() {
           <button className={css.btnSecondary} onClick={() => handleExport('csv')}>
             <Download size={14} /> Export CSV
           </button>
-          <button className={css.btnSecondary} onClick={() => handleExport('pdf')}>
-            <Download size={14} /> Export PDF
-          </button>
           <button
             className={css.btnRefresh}
             onClick={() => loadData(true)}
@@ -478,7 +488,7 @@ export default function VerificationPage() {
           </span>
           <button
             type="button"
-            onClick={() => setActiveStatuses((cur) => (cur.includes('Overdue') ? cur : [...cur, 'Overdue']))}
+            onClick={() => selectStatus('Overdue')}
             style={{
               marginLeft: 'auto',
               background: 'transparent',
@@ -497,15 +507,12 @@ export default function VerificationPage() {
       )}
 
       {/* Metrics — derived from the page-row list (cardCounts), so counts match
-          the table. "In Verification" and "Avg. Days" intentionally removed. */}
+          the table. Rendered with the shared <StatCard> (same component the
+          Query Manager uses). "In Verification" and "Avg. Days" intentionally removed. */}
       {cardCounts.total > 0 && (
         <div className={css.metricsBar}>
-          {METRIC_CARDS.map(({ label, value, color, icon: Icon }) => (
-            <div key={label} className={css.metricCard}>
-              <Icon size={16} style={{ color }} />
-              <span className={css.metricValue} style={{ color }}>{value}</span>
-              <span className={css.metricLabel}>{label}</span>
-            </div>
+          {METRIC_CARDS.map(({ label, value, color, icon }) => (
+            <StatCard key={label} icon={icon} label={label} value={value} accent={color} />
           ))}
         </div>
       )}
@@ -521,15 +528,15 @@ export default function VerificationPage() {
           {/* Status pills */}
           <div className={css.filterWrap}>
             <Filter size={13} className={css.filterIcon} />
-            {ALL_STATUSES.map((st) => {
+            {STATUS_OPTIONS.map((st) => {
               const meta = STATUS_META[st] ?? {};
-              const active = activeStatuses.includes(st);
+              const active = statusFilter === st;
               return (
                 <button
                   key={st}
                   className={`${css.filterBtn} ${active ? css.filterBtnActive : ''}`}
-                  style={active ? { background: meta.bg, color: meta.color, borderColor: meta.border } : {}}
-                  onClick={() => toggleStatus(st)}
+                  style={active && meta.bg ? { background: meta.bg, color: meta.color, borderColor: meta.border } : {}}
+                  onClick={() => selectStatus(st)}
                 >
                   {st}
                 </button>
@@ -537,19 +544,16 @@ export default function VerificationPage() {
             })}
           </div>
 
-          {/* Site filter */}
-          {sites.length > 0 && (
-            <select
-              className={`${css.selectFilter} ${css.siteFilter}`}
+          {/* Site dropdown — same control as the Query Manager. */}
+          <div className={css.siteFilter}>
+            <SearchableDropdown
+              options={[{ value: '', label: 'All Sites' }, ...sites]}
               value={siteFilter}
-              onChange={(e) => { setSiteFilter(e.target.value); setPage(1); }}
-            >
-              <option value="">All Sites</option>
-              {sites.map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
-              ))}
-            </select>
-          )}
+              onChange={(v) => { setSiteFilter(v ?? ''); setPage(1); }}
+              placeholder="All Sites"
+              searchPlaceholder="Search site…"
+            />
+          </div>
 
           {/* Date range */}
           <div className={css.dateRange}>
@@ -557,31 +561,17 @@ export default function VerificationPage() {
               className={css.dateInput}
               value={dateFrom}
               onChange={(iso) => { setDateFrom(iso); setPage(1); }}
-              placeholder="Enrolled from"
+              placeholder="From"
             />
             <span className={css.dateSep}>–</span>
             <PlatformDatePicker
               className={css.dateInput}
               value={dateTo}
               onChange={(iso) => { setDateTo(iso); setPage(1); }}
-              placeholder="Enrolled to"
+              placeholder="To"
             />
           </div>
 
-          {/* Min verified % threshold (per-page verification completeness) */}
-          <div className={css.completeWrap} title="Minimum verified % (per page)">
-            <span className={css.completeLabel}>≥</span>
-            <input
-              type="number"
-              className={css.completeInput}
-              placeholder="Verified %"
-              min={0}
-              max={100}
-              value={minComplete}
-              onChange={(e) => { setMinComplete(e.target.value); setPage(1); }}
-            />
-            <span className={css.completeLabel}>%</span>
-          </div>
         </div>
 
         {/* Search */}
@@ -614,28 +604,6 @@ export default function VerificationPage() {
               title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
             >
               <CheckCircle size={13} /> Bulk Verify
-            </button>
-          )}
-          {canApprove && (
-            <button
-              className={css.bulkApprove}
-              onClick={() => setActionTarget({ mode: 'approve', bulk: selectedCount })}
-              disabled={actionLoading || ro.isReadOnly}
-              aria-disabled={actionLoading || ro.isReadOnly}
-              title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
-            >
-              <ThumbsUp size={13} /> Bulk Approve
-            </button>
-          )}
-          {canReject && (
-            <button
-              className={css.bulkReject}
-              onClick={() => setActionTarget({ mode: 'reject', bulk: selectedCount })}
-              disabled={actionLoading || ro.isReadOnly}
-              aria-disabled={actionLoading || ro.isReadOnly}
-              title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
-            >
-              <ThumbsDown size={13} /> Bulk Reject
             </button>
           )}
           <button className={css.bulkClear} onClick={() => setSelected(new Set())}>
@@ -702,7 +670,8 @@ export default function VerificationPage() {
               </tr>
             ) : (
               pageData.map((s) => {
-                const meta    = STATUS_META[s.status] ?? {};
+                const dispStatus = toDisplayStatus(s.status);
+                const meta    = STATUS_META[dispStatus] ?? STATUS_META[s.status] ?? {};
                 const isSelectable = !['Approved'].includes(s.status);
                 const isSel   = selected.has(s.id);
                 const pct     = s.completeness ?? 0;
@@ -717,16 +686,7 @@ export default function VerificationPage() {
                         />
                       )}
                     </td>
-                    {/* Subject + Site columns mirror the Query Manager exactly:
-                        Subject = initials pill; Site = code over name. */}
-                    <td className={css.td}>
-                      <span
-                        className={css.pill}
-                        title={[s.subjectNumber, s.initials].filter(Boolean).join(' · ')}
-                      >
-                        {s.initials || s.subjectNumber || s.id || '—'}
-                      </span>
-                    </td>
+                    {/* Site Details — site code over site name */}
                     <td className={css.td} title={[s.siteCode, s.siteName].filter(Boolean).join(' — ')}>
                       {s.siteCode || s.siteName ? (
                         <>
@@ -735,49 +695,49 @@ export default function VerificationPage() {
                         </>
                       ) : '—'}
                     </td>
-                    <td className={css.td}>{fmtDate(s.enrollmentDate)}</td>
-                    <td className={css.td}>
-                      {s.blockPage || <span className={css.queryNone}>—</span>}
+                    {/* Subject Details — Subject ID over Subject Name */}
+                    <td className={css.td} title={[s.subjectNumber, s.subjectName, s.initials].filter(Boolean).join(' · ')}>
+                      <span className={css.siteCode}>{s.subjectNumber || s.id || '—'}</span>
+                      {(s.subjectName || s.initials) && (
+                        <span className={css.siteName}>{s.subjectName || s.initials}</span>
+                      )}
                     </td>
+                    {/* CRF Block / Page — block name over page name */}
+                    <td className={css.td} title={s.blockPage}>
+                      {(s.blockName || s.pageName) ? (
+                        <>
+                          {s.blockName && <span className={css.siteCode}>{s.blockName}</span>}
+                          {s.pageName && <span className={css.siteName}>{s.pageName}</span>}
+                        </>
+                      ) : <span className={css.queryNone}>—</span>}
+                    </td>
+                    {/* Verified % — full-width progress bar then the percentage */}
                     <td className={css.td}>
                       <div
-                        className={css.completenessCell}
+                        style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 96 }}
                         title={Number.isFinite(s.verifiedFields) && Number.isFinite(s.totalFields)
                           ? `${s.verifiedFields}/${s.totalFields} fields verified on this page`
                           : 'Page verification progress'}
                       >
-                        <div className={css.progressBarSmall}>
+                        <div className={css.progressBarSmall} style={{ width: '100%', flex: 'none', minWidth: 0 }}>
                           <div
                             className={css.progressFillSmall}
                             style={{ width: `${pct}%`, background: progressColor(pct) }}
                           />
                         </div>
-                        <span style={{ color: progressColor(pct), fontWeight: 600 }}>
-                          {pct}%
-                          {Number.isFinite(s.verifiedFields) && Number.isFinite(s.totalFields) && (
-                            <span style={{ color: '#94a3b8', fontWeight: 500 }}> ({s.verifiedFields}/{s.totalFields})</span>
-                          )}
-                        </span>
+                        <span style={{ color: progressColor(pct), fontWeight: 600, fontSize: 12 }}>{pct}%</span>
                       </div>
                     </td>
+                    {/* Aging */}
                     <td className={css.td}>
-                      {/* Spec §VM Age = days between Not Verified → Verified
-                          (or days since the row became eligible if still
-                          pending). Backend returns numeric days; we render
-                          whole days for the list. */}
                       {Number.isFinite(s.ageDays) ? `${Math.round(s.ageDays)}d` : '—'}
-                    </td>
-                    <td className={css.td}>
-                      {s.openQueries > 0
-                        ? <span className={css.queryBadge}>{s.openQueries}</span>
-                        : <span className={css.queryNone}>—</span>}
                     </td>
                     <td className={css.td}>
                       <span
                         className={css.statusBadge}
                         style={{ color: meta.color, background: meta.bg, borderColor: meta.border }}
                       >
-                        {s.status}
+                        {dispStatus}
                       </span>
                     </td>
                     <td
@@ -789,8 +749,9 @@ export default function VerificationPage() {
                       {s.verifiedBy || '—'}
                     </td>
                     <td className={css.td}>{fmtDate(s.verificationDate)}</td>
+                    {/* Actions — View & Verify (this page only) + Open Study Form.
+                        Approve / Reject (thumbs) removed per spec. */}
                     <td className={css.tdActions}>
-                      {/* View Details */}
                       <button
                         className={css.actionBtn}
                         title="View & Verify"
@@ -798,7 +759,6 @@ export default function VerificationPage() {
                       >
                         <Eye size={13} />
                       </button>
-                      {/* Open the study form for this subject */}
                       <button
                         className={css.actionBtn}
                         title="Open Study Form"
@@ -806,28 +766,6 @@ export default function VerificationPage() {
                       >
                         <FileText size={13} />
                       </button>
-                      {/* Approve */}
-                      {canApprove && ['Verified', 'In Review', 'Pending'].includes(s.status) && (
-                        <button
-                          className={`${css.actionBtn} ${css.actionApprove}`}
-                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Approve'}
-                          onClick={() => setActionTarget({ mode: 'approve', subject: s })}
-                          {...ro.disabledProps('Approve verification')}
-                        >
-                          <ThumbsUp size={13} />
-                        </button>
-                      )}
-                      {/* Reject */}
-                      {canReject && ['Verified', 'In Review', 'Pending'].includes(s.status) && (
-                        <button
-                          className={`${css.actionBtn} ${css.actionReject}`}
-                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Reject'}
-                          onClick={() => setActionTarget({ mode: 'reject', subject: s })}
-                          {...ro.disabledProps('Reject verification')}
-                        >
-                          <ThumbsDown size={13} />
-                        </button>
-                      )}
                     </td>
                   </tr>
                 );

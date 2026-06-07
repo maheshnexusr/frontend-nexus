@@ -150,6 +150,7 @@ const SponsorStudySelectorPage   = lazy(() => import('@/features/sponsor/pages/S
 const SponsorDashboardPage       = lazy(() => import('@/features/sponsor/pages/SponsorDashboardPage'));
 const CapturePage            = lazy(() => import('@/features/sponsor/pages/CapturePage'));
 const CaptureFormPage        = lazy(() => import('@/features/sponsor/pages/CaptureFormPage'));
+const ScreeningReportPage    = lazy(() => import('@/features/sponsor/pages/ScreeningReportPage'));
 const ConsentConfigPage      = lazy(() => import('@/features/sponsor/pages/ConsentConfigPage'));
 const ConsentReviewPage      = lazy(() => import('@/features/sponsor/pages/ConsentReviewPage'));
 const ConsentSubmissionPage  = lazy(() => import('@/features/sponsor/pages/ConsentSubmissionPage'));
@@ -166,6 +167,7 @@ const SiteLayout                     = lazy(() => import('@/layouts/SiteLayout')
 const SiteWorkspaceDashboardPage     = lazy(() => import('@/features/site/pages/SiteWorkspaceDashboardPage'));
 const SiteCapturePage                = lazy(() => import('@/features/site/pages/SiteCapturePage'));
 const SiteCaptureFormPage            = lazy(() => import('@/features/site/pages/SiteCaptureFormPage'));
+const SiteScreeningReportPage        = lazy(() => import('@/features/site/pages/SiteScreeningReportPage'));
 const SiteSubjectFormPage            = lazy(() => import('@/features/site/pages/SiteSubjectFormPage'));
 const SitePersonnelPage              = lazy(() => import('@/features/site/pages/SitePersonnelPage'));
 const SiteQueriesPage                = lazy(() => import('@/features/site/pages/SiteQueriesPage'));
@@ -322,6 +324,7 @@ export const router = createBrowserRouter([
           // SiteLayout's nav links straight here; replacing a placeholder
           // with a real page is a one-line element swap.
           { path: 'capture',                                element: sp(SiteCapturePage) },
+          { path: 'screening-report',                       element: sp(SiteScreeningReportPage) },
           { path: 'capture/subjects/new',                   element: sp(SiteSubjectFormPage) },
           { path: 'capture/subjects/:subjectId/edit',       element: sp(SiteSubjectFormPage) },
           // 'capture/form' is registered as a top-level standalone route
@@ -488,6 +491,7 @@ export const router = createBrowserRouter([
 
           { path: 'dashboard',      element: sp(SponsorDashboardPage) },
           { path: 'capture',        element: sp(CapturePage) },
+          { path: 'screening-report', element: sp(ScreeningReportPage) },
           // 'capture/form' is registered as a top-level standalone route
           // (see below) so the runner fills the entire viewport, matching
           // the form-builder Preview's full-screen experience.
@@ -499,12 +503,15 @@ export const router = createBrowserRouter([
           { path: 'sites',                 element: sp(SitesPage)     },
           { path: 'sites/new',             element: sp(SiteFormPage)  },
           { path: 'sites/:siteId/edit',    element: sp(SiteFormPage)  },
+          { path: 'sites/:siteId/view',    element: sp(SiteFormPage)  },
           { path: 'personnel',                     element: sp(PersonnelPage)     },
           { path: 'personnel/new',                 element: sp(PersonnelFormPage) },
           { path: 'personnel/:personnelId/edit',   element: sp(PersonnelFormPage) },
+          { path: 'personnel/:personnelId/view',   element: sp(PersonnelFormPage) },
           { path: 'roles',                 element: sp(RolesPage)         },
           { path: 'roles/new',             element: sp(SiteRoleFormPage)  },
           { path: 'roles/:roleId/edit',    element: sp(SiteRoleFormPage)  },
+          { path: 'roles/:roleId/view',    element: sp(SiteRoleFormPage)  },
           { path: 'reports',        element: sp(ReportsPage) },
           { path: 'activity-log',              element: sp(SponsorActivityLogPage)   },
           { path: 'masters/email-templates',   element: sp(MasterEmailTemplatesPage) },

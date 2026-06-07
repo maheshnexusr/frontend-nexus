@@ -5,10 +5,11 @@ import {
   Eye, MessageSquare, CheckCircle, AlertTriangle,
   RotateCcw, Download, Filter, Search, X as XIcon,
   RefreshCw, ChevronUp, ChevronDown, ChevronsUpDown,
-  MessageSquareWarning, FileText, Clock,
+  MessageSquareWarning, FileText, Clock, ArrowRightLeft,
 } from 'lucide-react';
 import { sponsorQueryClient }   from '@/features/sponsor/api/sponsorQueryClient';
 import sponsorAxiosClient       from '@/api/sponsorAxiosClient';
+import TransferOwnershipModal   from '@/components/subject/TransferOwnershipModal';
 import { addToast }             from '@/app/notificationSlice';
 import { selectCurrentUser }    from '@/features/auth/authSlice';
 import SearchableDropdown       from '@/components/form/SearchableDropdown';
@@ -22,6 +23,7 @@ import { formatDate }           from '@/utils/formatDate';
 import PlatformDatePicker       from '@/components/form/PlatformDatePicker';
 import SlaSettingsModal         from '@/features/sponsor/components/sla/SlaSettingsModal';
 import SnapshotButton           from '@/components/feedback/SnapshotButton';
+import StatCard                 from '@/components/feedback/StatCard';
 import { usePermissions }       from '@/features/auth/usePermissions';
 import styles from './QueriesPage.module.css';
 
@@ -30,12 +32,13 @@ import styles from './QueriesPage.module.css';
 // Status quick-filter options — the new spec palette. `All` shows everything;
 // `Overdue` is computed (slaRemaining < 0 OR status === 'Overdue').
 const STATUS_OPTIONS   = ['All', 'Open', 'In Progress', 'Resolved', 'Closed', 'Overdue'];
-const PRIORITY_OPTIONS = ['All', 'High', 'Medium', 'Low'];
+const PRIORITY_OPTIONS = ['All', 'Critical', 'High', 'Medium', 'Low'];
 
 const PRIORITY_META = {
-  High:   { color: '#dc2626', bg: '#fef2f2', dot: '#dc2626' },
-  Medium: { color: '#f59e0b', bg: '#fffbeb', dot: '#f59e0b' },
-  Low:    { color: '#3b82f6', bg: '#eff6ff', dot: '#3b82f6' },
+  Critical: { color: '#991b1b', bg: '#fee2e2', dot: '#991b1b' },
+  High:     { color: '#dc2626', bg: '#fef2f2', dot: '#dc2626' },
+  Medium:   { color: '#f59e0b', bg: '#fffbeb', dot: '#f59e0b' },
+  Low:      { color: '#3b82f6', bg: '#eff6ff', dot: '#3b82f6' },
 };
 // Query status palette per spec:
 //   Open         Yellow
@@ -96,6 +99,13 @@ export default function QueriesPage() {
   const canCreateQuery = has('query_manager', 'create');
   const canRaiseQuery  = has('data_capture',  'raise_query');
   const canCloseQuery  = has('data_capture',  'close_query');
+  // Escalate uses the discrete query_manager.escalate leaf, with edit as the
+  // fallback so existing edit-capable roles keep escalating (migration 034).
+  const canEscalate    = has('query_manager', 'escalate') || canEditQuery;
+  // Standalone query reassignment was removed: escalate handles handler-to-handler
+  // hand-offs and ownership transfer handles owner-to-owner, so a dedicated
+  // reassign action was redundant.
+  const canTransferOwnership = has('data_capture', 'subject_edit');
   const [slaOpen,  setSlaOpen]  = useState(false);
 
   // ── Data ─────────────────────────────────────────────────────────────────
@@ -133,9 +143,9 @@ export default function QueriesPage() {
   const [closeTarget,    setClose]     = useState(null);
   const [reopenTarget,   setReopen]    = useState(null);
   const [escalateTarget, setEscalate]  = useState(null);
+  const [transferQuery,  setTransferQuery] = useState(null);
   const [bulkCloseOpen,    setBulkClose]    = useState(false);
   // Phase 2 — additional bulk actions
-  const [bulkReassignOpen, setBulkReassign] = useState(false);
   const [bulkEscalateOpen, setBulkEscalate] = useState(false);
   const [exporting,      setExporting] = useState(false);
 
@@ -199,7 +209,11 @@ export default function QueriesPage() {
       dispatch(addToast({ type: 'error', message: 'Cannot open the form — no form or subject for this query.' }));
       return;
     }
-    navigate(`/sponsor/${studyId}/capture/form?formId=${formId}&subjectId=${q.subjectId}`);
+    // Deep-link straight to the page the query was raised against (the form
+    // runner reads ?pageId=… and jumps there). Falls back to page 1 for legacy
+    // queries with no stored page_id.
+    const pageQS = q.pageId ? `&pageId=${encodeURIComponent(q.pageId)}` : '';
+    navigate(`/sponsor/${studyId}/capture/form?formId=${formId}&subjectId=${q.subjectId}${pageQS}`);
   };
   useEffect(() => { setPage(1); setSelected(new Set()); }, [statusFilter, priorityFilter, siteFilter, query, dateFrom, dateTo, onlyMine]);
 
@@ -228,7 +242,13 @@ export default function QueriesPage() {
   const filtered = useMemo(() => {
     let rows = queries;
     if (onlyMine) {
-      rows = rows.filter((q) => meAssigneeKeys.has(String(q.assignedTo ?? '').toLowerCase()));
+      // "My Queries" = queries the current user RAISED. The raiser is stored as
+      // an id (raised_by) plus a snapshotted name (raised_by_name); match the
+      // current user against both so it works whichever resolved.
+      rows = rows.filter((q) =>
+        [q.raisedBy, q.raisedByName]
+          .some((v) => v && meAssigneeKeys.has(String(v).toLowerCase()))
+      );
     }
     rows = rows.filter((q) => {
       if (!query) return true;
@@ -240,8 +260,8 @@ export default function QueriesPage() {
       rows = [...rows].sort((a, b) => {
         let av = a[sortKey], bv = b[sortKey];
         if (sortKey === 'priority') {
-          const ORDER = { High: 0, Medium: 1, Low: 2 };
-          av = ORDER[av] ?? 1; bv = ORDER[bv] ?? 1;
+          const ORDER = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+          av = ORDER[av] ?? 2; bv = ORDER[bv] ?? 2;
           return sortDir === 'asc' ? av - bv : bv - av;
         }
         if (sortKey === 'daysOpen') return sortDir === 'asc' ? av - bv : bv - av;
@@ -350,6 +370,33 @@ export default function QueriesPage() {
     }
   };
 
+  // Transfer the SUBJECT's ownership straight from a query row. This is the
+  // sanctioned alternative to query-level reassignment: it moves the subject +
+  // ALL its open queries (incl. this one) to the new PI, with an audit trail.
+  const handleTransferOwnership = async ({ newOwnerId, reason }) => {
+    const q = transferQuery;
+    if (!q?.subjectId) return;
+    try {
+      const res = await sponsorAxiosClient.post(
+        `/api/v1/sponsor/workspace/subjects/${q.subjectId}/transfer-ownership`,
+        { new_owner_id: newOwnerId, reason }
+      );
+      const moved = res?.queriesMoved ?? res?.queries_moved;
+      dispatch(addToast({
+        type: 'success',
+        message: `Subject ownership transferred to ${res?.newOwnerName ?? res?.new_owner_name ?? 'the new PI'}.`
+          + (moved ? ` ${moved} open quer${moved === 1 ? 'y' : 'ies'} moved.` : ''),
+      }));
+      setTransferQuery(null);
+      load(); loadAll();
+    } catch (err) {
+      dispatch(addToast({
+        type: 'error',
+        message: err?.response?.data?.message || err?.message || 'Failed to transfer ownership.',
+      }));
+    }
+  };
+
   const handleBulkClose = async (data) => {
     try {
       const count = await sponsorQueryClient.bulkClose(studyId, [...selected], data);
@@ -361,45 +408,15 @@ export default function QueriesPage() {
     }
   };
 
-  // Phase 2 — Bulk Reassign / Bulk Escalate.
-  // Each loops over selected IDs and hits the per-query endpoint (no
-  // dedicated bulk API yet — falls back gracefully and is replaced with a
-  // single batched endpoint when the backend ships).
-  const handleBulkReassign = async (data) => {
-    const ids = [...selected];
-    let ok = 0;
-    for (const id of ids) {
-      try {
-        await sponsorQueryClient.reassign?.(studyId, id, data)
-          ?? await sponsorQueryClient.respond(studyId, id, { responseText: '', assignedTo: data.assignedTo });
-        ok += 1;
-      } catch { /* keep going */ }
-    }
-    if (ok > 0) {
-      dispatch(addToast({ type: 'success', message: `${ok} of ${ids.length} queries reassigned to ${data.assignedTo}.` }));
-      setBulkReassign(false);
-      setSelected(new Set());
-      load(); loadAll();
-    } else {
-      dispatch(addToast({ type: 'error', message: 'Failed to reassign queries.' }));
-    }
-  };
-
   const handleBulkEscalate = async (data) => {
     const ids = [...selected];
-    let ok = 0;
-    for (const id of ids) {
-      try {
-        await sponsorQueryClient.escalate(studyId, id, data);
-        ok += 1;
-      } catch { /* keep going */ }
-    }
-    if (ok > 0) {
+    try {
+      const ok = await sponsorQueryClient.bulkEscalate(studyId, ids, data);
       dispatch(addToast({ type: 'success', message: `${ok} of ${ids.length} queries escalated.` }));
       setBulkEscalate(false);
       setSelected(new Set());
       load(); loadAll();
-    } else {
+    } catch {
       dispatch(addToast({ type: 'error', message: 'Failed to escalate queries.' }));
     }
   };
@@ -407,7 +424,12 @@ export default function QueriesPage() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      await sponsorQueryClient.exportCSV(studyId, { status: statusFilter, priority: priorityFilter, siteCode: siteFilter });
+      const ids = [...selected];
+      // "Export Selected" → only the ticked rows; if none selected, export the
+      // current filtered list.
+      await sponsorQueryClient.exportCSV(studyId, ids.length
+        ? { ids }
+        : { status: statusFilter, priority: priorityFilter, siteCode: siteFilter });
       dispatch(addToast({ type: 'success', message: 'Query exported successfully.' }));
     } catch {
       dispatch(addToast({ type: 'error', message: 'Failed to export. Please try again.' }));
@@ -421,17 +443,18 @@ export default function QueriesPage() {
 
   const COLUMNS = [
     { key: 'id',                label: 'Query ID'         },
-    { key: 'siteId',            label: 'Site'             },
-    { key: 'subjectId',         label: 'Subject'          },
-    { key: 'pageName',          label: 'Block / Page'     },
+    { key: 'siteId',            label: 'Site Details'             },
+    { key: 'subjectId',         label: 'Subject Details'          },
+    { key: 'pageName',          label: 'CRF Block / Page'     },
     { key: 'fieldName',         label: 'Field'            },
-    { key: 'queryText',         label: 'Query Description'},
     { key: 'status',            label: 'Status'           },
+    
     { key: 'priority',          label: 'Priority'         },
     { key: 'daysOpen',          label: 'Aging'            },
     { key: 'raisedBy',          label: 'Actioned By'      },
     { key: 'raisedDate',        label: 'Actioned Date'    },
-    { key: 'resolutionComment', label: 'Resolution'       },
+    // Resolution column hidden for now (keep the cell below in sync if re-enabled).
+    // { key: 'resolutionComment', label: 'Resolution'       },
   ];
 
   return (
@@ -470,28 +493,18 @@ export default function QueriesPage() {
         onClose={() => setSlaOpen(false)}
       />
 
-      {/* Counts banner — new spec palette. */}
+      {/* Counts banner — shared <StatCard> (same component the Verification
+          Manager uses), so the card design lives in one place. */}
       <div className={styles.statsBar}>
         {[
-          { label: 'Total Queries', value: stats.total,      color: '#0f172a', bg: '#f1f5f9' },
-          { label: 'Open',          value: stats.open,       color: '#92400e', bg: '#fef3c7' },
-          { label: 'In Progress',   value: stats.inProgress, color: '#1d4ed8', bg: '#dbeafe' },
-          { label: 'Resolved',      value: stats.resolved,   color: '#166534', bg: '#dcfce7' },
-          { label: 'Closed',        value: stats.closed,     color: '#475569', bg: '#f1f5f9' },
-          { label: 'Overdue',       value: stats.overdue,    color: '#b91c1c', bg: '#fef2f2' },
-        ].map(({ label, value, color, bg }) => (
-          <div key={label} className={styles.statCard}>
-            <div className={styles.statText}>
-              <span className={styles.statValue} style={{ color }}>{value}</span>
-              <span className={styles.statLabel}>{label}</span>
-            </div>
-            <span
-              className={styles.statBadge}
-              style={{ background: bg, color }}
-            >
-              {label.charAt(0)}
-            </span>
-          </div>
+          { label: 'Total Queries', value: stats.total,      color: '#0f172a', icon: MessageSquare       },
+          { label: 'Open',          value: stats.open,       color: '#92400e', icon: Clock               },
+          { label: 'In Progress',   value: stats.inProgress, color: '#1d4ed8', icon: RotateCcw           },
+          { label: 'Resolved',      value: stats.resolved,   color: '#166534', icon: CheckCircle         },
+          { label: 'Closed',        value: stats.closed,     color: '#475569', icon: MessageSquareWarning },
+          { label: 'Overdue',       value: stats.overdue,    color: '#b91c1c', icon: AlertTriangle       },
+        ].map(({ label, value, color, icon }) => (
+          <StatCard key={label} icon={icon} label={label} value={value} accent={color} />
         ))}
       </div>
 
@@ -522,15 +535,20 @@ export default function QueriesPage() {
           {/* Status pills */}
           <div className={styles.filterWrap}>
             <Filter size={13} className={styles.filterIcon} />
-            {STATUS_OPTIONS.map((s) => (
-              <button
-                key={s}
-                className={`${styles.filterBtn} ${statusFilter === s ? styles.filterBtnActive : ''}`}
-                onClick={() => setStatusFilter(s)}
-              >
-                {s}
-              </button>
-            ))}
+            {STATUS_OPTIONS.map((s) => {
+              const meta   = STATUS_META[s] ?? {};
+              const active = statusFilter === s;
+              return (
+                <button
+                  key={s}
+                  className={`${styles.filterBtn} ${active ? styles.filterBtnActive : ''}`}
+                  style={active && meta.bg ? { background: meta.bg, color: meta.color, borderColor: meta.accent } : {}}
+                  onClick={() => setStatusFilter(s)}
+                >
+                  {s}
+                </button>
+              );
+            })}
           </div>
 
           {/* Priority pills */}
@@ -542,7 +560,7 @@ export default function QueriesPage() {
                 <button
                   key={p}
                   className={`${styles.filterBtn} ${active ? styles.filterBtnActive : ''}`}
-                  style={active && meta ? { background: meta.color, borderColor: meta.color, color: '#fff' } : {}}
+                  style={active && meta ? { background: meta.bg, color: meta.color, borderColor: meta.color } : {}}
                   onClick={() => setPriorityFilter(p)}
                 >
                   {meta && <span className={styles.dot} style={{ background: meta.dot }} />}
@@ -640,17 +658,10 @@ export default function QueriesPage() {
               <CheckCircle size={13} /> Bulk Close
             </button>
           )}
-          {canEditQuery && (
-            <button
-              className={styles.bulkExport}
-              onClick={() => setBulkReassign(true)}
-              {...ro.disabledProps('Bulk reassign queries')}
-              title="Reassign selected queries to a different user"
-            >
-              <MessageSquare size={13} /> Bulk Reassign
-            </button>
-          )}
-          {canEditQuery && (
+          {/* Bulk Reassign removed — query ownership follows the subject. Use
+              Data Capture → Transfer Ownership to move a subject (and its open
+              queries) to a new PI. */}
+          {canEscalate && (
             <button
               className={styles.bulkExport}
               onClick={() => setBulkEscalate(true)}
@@ -700,7 +711,8 @@ export default function QueriesPage() {
           <tbody>
             {loading && Array.from({ length: 6 }, (_, i) => (
               <tr key={i} className={styles.row}>
-                {Array.from({ length: 13 }, (__, j) => (
+                {/* checkbox + every visible column (Actions cell left empty) */}
+                {Array.from({ length: COLUMNS.length + 1 }, (__, j) => (
                   <td key={j} className={styles.td}>
                     <div className={styles.skeleton} style={{ width: j === 5 ? '80%' : '55%' }} />
                   </td>
@@ -710,7 +722,8 @@ export default function QueriesPage() {
 
             {!loading && pageData.length === 0 && (
               <tr>
-                <td colSpan={14} className={styles.emptyCell}>
+                {/* checkbox + visible columns + Actions */}
+                <td colSpan={COLUMNS.length + 2} className={styles.emptyCell}>
                   <div className={styles.empty}>
                     <MessageSquareWarning size={40} strokeWidth={1.25} className={styles.emptyIcon} />
                     <p className={styles.emptyTitle}>
@@ -753,6 +766,7 @@ export default function QueriesPage() {
               // Subjects are identified by initials in the UI; the raw
               // subject id is internal. Show initials, falling back to the id
               // only when initials were never captured.
+              const subjectNumber = q.subjectNumber || '—';
               const subjectLabel = q.subjectInitials || q.subjectId || '—';
               const sequenceLabel = sequenceById.get(q.id) ?? '—';
 
@@ -782,7 +796,16 @@ export default function QueriesPage() {
                       </>
                     ) : '—'}
                   </td>
-                  <td className={styles.td}><span className={styles.pill}>{subjectLabel}</span></td>
+                  {/* Subject Details — Subject ID over Subject Name/Initials,
+                      rendered with the same stacked style as the Site cell and
+                      the Verification Manager (sans-serif primary + grey
+                      secondary). */}
+                  <td className={styles.td} title={[subjectNumber, subjectLabel].filter((v) => v && v !== '—').join(' · ')}>
+                    <span className={styles.siteCode}>{subjectNumber}</span>
+                    {subjectLabel && subjectLabel !== '—' && (
+                      <span className={styles.siteName}>{subjectLabel}</span>
+                    )}
+                  </td>
                   <td className={styles.td}>
                     {/* Block in grey, Page in black per spec. Either may be
                         empty depending on the form schema — show only what
@@ -797,17 +820,34 @@ export default function QueriesPage() {
                   </td>
                   <td className={styles.td}><span className={styles.fieldName}>{q.fieldLabel || q.fieldName || '—'}</span></td>
                   <td className={styles.td}>
-                    <span className={styles.queryText} title={q.queryText}>
-                      {q.queryText?.length > 50 ? `${q.queryText.slice(0, 50)}…` : (q.queryText || '—')}
-                    </span>
-                  </td>
-                  <td className={styles.td}>
                     <span
                       className={styles.statusBadge}
-                      style={{ color: '#fff', background: sm.accent, borderColor: sm.accent }}
+                      style={{ color: sm.color, background: sm.bg, borderColor: sm.accent }}
                     >
                       {display}
                     </span>
+                    {/* Escalation is shown as a secondary badge so it's clear at
+                        a glance — and to whom — without changing the assignee. */}
+                    {q.isEscalated && (
+                      <span
+                        className={styles.statusBadge}
+                        style={{ color: '#b45309', background: '#fef3c7', borderColor: '#fde68a', marginTop: 4, display: 'inline-block' }}
+                        title={q.escalatedToName ? `Escalated to ${q.escalatedToName}` : 'Escalated'}
+                      >
+                        ⬆ Escalated{q.escalatedToName ? ` → ${q.escalatedToName}` : ''}
+                      </span>
+                    )}
+                    {/* Reassignment: current owner is assignedTo; this notes the
+                        previous owner so the handover is visible at a glance. */}
+                    {q.isReassigned && q.previousAssignedToName && (
+                      <span
+                        className={styles.statusBadge}
+                        style={{ color: '#475569', background: '#f1f5f9', borderColor: '#cbd5e1', marginTop: 4, display: 'inline-block' }}
+                        title={`Reassigned from ${q.previousAssignedToName}${q.assignedToName ? ` to ${q.assignedToName}` : ''}`}
+                      >
+                        ↪ Reassigned · was {q.previousAssignedToName}
+                      </span>
+                    )}
                   </td>
                   <td className={styles.td}>
                     <span className={styles.priorityBadge} style={{ color: pm.color, background: pm.bg }}>
@@ -822,11 +862,13 @@ export default function QueriesPage() {
                   </td>
                   <td className={styles.td}>{actionedBy || '—'}</td>
                   <td className={styles.td}>{fmtDate(actionedDate)}</td>
+                  {/* Resolution column hidden for now — re-enable with the COLUMNS entry above.
                   <td className={styles.td} title={q.resolutionComment || ''}>
                     {q.resolutionComment
                       ? (q.resolutionComment.length > 40 ? `${q.resolutionComment.slice(0, 40)}…` : q.resolutionComment)
                       : '—'}
                   </td>
+                  */}
                   <td className={styles.tdActions}>
                     <button className={styles.actionBtn} title="View Details" onClick={() => setDetails(q)}>
                       <Eye size={12} />
@@ -856,7 +898,7 @@ export default function QueriesPage() {
                         <CheckCircle  size={12} />
                       </button>
                     )}
-                    {isActive && canEditQuery && (
+                    {isActive && canEscalate && (
                       <button
                         className={`${styles.actionBtn} ${styles.actionEscalate}`}
                         title={ro.isReadOnly ? ro.readOnlyMessage : 'Escalate'}
@@ -864,6 +906,20 @@ export default function QueriesPage() {
                         {...ro.disabledProps('Escalate query')}
                       >
                         <AlertTriangle size={12} />
+                      </button>
+                    )}
+                    {/* Transfer the SUBJECT'S ownership — moves the subject + ALL
+                        its open queries to the new PI. This is the only handoff for
+                        a query: standalone query reassignment was removed (escalate
+                        covers handler-to-handler, transfer covers owner-to-owner). */}
+                    {isActive && canTransferOwnership && q.subjectId && (
+                      <button
+                        className={`${styles.actionBtn} ${styles.actionReassign}`}
+                        title={ro.isReadOnly ? ro.readOnlyMessage : 'Transfer subject ownership'}
+                        onClick={() => setTransferQuery(q)}
+                        {...ro.disabledProps('Transfer subject ownership')}
+                      >
+                        <ArrowRightLeft size={12} />
                       </button>
                     )}
                     {canReopenStep && canEditQuery && (
@@ -964,82 +1020,33 @@ export default function QueriesPage() {
         />
       )}
 
-      {bulkReassignOpen && (
-        <BulkSimplePrompt
-          title={`Reassign ${selectedCount} quer${selectedCount !== 1 ? 'ies' : 'y'}`}
-          fieldLabel="Assign to (email or username) *"
-          placeholder="user@org.com"
-          submitLabel="Reassign"
-          onSubmit={(value) => handleBulkReassign({ assignedTo: value })}
-          onClose={() => setBulkReassign(false)}
-        />
-      )}
-
       {bulkEscalateOpen && (
-        <BulkSimplePrompt
+        <EscalateModal
+          query={null}
           title={`Escalate ${selectedCount} quer${selectedCount !== 1 ? 'ies' : 'y'}`}
-          fieldLabel="Escalation reason *"
-          placeholder="Reason for escalation…"
-          submitLabel="Escalate"
-          isTextarea
-          onSubmit={(value) => handleBulkEscalate({ escalationReason: value })}
+          onConfirm={handleBulkEscalate}
           onClose={() => setBulkEscalate(false)}
         />
       )}
+
+      {transferQuery && (
+        <TransferOwnershipModal
+          subject={{
+            id:              transferQuery.subjectId,
+            subjectInitials: transferQuery.subjectInitials,
+            subjectCode:     transferQuery.subjectNumber,
+            siteId:          transferQuery.siteId,
+            // Queries follow their subject's owner, so the current assignee is a
+            // best-effort stand-in for the responsible PI (the backend remains
+            // the source of truth + returns the real previous owner).
+            ownerId:         transferQuery.assignedTo,
+            ownerName:       transferQuery.assignedToName,
+          }}
+          onConfirm={handleTransferOwnership}
+          onClose={() => setTransferQuery(null)}
+        />
+      )}
     </div>
   );
 }
 
-/* ── Tiny inline prompt used by Bulk Reassign / Bulk Escalate ──────────── */
-function BulkSimplePrompt({ title, fieldLabel, placeholder, submitLabel, isTextarea, onSubmit, onClose }) {
-  const [value, setValue] = useState('');
-  const Input = isTextarea ? 'textarea' : 'input';
-  return (
-    <div
-      role="dialog"
-      aria-label={title}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 1100, padding: 16,
-      }}
-    >
-      <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 420, boxShadow: '0 18px 40px rgba(15,23,42,0.25)' }}>
-        <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', fontWeight: 700, color: '#0f172a' }}>{title}</div>
-        <div style={{ padding: '16px 18px' }}>
-          <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-            {fieldLabel}
-          </label>
-          <Input
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder={placeholder}
-            rows={isTextarea ? 3 : undefined}
-            style={{
-              width: '100%', boxSizing: 'border-box',
-              padding: 10, fontSize: 13, color: '#0f172a',
-              border: '1px solid #e2e8f0', borderRadius: 8, outline: 'none',
-              resize: isTextarea ? 'vertical' : 'none',
-            }}
-            autoFocus
-          />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 18px', borderTop: '1px solid #f1f5f9', background: '#fafbff', borderRadius: '0 0 12px 12px' }}>
-          <button type="button" onClick={onClose} style={{ padding: '6px 14px', background: '#fff', color: '#475569', border: '1px solid #cbd5e1', borderRadius: 7, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
-          <button
-            type="button"
-            onClick={() => onSubmit(value.trim())}
-            disabled={!value.trim()}
-            style={{
-              padding: '6px 14px', background: '#2563eb', color: '#fff',
-              border: 'none', borderRadius: 7, fontSize: 12.5, fontWeight: 600,
-              cursor: value.trim() ? 'pointer' : 'not-allowed', opacity: value.trim() ? 1 : 0.55,
-            }}
-          >
-            {submitLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}

@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { ArrowLeft } from 'lucide-react';
 
@@ -94,11 +94,13 @@ export default function PersonnelFormPage() {
   const { studyId, personnelId } = useParams();
   const navigate                 = useNavigate();
   const dispatch                 = useDispatch();
-  const isEdit                   = !!personnelId;
+  const location                 = useLocation();
+  const readOnly                 = location.pathname.endsWith('/view');
+  const isEdit                   = !!personnelId && !readOnly;
 
   const [form,       setForm]       = useState(EMPTY);
   const [errors,     setErrors]     = useState({});
-  const [loading,    setLoading]    = useState(isEdit);
+  const [loading,    setLoading]    = useState(!!personnelId);
   const [saving,     setSaving]     = useState(false);
   const [apiError,   setApiError]   = useState('');
 
@@ -135,9 +137,9 @@ export default function PersonnelFormPage() {
       .finally(() => setRolesLoaded(true));
   }, [studyId]);
 
-  // ── Load existing personnel record ─────────────────────────────────────────
+  // ── Load existing personnel record (edit OR view) ──────────────────────────
   useEffect(() => {
-    if (!isEdit) return;
+    if (!personnelId) return;
     setLoading(true);
     sponsorPersonnelClient.getById?.(studyId, personnelId)
       ?.then((p) => {
@@ -157,7 +159,7 @@ export default function PersonnelFormPage() {
       })
       .catch(() => dispatch(addToast({ type: 'error', message: 'Failed to load personnel record.' })))
       .finally(() => setLoading(false));
-  }, [isEdit, studyId, personnelId, dispatch]);
+  }, [studyId, personnelId, dispatch]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const set = (field) => (val) => {
@@ -243,15 +245,18 @@ export default function PersonnelFormPage() {
         <ArrowLeft size={14} aria-hidden="true" /> Site Personnel
       </Link>
 
-      <h1 className={styles.title}>{isEdit ? 'Edit Site Personnel' : 'Invite Site Personnel'}</h1>
+      <h1 className={styles.title}>{readOnly ? 'View Site Personnel' : isEdit ? 'Edit Site Personnel' : 'Invite Site Personnel'}</h1>
       <p className={styles.sub}>
-        {isEdit
+        {readOnly
+          ? 'Personnel details (read-only).'
+          : isEdit
           ? 'Update this user\'s details. Email address is fixed.'
           : 'Invite a user to this study. They\'ll receive an email with login instructions to get started.'}
       </p>
 
       {apiError && <div className={styles.apiError}>{apiError}</div>}
 
+      <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, pointerEvents: readOnly ? 'none' : undefined }}>
       {/* ── Basic Information ────────────────────────────────────────────── */}
       <section className={styles.card}>
         <h2 className={styles.cardHeading}>Basic Information</h2>
@@ -423,6 +428,7 @@ export default function PersonnelFormPage() {
           </>
         )}
       </section>
+      </fieldset>
 
       {/* Footer */}
       <div className={styles.footer}>
@@ -432,16 +438,18 @@ export default function PersonnelFormPage() {
           onClick={handleCancel}
           disabled={saving}
         >
-          Cancel
+          {readOnly ? 'Close' : 'Cancel'}
         </button>
-        <button
-          type="button"
-          className={styles.btnSave}
-          onClick={handleSubmit}
-          disabled={saving}
-        >
-          {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Send Invitation'}
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            className={styles.btnSave}
+            onClick={handleSubmit}
+            disabled={saving}
+          >
+            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Send Invitation'}
+          </button>
+        )}
       </div>
     </div>
   );

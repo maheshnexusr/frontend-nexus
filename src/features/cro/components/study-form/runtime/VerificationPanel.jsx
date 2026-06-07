@@ -87,7 +87,7 @@ export default function VerificationPanel({
               disabled={!commentValid || busy}
               title={commentValid ? '' : 'A comment is required'}
             >
-              <XCircle size={13} /> {busy ? 'Saving…' : 'Unverify'}
+              <XCircle size={13} /> {busy ? 'Saving…' : 'Mark as Unverified'}
             </button>
           ) : (
             <button

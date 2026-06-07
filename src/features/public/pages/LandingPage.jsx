@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "@/app/hooks";
 import { logout, selectIsAuthenticated } from "@/features/auth/authSlice";
-import sclinTechLogo from "@/assets/images/Sclintech_BB_logo.png";
 import colorLogo     from "@/assets/images/SclinNexus_color_logo.png";
 
 
@@ -102,42 +101,42 @@ const stats = [
 
 const features = [
   {
-    icon: "📄",
+    icon: "ecoa",
     title: "Sponsor eCOA",
     description:
       "Capture patient-reported outcomes with built-in compliance and real-time monitoring capabilities.",
     gradient: "linear-gradient(135deg, #a5b4fc 0%, #c4b5fd 100%)",
   },
   {
-    icon: "⬛",
+    icon: "edc",
     title: "EDC System",
     description:
       "Streamline data collection with our intuitive electronic data capture solution designed for clinical excellence.",
     gradient: "linear-gradient(135deg, #fbcfe8 0%, #fecaca 100%)",
   },
   {
-    icon: "⏱️",
+    icon: "iwrs",
     title: "IWRS Platform",
     description:
       "Simplify randomization, drug supply management and site coordination with intelligent workflows.",
     gradient: "linear-gradient(135deg, #93c5fd 0%, #a5f3fc 100%)",
   },
   {
-    icon: "🛡️",
+    icon: "vault",
     title: "Nexus Vault",
     description:
       "Secure, compliant document storage with advanced encryption and audit trail capabilities.",
     gradient: "linear-gradient(135deg, #86efac 0%, #a7f3d0 100%)",
   },
   {
-    icon: "📁",
+    icon: "manager",
     title: "SclinNexus Manager",
     description:
       "Streamline document workflows with advanced SclinNexus functionality and inspection readiness.",
     gradient: "linear-gradient(135deg, #fda4af 0%, #fde68a 100%)",
   },
   {
-    icon: "🧠",
+    icon: "coding",
     title: "Medical Coding",
     description:
       "Optimize medical coding accuracy with AI-powered suggestions and centralized collaboration.",
@@ -154,76 +153,6 @@ const benefits = [
   { icon: "🌍", text: "Multi-language Support" },
   { icon: "🔒", text: "Enterprise-grade Security" },
   { icon: "⚡", text: "Lightning Fast Performance" },
-];
-
-const testimonials = [
-  {
-    name: "Dr. Anil Mehra, MD",
-    role: "Principal Investigator, Oncology Research",
-    quote:
-      "SclinNexus simplified our study execution by consolidating data capture, monitoring, and reporting into a single platform. Investigator oversight and data review became significantly more efficient across all trial phases.",
-    image:
-      "https://images.pexels.com/photos/5215024/pexels-photo-5215024.jpeg?auto=compress&cs=tinysrgb&w=100",
-  },
-  {
-    name: "Dr. Priya Nair, MD, PhD",
-    role: "Director of Clinical Research",
-    quote:
-      "With SclinNexus, managing multicenter studies became far more structured. Study setup consistency and real-time visibility into patient data helped us reduce operational variability across sites.",
-    image:
-      "https://images.pexels.com/photos/5327585/pexels-photo-5327585.jpeg?auto=compress&cs=tinysrgb&w=100",
-  },
-  {
-    name: "Dr. Rakesh Kulkarni, MD",
-    role: "Head – Clinical Quality & Compliance",
-    quote:
-      "SclinNexus met our regulatory expectations with strong audit trails, controlled access, and validation support. The platform proved inspection-ready and aligned well with GxP and 21 CFR Part 11 requirements.",
-    image:
-      "https://images.pexels.com/photos/5452201/pexels-photo-5452201.jpeg?auto=compress&cs=tinysrgb&w=100",
-  },
-  {
-    name: "Dr. Susan Williams, MD",
-    role: "Clinical Data Management Lead",
-    quote:
-      "Data accuracy and integrity improved noticeably after adopting SclinNexus. Query resolution cycles shortened, and database lock timelines were achieved with greater confidence.",
-    image:
-      "https://images.pexels.com/photos/5407206/pexels-photo-5407206.jpeg?auto=compress&cs=tinysrgb&w=100",
-  },
-  {
-    name: "Dr. Michael Thompson, MD",
-    role: "Medical Director, Global Clinical Programs",
-    quote:
-      "SclinNexus enabled consistent governance across our global studies. The integrated dashboards provided clear insights into study progress, risks, and data quality at an executive level.",
-    image:
-      "https://images.pexels.com/photos/5452293/pexels-photo-5452293.jpeg?auto=compress&cs=tinysrgb&w=100",
-  },
-  {
-    name: "Dr. Kavita Rao, MD",
-    role: "Senior Clinical Investigator",
-    quote:
-      "The usability of SclinNexus stood out. Investigator workflows were intuitive, training time was minimal, and compliance controls were embedded without disrupting daily clinical operations.",
-    image:
-      "https://images.pexels.com/photos/5327656/pexels-photo-5327656.jpeg?auto=compress&cs=tinysrgb&w=100",
-  },
-  {
-    name: "Dr. Rajesh Iyer, MD",
-    role: "Principal Investigator, Clinical Research",
-    quote:
-      "SclinNexus enabled our site to manage protocol deviations, source data verification, and investigator sign-offs more efficiently. The system built-in controls supported compliance while allowing our team to focus on patient care and study quality.",
-    image:
-      "https://images.pexels.com/photos/5452268/pexels-photo-5452268.jpeg?auto=compress&cs=tinysrgb&w=100",
-  },
-];
-
-const clientLogos = [
-  { name: "Pharma Corp A",      abbr: "PC-A", color: "#2563eb" },
-  { name: "BioResearch Ltd",    abbr: "BRL",  color: "#059669" },
-  { name: "Global Trials Inc",  abbr: "GTI",  color: "#7c3aed" },
-  { name: "MedScience Group",   abbr: "MSG",  color: "#d97706" },
-  { name: "ClinPath Solutions", abbr: "CPS",  color: "#0ea5e9" },
-  { name: "Research Alliance",  abbr: "RA",   color: "#dc2626" },
-  { name: "LifeScience Co",     abbr: "LSC",  color: "#2563eb" },
-  { name: "Nexus Pharma",       abbr: "NP",   color: "#059669" },
 ];
 
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
@@ -312,159 +241,507 @@ const Twitter = ({ size = 20 }) => (
   </svg>
 );
 
+// ─── Feature Card Icons (clean line-style, inherit currentColor) ──────────────
+const FEATURE_ICON_PATHS = {
+  // Sponsor eCOA — clipboard with check
+  ecoa: (
+    <>
+      <path d="M9 2h6a1 1 0 0 1 1 1v2H8V3a1 1 0 0 1 1-1z" />
+      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+      <path d="M9 13l2 2 4-4" />
+    </>
+  ),
+  // EDC System — database
+  edc: (
+    <>
+      <ellipse cx="12" cy="5" rx="8" ry="3" />
+      <path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5" />
+      <path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6" />
+    </>
+  ),
+  // IWRS Platform — randomization / shuffle
+  iwrs: (
+    <>
+      <polyline points="16 3 21 3 21 8" />
+      <line x1="4" y1="20" x2="21" y2="3" />
+      <polyline points="21 16 21 21 16 21" />
+      <line x1="15" y1="15" x2="21" y2="21" />
+      <line x1="4" y1="4" x2="9" y2="9" />
+    </>
+  ),
+  // Nexus Vault — shield with check
+  vault: (
+    <>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="M9 12l2 2 4-4" />
+    </>
+  ),
+  // SclinNexus Manager — folder
+  manager: (
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+  ),
+  // Medical Coding — code brackets
+  coding: (
+    <>
+      <polyline points="16 18 22 12 16 6" />
+      <polyline points="8 6 2 12 8 18" />
+    </>
+  ),
+};
+const FeatureIcon = ({ name, size = 28 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.75}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    {FEATURE_ICON_PATHS[name]}
+  </svg>
+);
+
 // ─── Privacy / Terms / Cookie Content ────────────────────────────────────────
+// Each block: { h: heading, body: [ "paragraph" | { list: ["item", ...] } ] }
 const LEGAL_PAGES = {
   privacy: {
     title: "Privacy Policy",
+    updated: "06-Jun-2026",
     blocks: [
       {
-        h: "Introduction",
-        p: "SclinNexus is dedicated to protecting your online privacy. This policy outlines how SclinNexus collects, uses, and safeguards your personally identifiable information. For inquiries regarding this privacy statement, please contact us at support@SclinNexus.com.",
+        h: "1. Introduction",
+        body: [
+          'Welcome to SclinNexus ("Company," "we," "our," "us"). We are committed to protecting the privacy and security of your information. This Privacy Policy describes how we collect, use, disclose, and safeguard your information when you use our Clinical Trial Management System (CTMS) platform, website, and related services (collectively, the "Platform").',
+          'This Platform is designed specifically for use by Clinical Research Sponsors, Contract Research Organizations (CROs), site staff, investigators, and regulators involved in the management of clinical trials ("Authorized Users").',
+          "Please read this Privacy Policy carefully. By accessing or using the Platform, you acknowledge that you have read and understood this policy.",
+        ],
       },
       {
-        h: "Information Collection and Use",
-        p: "SclinNexus collects personal information when you register to receive communications or download information. We may combine this with data obtained from business partners. Registration may require details such as name, email address, birth date, gender, zip code, occupation, and personal interests.",
+        h: "2. Definitions",
+        body: [
+          {
+            list: [
+              '"Personal Data": Any information relating to an identified or identifiable natural person (a "Data Subject").',
+              '"Special Categories of Data": Personal data revealing racial or ethnic origin, political opinions, religious or philosophical beliefs, or trade union membership, and the processing of genetic data, biometric data for the purpose of uniquely identifying a natural person, data concerning health, or data concerning a natural person\'s sex life or sexual orientation.',
+              '"Sponsor": The individual, company, institution, or organization which takes responsibility for the initiation, management, and/or financing of a clinical trial.',
+              '"CRO" (Contract Research Organization): A person or an organization (commercial, academic, or other) contracted by the Sponsor to perform one or more of a Sponsor\'s trial-related duties and functions.',
+              '"Trial Subject": An individual who participates in a clinical trial managed through the Platform.',
+              '"User" / "Authorized User": Personnel from our clients (Sponsors, CROs, and Sites) who have login credentials to use the Platform for trial management.',
+            ],
+          },
+        ],
       },
       {
-        h: "Information Sharing and Disclosure",
-        p: "Our primary objective in collecting user information is to enhance your experience on our web publications. SclinNexus may also disclose user information when required by law, in good faith belief that disclosure is necessary to comply with legal processes or protect our rights.",
+        h: "3. Data Controller and Data Processor",
+        body: [
+          "A critical distinction in clinical research is the difference between a Controller and a Processor.",
+          "For Trial Subject Data: SclinNexus acts as a Data Processor on behalf of our Clients (the Sponsors and the CROs acting on their behalf). Our Clients are the Data Controllers (or may be Co-Controllers). They determine the purposes and means of processing the data.",
+          "If you are a Trial Subject, your relationship is with the clinical trial Sponsor and the Investigational Site; you should refer to their Informed Consent Form (ICF) and privacy notices for information on how your data is handled. SclinNexus processes this data strictly according to our Clients' documented instructions.",
+          "For Authorized User Data: SclinNexus acts as a Data Controller for the contact information and account details of our Users (personnel from Sponsors, CROs, and Sites). This section governs how we handle that specific information.",
+        ],
       },
       {
-        h: "Email",
-        p: "SclinNexus respects the privacy of its readers and will not disclose, distribute, or rent its email subscriber newsletter list to any third party, nor will it permit anyone else to do so.",
+        h: "4. Information We Collect",
+        body: [
+          "We collect information in three primary ways:",
+          "A. Information Provided by Authorized Users (Controllers of Trial Data) — When Users (Sponsor employees, CRO monitors, or Site staff) input data into the Platform regarding a clinical trial, this may include:",
+          {
+            list: [
+              "Trial Data: Protocol details, site monitoring reports, adverse event logs, and study metrics.",
+              "Trial Subject Data (Pseudonymized): To maintain confidentiality, Trial Subject data is typically identified by a unique Subject ID number. However, depending on Client configuration, this may include Special Categories of Data, such as health information, genetic data, or lab results.",
+            ],
+          },
+          "B. Information Provided by Authorized Users (Account Data) — When you register for an account (as a representative of a Sponsor, CRO, or Site), we collect:",
+          {
+            list: [
+              "Identity Data: Name, job title, employer (Sponsor/CRO/Site), professional license/credentials.",
+              "Contact Data: Business email address, phone number.",
+              "Authentication Data: Username, hashed password.",
+            ],
+          },
+          "C. Technical Data Collected Automatically — When you access the Platform, we automatically collect:",
+          {
+            list: [
+              "Usage Data: Log files, clickstream data, features used, time spent on pages.",
+              "Device Data: IP address, browser type, operating system.",
+            ],
+          },
+        ],
+      },
+      {
+        h: "5. How We Use Your Information",
+        body: [
+          "We use the information we collect for the following purposes:",
+          {
+            list: [
+              "To Provide the Service: To host and maintain the Platform, manage clinical trial data, facilitate collaboration between Sponsors, CROs, and trial sites, and generate reports.",
+              "System Administration: To ensure the security and integrity of the Platform, troubleshoot bugs, and monitor for unauthorized access.",
+              "Compliance: To assist our Clients (Sponsors and CROs) in meeting regulatory requirements (e.g., FDA, EMA) by maintaining accurate audit trails (GDPR Article 30 records, 21 CFR Part 11 compliance).",
+              "Communication: To send you service-related announcements, updates, security alerts, and support messages (Account Data only).",
+              "Improvement: To analyze usage trends to improve user interface and platform functionality (using aggregated, non-identifiable data).",
+            ],
+          },
+          "Legal Basis for Processing (for GDPR purposes):",
+          {
+            list: [
+              "Performance of a Contract: Processing is necessary for the performance of our contract with you or your employer (Sponsor/CRO).",
+              "Legal Obligation: Processing is necessary for compliance with legal obligations (e.g., retaining records for regulatory audits).",
+              "Legitimate Interests: Processing is necessary for our legitimate interests (e.g., ensuring network and information security).",
+              "Consent: Where required by law, we may ask for your consent to process certain data.",
+            ],
+          },
+        ],
+      },
+      {
+        h: "6. Data Sharing and Disclosure",
+        body: [
+          "We respect the confidentiality of clinical trial data. We do not sell, rent, or lease Personal Data to third parties. We may share data in the following specific contexts:",
+          {
+            list: [
+              "With Our Clients (Sponsors and CROs): All Trial Subject Data entered into the Platform is owned and controlled by our Clients (Sponsors and the CROs acting on their behalf). They have full access to their trial data. A Sponsor may grant a CRO access to specific trials for monitoring and management purposes.",
+              "Service Providers (Sub-processors): We engage trusted third-party vendors to perform functions on our behalf, such as cloud hosting (e.g., AWS, Azure), database management, and email delivery. These sub-processors are bound by strict contractual data processing agreements that comply with applicable laws (including Standard Contractual Clauses for international data transfers).",
+              "Regulatory Authorities: We may be required to provide access to data to regulatory authorities (e.g., FDA, EMA, MHRA) as part of an audit or inspection of our systems or a specific clinical trial conducted by a Sponsor or CRO.",
+              "Legal Requirements: We may disclose information if required to do so by law or in response to valid requests by public authorities (e.g., a court order or subpoena).",
+            ],
+          },
+        ],
+      },
+      {
+        h: "7. International Data Transfers",
+        body: [
+          "SclinNexus operates globally. Your information may be transferred to, stored, and processed in countries outside of your own, including the United States and the European Economic Area (EEA). This is often necessary for Sponsors and CROs who operate multinational trials.",
+          "Where we transfer data from the EEA to countries not deemed adequate by the European Commission, we rely on appropriate safeguards, such as:",
+          {
+            list: [
+              "Standard Contractual Clauses (SCCs) approved by the European Commission.",
+              "Binding Corporate Rules (where applicable).",
+            ],
+          },
+          "We ensure that any third-party sub-processors also provide adequate guarantees regarding the security of the data.",
+        ],
+      },
+      {
+        h: "8. Data Security",
+        body: [
+          "We have implemented appropriate technical and organizational security measures designed to protect your information from accidental loss and unauthorized access, use, alteration, or disclosure. These include:",
+          {
+            list: [
+              "Encryption: Data is encrypted in transit (TLS 1.2+) and at rest (AES-256).",
+              "Access Controls: Role-based access controls (RBAC) and multi-factor authentication (MFA) for Users, allowing Sponsors and CROs to manage permissions granularly.",
+              "Audit Trails: Comprehensive logging of all access and modifications to trial data to ensure accountability and traceability for regulatory inspections.",
+              "Certifications: We adhere to industry standards such as ISO 27001, SOC 2 Type II, and the HIPAA compliance framework.",
+            ],
+          },
+          "Despite these measures, no method of transmission over the Internet or method of electronic storage is 100% secure.",
+        ],
+      },
+      {
+        h: "9. Data Retention",
+        body: [
+          "Trial Subject Data: We retain Trial Subject Data according to the instructions of our Clients (the Sponsors and CROs) and in accordance with applicable legal and regulatory requirements (e.g., ICH-GCP guidelines, which often require retention for up to 25 years). Upon the termination of a Client agreement, data is returned to the Client (Sponsor/CRO) and deleted from our production systems in accordance with our contract, subject to legal holds required by regulators.",
+          "Account Data: We retain Authorized User account data for as long as the account is active or as needed to provide services. If you close your account, we will retain your data only as necessary for legal and audit purposes (e.g., audit trails linking you to actions performed in the system cannot be deleted).",
+        ],
+      },
+      {
+        h: "10. Your Rights (Data Subject Rights)",
+        body: [
+          "Depending on your jurisdiction (e.g., EU/UK under GDPR, California under CCPA), you may have specific rights regarding your Personal Data (applies to Account Data only, as we are the Controller for that data). These rights may include:",
+          {
+            list: [
+              "The right to access your data.",
+              "The right to rectification (correcting inaccurate data).",
+              "The right to erasure ('right to be forgotten').",
+              "The right to restrict processing.",
+              "The right to data portability.",
+            ],
+          },
+          "For Trial Subjects: If you are a Trial Subject and wish to exercise any of these rights regarding your clinical trial data, you must contact the clinical trial site, the CRO managing the trial, or the study Sponsor directly. As a Data Processor, SclinNexus cannot modify or delete clinical trial data without instructions from the Controller (Sponsor or CRO). We will assist our Clients in responding to such requests where legally required.",
+          "To exercise your rights regarding your Account Data, please contact us at privacy@sclinnexus.com.",
+        ],
+      },
+      {
+        h: "11. Children's Privacy",
+        body: [
+          "The Platform is not intended for use by individuals under the age of legal majority (typically 18). We do not knowingly collect Personal Data from minors. If we become aware that we have inadvertently collected such information, we will take steps to delete it promptly.",
+        ],
+      },
+      {
+        h: "12. Changes to This Privacy Policy",
+        body: [
+          'We may update this Privacy Policy from time to time to reflect changes in our practices, technologies, legal requirements, or other factors. We will notify Users (Sponsors, CROs, and Sites) of any material changes via email or through a notice on the Platform prior to the change becoming effective. The "Last Updated" date at the top of this policy will be revised.',
+        ],
+      },
+      {
+        h: "13. Contact Us",
+        body: [
+          "If you have any questions about this Privacy Policy or our privacy practices, please contact our Data Protection Officer (DPO) at SclinNexus, Data Protection Officer — privacy@sclinnexus.com.",
+        ],
       },
     ],
   },
   terms: {
-    title: "Terms & Conditions",
+    title: "Terms of Service",
+    updated: "06-Jun-2026",
     blocks: [
       {
-        h: "Acknowledgment and Agreement",
-        p: "By accessing and using this website, you unconditionally accept and agree to the following terms and conditions. SclinNexus reserves the right to amend the Terms of Use at any time without prior notice.",
+        h: "1. Agreement to Terms",
+        body: [
+          'Welcome to SclinNexus ("Company," "we," "our," "us"). These Terms of Service ("Terms") govern your access to and use of our Clinical Trial Management System (CTMS) platform, website, and related services (collectively, the "Platform").',
+          'By registering for an account, accessing, or using the Platform, you ("Subscriber," "Client," "you") agree to be bound by these Terms. If you are entering into these Terms on behalf of a company or other legal entity (e.g., a Sponsor, CRO, or Research Site), you represent that you have the authority to bind such entity to these Terms.',
+          "If you do not agree to these Terms, you must not access or use the Platform.",
+        ],
       },
       {
-        h: "The Veracity of Information",
-        p: "The information provided on this website is not warranted to be accurate, current, or complete, and may contain technical inaccuracies or typographical errors. SclinNexus disclaims any responsibility for updating the site to ensure the accuracy or completeness of the information posted herein.",
+        h: "2. Eligibility",
+        body: [
+          "By using the Platform, you represent and warrant that:",
+          {
+            list: [
+              "You are at least 18 years of age (or the age of legal majority in your jurisdiction).",
+              "You have the legal capacity to enter into a binding contract.",
+              "You are not located in a country that is subject to a U.S. or other applicable government embargo.",
+              "You are not a competitor of SclinNexus and are not using the Platform for reasons that are competitive with us.",
+            ],
+          },
+        ],
       },
       {
-        h: "No Guarantees or Warranties",
-        p: 'The website and its contents are provided on an "as is" basis. Utilization of the website and its contents is at the user\'s sole risk, without any representations, endorsements, or warranties of any kind, whether express or implied.',
+        h: "3. Description of the Service",
+        body: [
+          "SclinNexus provides a cloud-based software-as-a-service (SaaS) platform designed to assist clinical research Sponsors, CROs, and site staff in managing clinical trials. Features may include, but are not limited to:",
+          {
+            list: [
+              "Study planning and tracking",
+              "Site management and monitoring",
+              "Subject visit scheduling and data capture (eCRF)",
+              "Adverse event tracking",
+              "Regulatory document management (TMF)",
+              "Reporting and analytics",
+              "Oversight tools for Sponsors managing multiple CRO partners",
+            ],
+          },
+          "We reserve the right to modify, update, or discontinue features of the Platform at any time, with or without notice, provided that such changes do not materially diminish the core functionality of the service during a paid subscription term.",
+        ],
       },
       {
-        h: "Utilization of Website",
-        p: "Content provided on this website is intended exclusively for the personal use of its users. Users are prohibited from copying, modifying, distributing, transmitting, displaying, performing, reproducing, or republishing any content without obtaining prior written consent from SclinNexus.",
+        h: "4. Account Registration and Security",
+        body: [
+          "4.1 Account Creation — To use the Platform, you must register for an account. You agree to provide accurate, current, and complete information during the registration process and to update such information to keep it accurate, current, and complete.",
+          "4.2 Credentials — You are responsible for maintaining the confidentiality of your login credentials and for all activities that occur under your account. You agree to:",
+          {
+            list: [
+              "Not share your password or account access with anyone else.",
+              "Not permit any third party to access the Platform using your credentials.",
+              "Notify us immediately of any unauthorized use of your account or any other breach of security at security@sclinnexus.com.",
+            ],
+          },
+          "4.3 Account Types and Roles — We offer different account types to reflect the hierarchical nature of clinical research:",
+          {
+            list: [
+              "Sponsor Administrators: Can create and manage trials, oversee CRO activities, and access high-level portfolio data.",
+              "CRO Users: Can be granted access to specific trials by the Sponsor to perform monitoring and data management tasks.",
+              "Site Users: Enter data at the clinical site level.",
+              "Read-Only Auditors: For regulatory inspections.",
+            ],
+          },
+          "Your level of access to data and features is determined by the role assigned to you by your organization's account administrator (either at the Sponsor or CRO).",
+        ],
       },
       {
-        h: "Copyrights and Intellectual Property",
-        p: "All content on this website, including white papers, case studies, graphics, icons, and the overall design, is the sole and exclusive property of SclinNexus, protected by applicable intellectual property laws.",
+        h: "5. Subscriptions, Fees, and Payments",
+        body: [
+          "5.1 Subscription Plans — Access to the Platform is provided on a subscription basis. The fees, billing periods, and specific features included in your plan are detailed in the Order Form or separate agreement provided to you (the Sponsor or CRO) at the time of purchase.",
+          "5.2 Fees and Taxes — You agree to pay all subscription fees specified in the Order Form. Fees are non-refundable except as required by law or as expressly set forth in these Terms. You are responsible for all taxes associated with your subscription, excluding taxes based on our net income.",
+          "5.3 Late Payment — If payment is not received by the due date, we reserve the right to suspend or terminate your (Sponsor's or CRO's) access to the Platform. We may charge interest on overdue amounts at the rate of 1.5% per month (or the maximum rate permitted by law).",
+        ],
       },
       {
-        h: "Disclaimer of Liability",
-        p: "SclinNexus shall not be liable for any damages whatsoever arising out of or in connection with this website, including direct, indirect, incidental, special, exemplary, or consequential damages, lost profits, or business interruption.",
+        h: "6. Acceptable Use Policy",
+        body: [
+          "You agree not to use the Platform to:",
+          {
+            list: [
+              "Violate Laws: Engage in any activity that violates any applicable law or regulation, including data protection laws (GDPR, HIPAA, etc.) and clinical research regulations (ICH-GCP).",
+              "Harm Others: Upload, transmit, or distribute any content that is unlawful, harmful, threatening, abusive, harassing, defamatory, or invasive of another's privacy.",
+              "Security Breaches: Attempt to gain unauthorized access to the Platform, other user accounts (Sponsor, CRO, or Site), or our systems or networks.",
+              "Reverse Engineer: Reverse engineer, decompile, disassemble, or otherwise attempt to discover the source code of the Platform.",
+              "Malicious Code: Transmit any worms, viruses, or other code of a destructive nature.",
+            ],
+          },
+        ],
+      },
+      {
+        h: "7. Data, Ownership, and Processing",
+        body: [
+          "7.1 Client Data — You (Sponsor or CRO) retain all right, title, and interest in and to all data, information, and materials entered into the Platform by you or on your behalf, including clinical trial data and Protected Health Information (PHI) (\"Client Data\"). This is your data.",
+          {
+            list: [
+              "Sponsors own the data generated from their trials.",
+              "CROs may act as Data Processors for the Sponsor and must adhere to the Sponsor's instructions regarding the data.",
+              "Sites enter data on behalf of the Sponsor/CRO.",
+            ],
+          },
+          "7.2 SclinNexus IP — We retain all right, title, and interest in and to the Platform, our software, our trademarks, and our logos. These Terms do not grant you any ownership rights in our IP.",
+          "7.3 Data Processing Agreement (DPA) — As SclinNexus processes clinical trial data on behalf of Sponsors and CROs, our relationship regarding data privacy and security is governed by a separate Data Processing Agreement (DPA), which is incorporated into these Terms by reference. The DPA sets out our obligations regarding the processing of Personal Data, including security measures, sub-processor notifications, and assistance with data subject rights.",
+          "7.4 Aggregate/Anonymized Data — We may collect and use aggregated and anonymized data derived from your use of the Platform for the purpose of improving our services, benchmarking, and product development. This data cannot identify you, your CRO partners, or your Trial Subjects.",
+        ],
+      },
+      {
+        h: "8. Confidentiality",
+        body: [
+          'Given the sensitive nature of clinical trial information, both parties agree to hold in strict confidence all Confidential Information disclosed in connection with these Terms. "Confidential Information" includes, but is not limited to, unpublished trial data, patient information, protocols, business strategies of Sponsors and CROs, and source code. This obligation of confidentiality survives the termination of these Terms.',
+        ],
+      },
+      {
+        h: "9. Third-Party Services and Sub-Processors",
+        body: [
+          "The Platform may integrate with or utilize third-party service providers (e.g., cloud hosting providers, data storage, email services) to deliver the Service. A current list of our Sub-processors is maintained and made available to Clients on request. We will provide notice of changes to our Sub-processors in accordance with our DPA.",
+        ],
+      },
+      {
+        h: "10. Disclaimer of Warranties",
+        body: [
+          'THE PLATFORM IS PROVIDED ON AN "AS IS" AND "AS AVAILABLE" BASIS WITHOUT ANY WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED. TO THE FULLEST EXTENT PERMITTED BY LAW, WE DISCLAIM ALL WARRANTIES, INCLUDING BUT NOT LIMITED TO, IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE (INCLUDING FOR SPECIFIC SPONSOR OR CRO NEEDS), TITLE, AND NON-INFRINGEMENT.',
+          "We do not warrant that the Platform will be uninterrupted, error-free, secure, or free from viruses or other harmful components. You use the Platform at your own risk. No advice or information obtained by you from us shall create any warranty not expressly stated in these Terms.",
+        ],
+      },
+      {
+        h: "11. Limitation of Liability",
+        body: [
+          "TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL SCLINNEXUS, ITS AFFILIATES, OFFICERS, EMPLOYEES, OR LICENSORS BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS OR REVENUES (WHETHER INCURRED BY A SPONSOR, CRO, OR SITE), WHETHER INCURRED DIRECTLY OR INDIRECTLY, OR ANY LOSS OF DATA, USE, GOODWILL, OR OTHER INTANGIBLE LOSSES, RESULTING FROM (I) YOUR USE OR INABILITY TO USE THE PLATFORM; (II) ANY CONDUCT OR CONTENT OF ANY THIRD PARTY ON THE PLATFORM; OR (III) UNAUTHORIZED ACCESS, USE, OR ALTERATION OF YOUR TRANSMISSIONS OR CONTENT.",
+          "OUR TOTAL LIABILITY TO YOU FOR ALL CLAIMS ARISING FROM OR RELATING TO THESE TERMS OR THE PLATFORM SHALL NOT EXCEED THE AMOUNT PAID BY YOU TO US DURING THE TWELVE (12) MONTHS PRIOR TO THE EVENT GIVING RISE TO THE LIABILITY.",
+        ],
+      },
+      {
+        h: "12. Indemnification",
+        body: [
+          "You (the Sponsor or CRO) agree to defend, indemnify, and hold harmless SclinNexus and its employees, contractors, and agents from and against any and all claims, damages, obligations, losses, liabilities, costs, and expenses (including reasonable legal fees) arising from: (i) your use of and access to the Platform; (ii) your violation of any term of these Terms; (iii) your violation of any third-party right, including any privacy right or intellectual property right; or (iv) your violation of any applicable law or regulation governing the conduct of clinical trials.",
+        ],
+      },
+      {
+        h: "13. Termination",
+        body: [
+          "13.1 By You — You (the Sponsor or CRO) may terminate your account and subscription at any time by providing written notice to us, subject to the terms of your subscription agreement (e.g., early termination fees may apply).",
+          "13.2 By Us — We may suspend or terminate your access to the Platform immediately, without prior notice or liability, if:",
+          {
+            list: [
+              "You breach any provision of these Terms.",
+              "Your payment is past due.",
+              "We are required to do so by law or regulatory authority.",
+            ],
+          },
+          "13.3 Effect of Termination — Upon termination, your right to access the Platform will cease immediately. We will provide you (Sponsor/CRO) with a reasonable period (e.g., 30 days) to retrieve your Client Data, subject to our standard data export fees, unless prohibited by law. Thereafter, we may delete your Client Data from our systems in accordance with our data retention policy.",
+        ],
+      },
+      {
+        h: "14. Governing Law and Dispute Resolution",
+        body: [
+          "These Terms shall be governed by the applicable laws of the jurisdiction in which SclinNexus is incorporated, without regard to its conflict of law provisions. Any disputes arising out of or relating to these Terms or the Platform shall be resolved through binding arbitration in accordance with the applicable arbitration rules, except that either party may seek injunctive or other equitable relief in court to protect its intellectual property rights.",
+        ],
+      },
+      {
+        h: "15. General Provisions",
+        body: [
+          {
+            list: [
+              "Entire Agreement: These Terms, together with the Privacy Policy, Cookie Policy, and DPA, constitute the entire agreement between you (the Sponsor/CRO) and SclinNexus regarding the use of the Platform.",
+              "Waiver: Our failure to enforce any right or provision of these Terms will not be considered a waiver of those rights.",
+              "Severability: If any provision of these Terms is held to be invalid or unenforceable, the remaining provisions will remain in full force and effect.",
+              "Assignment: You may not assign these Terms without our prior written consent. We may assign these Terms without restriction.",
+            ],
+          },
+        ],
+      },
+      {
+        h: "16. Contact Information",
+        body: [
+          "For questions about these Terms, please contact us at SclinNexus, Legal Department — legal@sclinnexus.com.",
+        ],
       },
     ],
   },
   cookies: {
     title: "Cookie Policy",
+    updated: "06-Jun-2026",
     blocks: [
       {
-        h: "Use of Cookies",
-        p: "We may utilize information gathered from our Cookies to discern user behavior and to deliver content and offers tailored to your profile, thereby enhancing the convenience for users of our Site.",
+        h: "1. Introduction",
+        body: [
+          'This Cookie Policy explains how SclinNexus ("Company," "we," "our," "us") uses cookies and similar tracking technologies (e.g., pixels, web beacons, local storage) when you visit our website or use our Clinical Trial Management System (CTMS) Platform (collectively, the "Platform").',
+          "By continuing to browse or use the Platform, you consent to our use of cookies as described in this policy, subject to your cookie preferences and applicable law.",
+          "Important Note on Clinical Trial Data: SclinNexus is designed with patient privacy as a priority. Our cookies are used strictly for operational and analytical purposes related to the functionality of the Platform and User experience. We do not use cookies to collect or track Protected Health Information (PHI) or identifiable Trial Subject data belonging to our Sponsor and CRO clients.",
+        ],
       },
       {
-        h: "Marketing and Statistics Cookies",
-        p: "We employ marketing and statistics cookies to gain insights into visitors' behavior, such as their interactions with the website and to track visitors' sessions.",
+        h: "2. What Are Cookies?",
+        body: [
+          "Cookies are small text files that are placed on your computer or mobile device by websites that you visit. They are widely used to make websites work more efficiently, as well as to provide information to the owners of the site. Cookies can be:",
+          {
+            list: [
+              "Session Cookies: These are temporary and are deleted from your device when you close your browser.",
+              "Persistent Cookies: These remain on your device for a set period or until you delete them manually.",
+            ],
+          },
+        ],
       },
       {
-        h: "Managing Cookies",
-        p: "Should you prefer not to have Cookies placed on your device, you may adjust the settings of your Internet browser to reject the placement of all or some Cookies and to alert you when a Cookie is placed on your device.",
+        h: "3. Why Do We Use Cookies?",
+        body: [
+          "We use cookies for several reasons, primarily to ensure the security and functionality of our Platform. Because SclinNexus is a professional tool for Sponsors, CROs, and clinical research sites, our use of cookies is limited compared to standard marketing websites. We use cookies to:",
+          {
+            list: [
+              "Essential/Strictly Necessary Cookies: Enable core Platform functionality such as user authentication (for Sponsor, CRO, and Site staff), session management, and security. The Platform cannot function properly without these cookies.",
+              "Functional Cookies: Remember your preferences (e.g., language, dashboard layout) to provide a personalized experience.",
+              "Performance/Analytics Cookies: Collect aggregated, anonymized information about how Users (Sponsors, CROs, Sites) interact with the Platform (e.g., which pages are visited most, error rates) to help us improve performance and usability.",
+            ],
+          },
+          "We do not use targeting or advertising cookies. We do not allow third-party advertising networks to collect information about you on our Platform.",
+        ],
       },
       {
-        h: "Third-Party Tools",
-        p: "We incorporate third-party tools on the SclinNexus website for analytical or user experience purposes.",
+        h: "4. Types of Cookies We Use",
+        body: [
+          "The specific types of cookies used on SclinNexus are detailed below:",
+          {
+            list: [
+              "Strictly Necessary Cookies — Essential for you to move around the Platform and use its features, such as accessing secure areas of the CTMS designated for specific Sponsor or CRO trials. Examples: session_id, csrf_token, auth_token (first-party). Duration: session / persistent.",
+              "Functional Cookies — Allow the Platform to remember choices you make (such as your Sponsor/CRO-specific dashboard, language, or region) and provide enhanced, more personal features. Examples: user_preferences, table_settings (first-party). Duration: persistent.",
+              "Analytics Cookies — Collect information about how visitors use the Platform, for instance which pages visitors go to most often. We use this data to optimize the Platform for Sponsors, CROs, and sites. All data collected is aggregated and anonymized. Examples: Google Analytics, Mixpanel (configured to anonymize IPs). Duration: persistent.",
+            ],
+          },
+        ],
       },
       {
-        h: "Social Media",
-        p: "Should you use social media or other third-party credentials to log in to our website, the respective organization may set a cookie that allows them to recognize you.",
+        h: "5. How to Control Cookies",
+        body: [
+          "You have the right to decide whether to accept or reject cookies.",
+          {
+            list: [
+              "Cookie Consent Banner: Upon your first visit to the Platform, you will see a banner requesting your consent to set non-essential cookies (Functional and Analytics). You may accept all, reject non-essential, or customize your preferences.",
+              "Browser Settings: You can also set or amend your web browser controls to accept or refuse cookies. If you choose to reject cookies, you may still use our Platform, but your access to some functionality and areas may be restricted.",
+            ],
+          },
+          "Most major browsers (Chrome, Firefox, Safari, and Edge) provide guidance in their help sections on how to manage cookies.",
+          "Please note: Disabling Strictly Necessary Cookies will prevent the Platform from functioning correctly (e.g., you will not be able to log in).",
+        ],
       },
       {
-        h: "Your Rights Under GDPR",
-        p: "You have the right to withdraw consent, request access and rectification of your personal data, request erasure, object to processing, and lodge a complaint with a data protection authority.",
+        h: "6. Changes to This Cookie Policy",
+        body: [
+          'We may update this Cookie Policy from time to time to reflect changes in technology, regulation, or our business operations. When we update this policy, we will revise the "Last Updated" date at the top of the policy. If changes are material, we may notify you (Sponsors, CROs, and Users) more prominently.',
+        ],
+      },
+      {
+        h: "7. Contact Us",
+        body: [
+          "If you have any questions about our use of cookies or this policy, please contact us at SclinNexus, Data Protection Officer — privacy@sclinnexus.com.",
+        ],
       },
     ],
   },
 };
-
-// ─── Demo Form Component ──────────────────────────────────────────────────────
-function DemoForm({ PRIMARY, GRADIENT }) {
-  const [form, setForm] = useState({ name: "", email: "", organization: "", role: "", message: "" });
-  const [submitted, setSubmitted] = useState(false);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!form.name || !form.email || !form.organization) return;
-    setSubmitted(true);
-  };
-
-  const set = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
-
-  const inputStyle = {
-    width: "100%", padding: "0.75rem 1rem", fontSize: "0.9375rem",
-    border: "1px solid #e2e8f0", borderRadius: 8, outline: "none",
-    fontFamily: "inherit", boxSizing: "border-box", background: "#fff",
-  };
-
-  if (submitted) {
-    return (
-      <div style={{ background: "#fff", borderRadius: 20, padding: "2.5rem", boxShadow: "0 25px 50px rgba(0,0,0,0.08)", textAlign: "center" }}>
-        <div style={{ fontSize: 48, marginBottom: "1rem" }}>✅</div>
-        <h3 style={{ fontSize: "1.5rem", fontWeight: 700, color: "#1e293b", marginBottom: "0.75rem" }}>Request Received!</h3>
-        <p style={{ color: "#64748b", lineHeight: 1.6 }}>
-          Thank you for your interest. A SclinNexus specialist will contact you within 1 business day to schedule your personalised demo.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <form onSubmit={handleSubmit} style={{ background: "#fff", borderRadius: 20, padding: "2.5rem", boxShadow: "0 25px 50px rgba(0,0,0,0.08)", display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <h3 style={{ fontSize: "1.25rem", fontWeight: 700, color: "#1e293b", margin: 0 }}>Schedule a Demo</h3>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-        <div>
-          <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>Full Name *</label>
-          <input style={inputStyle} value={form.name} onChange={set("name")} placeholder="Your full name" required />
-        </div>
-        <div>
-          <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>Work Email *</label>
-          <input style={inputStyle} type="email" value={form.email} onChange={set("email")} placeholder="you@company.com" required />
-        </div>
-      </div>
-      <div>
-        <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>Organization *</label>
-        <input style={inputStyle} value={form.organization} onChange={set("organization")} placeholder="Your company or institution" required />
-      </div>
-      <div>
-        <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>Your Role</label>
-        <select style={inputStyle} value={form.role} onChange={set("role")}>
-          <option value="">Select your role…</option>
-          {["Sponsor", "CRO", "Principal Investigator", "Clinical Data Manager", "Regulatory Affairs", "IT / Technology", "Other"].map((r) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select>
-      </div>
-      <div>
-        <label style={{ display: "block", fontSize: "0.8125rem", fontWeight: 600, color: "#475569", marginBottom: "0.375rem" }}>Message (Optional)</label>
-        <textarea style={{ ...inputStyle, minHeight: 80, resize: "vertical" }} value={form.message} onChange={set("message")} placeholder="Tell us about your study needs…" />
-      </div>
-      <button type="submit" style={{ padding: "0.875rem 1.5rem", fontSize: "1rem", fontWeight: 600, borderRadius: 10, background: GRADIENT, border: "none", color: "#fff", cursor: "pointer", transition: "all 0.3s ease" }}>
-        Request a Demo
-      </button>
-      <p style={{ fontSize: "0.8125rem", color: "#94a3b8", margin: 0, textAlign: "center" }}>
-        By submitting, you agree to our Privacy Policy.
-      </p>
-    </form>
-  );
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function LandingPage() {
@@ -474,7 +751,6 @@ export default function LandingPage() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [activePage, setActivePage] = useState("home");
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [currentTestimonial, setCurrentTestimonial] = useState(0);
   const [hoveredFeature, setHoveredFeature] = useState(null);
   const [hoveredBenefit, setHoveredBenefit] = useState(null);
   const [hoveredSocial, setHoveredSocial] = useState(null);
@@ -511,15 +787,6 @@ export default function LandingPage() {
     const id = setInterval(
       () => setCurrentSlide((p) => (p + 1) % heroSlides.length),
       5000,
-    );
-    return () => clearInterval(id);
-  }, []);
-
-  // Testimonial auto-advance
-  useEffect(() => {
-    const id = setInterval(
-      () => setCurrentTestimonial((p) => (p + 1) % testimonials.length),
-      6000,
     );
     return () => clearInterval(id);
   }, []);
@@ -972,103 +1239,6 @@ export default function LandingPage() {
               </div>
             </section>
 
-            {/* ── Trusted By ───────────────────────────────────────────────── */}
-            <section
-              style={{
-                padding: "3rem 2rem",
-                background: "#f8fafc",
-                borderBottom: "1px solid #e2e8f0",
-                overflow: "hidden",
-              }}
-            >
-              <p
-                style={{
-                  textAlign: "center",
-                  color: "#64748b",
-                  fontSize: "0.875rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                  marginBottom: "1.5rem",
-                }}
-              >
-                Trusted by leading pharmaceutical and research organizations
-              </p>
-              <div
-                style={{
-                  width: "100%",
-                  overflow: "hidden",
-                  position: "relative",
-                }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    bottom: 0,
-                    left: 0,
-                    width: 100,
-                    background:
-                      "linear-gradient(to right, #f8fafc, transparent)",
-                    zIndex: 2,
-                    pointerEvents: "none",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    bottom: 0,
-                    right: 0,
-                    width: 100,
-                    background:
-                      "linear-gradient(to left, #f8fafc, transparent)",
-                    zIndex: 2,
-                    pointerEvents: "none",
-                  }}
-                />
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "3rem",
-                    animation: "marquee 20s linear infinite",
-                    width: "max-content",
-                  }}
-                >
-                  {[...clientLogos, ...clientLogos].map((logo, i) => (
-                    <div
-                      key={i}
-                      className="logo-item"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: "0.5rem",
-                        opacity: 0.7,
-                        transition: "all 0.3s ease",
-                        padding: "0.75rem 1.5rem",
-                        borderRadius: 8,
-                        background: "#fff",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-                        minWidth: 140,
-                      }}
-                    >
-                      <div style={{
-                        width: 36, height: 36, borderRadius: 8,
-                        background: logo.color + "20",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontWeight: 700, fontSize: "0.7rem", color: logo.color, flexShrink: 0,
-                      }}>
-                        {logo.abbr}
-                      </div>
-                      <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "#475569", whiteSpace: "nowrap" }}>
-                        {logo.name}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
-
             {/* ── Features ─────────────────────────────────────────────────── */}
             <section
               id="features"
@@ -1169,10 +1339,10 @@ export default function LandingPage() {
                         justifyContent: "center",
                         marginBottom: "1.25rem",
                         background: f.gradient,
-                        fontSize: 28,
+                        color: "#1e293b",
                       }}
                     >
-                      {f.icon}
+                      <FeatureIcon name={f.icon} size={28} />
                     </div>
                     <h3
                       style={{
@@ -1475,231 +1645,6 @@ export default function LandingPage() {
               </div>
             </section>
 
-            {/* ── Testimonials ─────────────────────────────────────────────── */}
-            <section
-              style={{
-                padding: "6rem 2rem",
-                background: "#f8fafc",
-                textAlign: "center",
-              }}
-            >
-              <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                    padding: "0.5rem 1rem",
-                    background: "rgba(14,165,233,0.1)",
-                    color: PRIMARY,
-                    borderRadius: 100,
-                    fontSize: "0.75rem",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    marginBottom: "1rem",
-                  }}
-                >
-                  Customer Experience
-                </span>
-                <h2
-                  style={{
-                    fontSize: "clamp(1.75rem, 4vw, 2.5rem)",
-                    fontWeight: 700,
-                    color: "#1e293b",
-                    marginBottom: "3rem",
-                  }}
-                >
-                  Why Clients Trust SclinSuite
-                </h2>
-
-                <div
-                  style={{
-                    position: "relative",
-                    maxWidth: 900,
-                    margin: "0 auto",
-                    padding: "0 60px",
-                  }}
-                >
-                  <div
-                    key={currentTestimonial}
-                    className="hero-content-animate"
-                    style={{
-                      background: "#fff",
-                      borderRadius: 24,
-                      padding: "3rem",
-                      boxShadow: "0 20px 60px rgba(0,0,0,0.08)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 100,
-                        height: 100,
-                        borderRadius: "50%",
-                        overflow: "hidden",
-                        margin: "0 auto 1.5rem",
-                        border: `4px solid ${PRIMARY}`,
-                      }}
-                    >
-                      <img
-                        src={testimonials[currentTestimonial].image}
-                        alt={testimonials[currentTestimonial].name}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                        }}
-                      />
-                    </div>
-                    <p
-                      style={{
-                        fontSize: "1.125rem",
-                        color: "#64748b",
-                        lineHeight: 1.8,
-                        marginBottom: "1.5rem",
-                        fontStyle: "italic",
-                        maxWidth: 700,
-                        margin: "0 auto 1.5rem",
-                      }}
-                    >
-                      "{testimonials[currentTestimonial].quote}"
-                    </p>
-                    <h4
-                      style={{
-                        fontSize: "1.25rem",
-                        fontWeight: 600,
-                        color: "#1e293b",
-                        marginBottom: "0.25rem",
-                      }}
-                    >
-                      {testimonials[currentTestimonial].name}
-                    </h4>
-                    <p style={{ fontSize: "0.875rem", color: "#64748b" }}>
-                      {testimonials[currentTestimonial].role}
-                    </p>
-                  </div>
-
-                  <button
-                    className="testimonial-nav-btn"
-                    onClick={() =>
-                      setCurrentTestimonial(
-                        (p) =>
-                          (p - 1 + testimonials.length) % testimonials.length,
-                      )
-                    }
-                    style={{
-                      position: "absolute",
-                      top: "50%",
-                      left: 0,
-                      transform: "translateY(-50%)",
-                      width: 48,
-                      height: 48,
-                      borderRadius: "50%",
-                      background: "#fff",
-                      border: "1px solid #e2e8f0",
-                      color: "#1e293b",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      cursor: "pointer",
-                      transition: "all 0.3s ease",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-                      zIndex: 10,
-                    }}
-                  >
-                    <ChevronLeft size={24} />
-                  </button>
-                  <button
-                    className="testimonial-nav-btn"
-                    onClick={() =>
-                      setCurrentTestimonial(
-                        (p) => (p + 1) % testimonials.length,
-                      )
-                    }
-                    style={{
-                      position: "absolute",
-                      top: "50%",
-                      right: 0,
-                      transform: "translateY(-50%)",
-                      width: 48,
-                      height: 48,
-                      borderRadius: "50%",
-                      background: "#fff",
-                      border: "1px solid #e2e8f0",
-                      color: "#1e293b",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      cursor: "pointer",
-                      transition: "all 0.3s ease",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-                      zIndex: 10,
-                    }}
-                  >
-                    <ChevronRight size={24} />
-                  </button>
-
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "center",
-                      gap: "0.5rem",
-                      marginTop: "2rem",
-                    }}
-                  >
-                    {testimonials.map((_, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setCurrentTestimonial(i)}
-                        style={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: "50%",
-                          background:
-                            i === currentTestimonial ? PRIMARY : "#cbd5e1",
-                          border: "none",
-                          cursor: "pointer",
-                          transition: "all 0.3s ease",
-                          transform:
-                            i === currentTestimonial
-                              ? "scale(1.2)"
-                              : "scale(1)",
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* ── Schedule a Demo ──────────────────────────────────────── */}
-            <section id="demo" style={{ padding: "6rem 2rem", background: "#f8fafc" }}>
-              <div style={{ maxWidth: 1100, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "4rem", alignItems: "center" }}>
-                <div>
-                  <span style={{ display: "inline-block", padding: "0.375rem 1rem", background: "rgba(14,165,233,0.1)", color: PRIMARY, fontSize: "0.8125rem", fontWeight: 600, borderRadius: 50, marginBottom: "1rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    Get Started
-                  </span>
-                  <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, color: "#1e293b", marginBottom: "1rem", letterSpacing: "-0.02em" }}>
-                    Ready to Accelerate Your Clinical Trials?
-                  </h2>
-                  <p style={{ fontSize: "1.0625rem", color: "#64748b", lineHeight: 1.7, marginBottom: "1.5rem" }}>
-                    Schedule a personalised demo with our clinical technology specialists and discover how SclinNexus can streamline your study operations and ensure regulatory compliance.
-                  </p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                    {["Personalised 30-minute walkthrough", "Live Q&A with product specialists", "No commitment required"].map((item, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-                        <div style={{ width: 22, height: 22, borderRadius: "50%", background: GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                          <Check size={14} />
-                        </div>
-                        <span style={{ fontSize: "0.9375rem", color: "#475569" }}>{item}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <DemoForm PRIMARY={PRIMARY} GRADIENT={GRADIENT} />
-              </div>
-            </section>
-
             {/* ── Contact Us ───────────────────────────────────────────────── */}
             <section id="contact" style={{ padding: "6rem 2rem", background: "#fff" }}>
               <div style={{ maxWidth: 1100, margin: "0 auto" }}>
@@ -1714,20 +1659,16 @@ export default function LandingPage() {
                     Have questions about SclinNexus? Our team is here to help.
                   </p>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "2rem" }}>
-                  {[
-                    { icon: "📧", title: "Email Us",       desc: "support@sclinnexus.com",  sub: "We respond within 24 hours on business days." },
-                    { icon: "📞", title: "Call Us",        desc: "+1 (800) SCL-NEXUS",       sub: "Available Mon–Fri, 9 AM – 6 PM EST." },
-                    { icon: "💬", title: "Live Chat",      desc: "Chat with our team",       sub: "Available in the platform after sign-in." },
-                    { icon: "📍", title: "Headquarters",   desc: "Clinical Research Plaza",  sub: "Global offices — US, EU, and APAC." },
-                  ].map((item, i) => (
-                    <div key={i} style={{ background: "#f8fafc", borderRadius: 16, padding: "2rem", border: "1px solid #e2e8f0" }}>
-                      <div style={{ fontSize: 32, marginBottom: "1rem" }}>{item.icon}</div>
-                      <h3 style={{ fontSize: "1.125rem", fontWeight: 700, color: "#1e293b", marginBottom: "0.5rem" }}>{item.title}</h3>
-                      <p style={{ fontSize: "0.9375rem", color: PRIMARY, fontWeight: 600, marginBottom: "0.5rem" }}>{item.desc}</p>
-                      <p style={{ fontSize: "0.875rem", color: "#94a3b8", margin: 0 }}>{item.sub}</p>
-                    </div>
-                  ))}
+                <div style={{ display: "flex", justifyContent: "center" }}>
+                  <div style={{ width: "100%", maxWidth: 480, background: "#f8fafc", borderRadius: 16, padding: "2rem", border: "1px solid #e2e8f0", textAlign: "center" }}>
+                    <div style={{ fontSize: 32, marginBottom: "1rem" }}>📧</div>
+                    <p style={{ fontSize: "1.0625rem", color: PRIMARY, fontWeight: 600, marginBottom: "0.5rem" }}>
+                      support@sclinnexus.com
+                    </p>
+                    <p style={{ fontSize: "0.9375rem", color: "#64748b", margin: 0, lineHeight: 1.6 }}>
+                      For platform-related inquiries and assistance, contact our support team.
+                    </p>
+                  </div>
                 </div>
               </div>
             </section>
@@ -1780,6 +1721,18 @@ export default function LandingPage() {
               >
                 {LEGAL_PAGES[activePage].title}
               </h2>
+              {LEGAL_PAGES[activePage].updated && (
+                <p
+                  style={{
+                    fontSize: "0.875rem",
+                    color: "#94a3b8",
+                    marginTop: "-1.75rem",
+                    marginBottom: "2.5rem",
+                  }}
+                >
+                  Last updated: {LEGAL_PAGES[activePage].updated}
+                </p>
+              )}
               {LEGAL_PAGES[activePage].blocks.map((block, i) => (
                 <div key={i} style={{ marginBottom: "2rem" }}>
                   <h3
@@ -1792,15 +1745,43 @@ export default function LandingPage() {
                   >
                     {block.h}
                   </h3>
-                  <p
-                    style={{
-                      fontSize: "1rem",
-                      lineHeight: 1.8,
-                      color: "#64748b",
-                    }}
-                  >
-                    {block.p}
-                  </p>
+                  {(block.body || [block.p]).map((node, j) =>
+                    typeof node === "string" ? (
+                      <p
+                        key={j}
+                        style={{
+                          fontSize: "1rem",
+                          lineHeight: 1.8,
+                          color: "#64748b",
+                          marginBottom: "1rem",
+                        }}
+                      >
+                        {node}
+                      </p>
+                    ) : (
+                      <ul
+                        key={j}
+                        style={{
+                          margin: "0 0 1rem",
+                          paddingLeft: "1.5rem",
+                          color: "#64748b",
+                        }}
+                      >
+                        {node.list.map((item, k) => (
+                          <li
+                            key={k}
+                            style={{
+                              fontSize: "1rem",
+                              lineHeight: 1.8,
+                              marginBottom: "0.5rem",
+                            }}
+                          >
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    )
+                  )}
                 </div>
               ))}
             </div>
@@ -1994,27 +1975,6 @@ export default function LandingPage() {
               >
                 © 2026 SclinNexus. All rights reserved.
               </p>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "1rem",
-                  fontSize: "0.875rem",
-                  color: "rgba(255,255,255,0.5)",
-                }}
-              >
-                <span>Powered by</span>
-                <img
-                  src={sclinTechLogo}
-                  alt="SclinTech Logo"
-                  style={{
-                    height: 48,
-                    width: "auto",
-                    objectFit: "contain",
-                    filter: "brightness(1.1)",
-                  }}
-                />
-              </div>
             </div>
           </div>
         </footer>

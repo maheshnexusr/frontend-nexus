@@ -107,7 +107,11 @@ export const sponsorLocationsClient = {
         onProgress(Math.round((evt.loaded * 100) / evt.total));
       },
     });
-    return { imported: res?.imported ?? 0, skipped: res?.skipped ?? 0 };
+    return {
+      imported: res?.imported ?? 0,
+      skipped:  res?.skipped ?? 0,
+      errors:   Array.isArray(res?.errors) ? res.errors : [],
+    };
   },
 
   async exportCSV(_studyId) {

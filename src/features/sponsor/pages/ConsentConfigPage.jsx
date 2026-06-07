@@ -8,6 +8,7 @@ import {
   X, File as FileIcon,
 } from 'lucide-react';
 import { sponsorConsentClient }  from '@/features/sponsor/api/sponsorConsentClient';
+import { resolveFileUrl }        from '@/api/fileUrl';
 import { addToast }              from '@/app/notificationSlice';
 import { formatDate, formatDateTime } from '@/utils/formatDate';
 import SnapshotButton from '@/components/feedback/SnapshotButton';
@@ -584,7 +585,9 @@ export default function ConsentConfigPage() {
             {documents.map((d) => (
               <div key={d.id} className={styles.docRow}>
                 <FileIcon size={15} className={styles.docIcon} />
-                <span className={styles.docName}>{d.name}</span>
+                {d.url
+                  ? <a href={resolveFileUrl(d.url)} target="_blank" rel="noreferrer" download={d.name} className={styles.docName}>{d.name}</a>
+                  : <span className={styles.docName}>{d.name}</span>}
                 {d.size > 0 && <span className={styles.docSize}>{fmtSize(d.size)}</span>}
                 {canDelete && (
                   <button

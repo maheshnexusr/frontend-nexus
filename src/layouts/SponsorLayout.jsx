@@ -30,6 +30,7 @@ import {
   Database,
   Notebook,
   ClipboardList,
+  ClipboardCheck,
   FileCheck,
   ShieldCheck,
   MapPin,
@@ -118,6 +119,13 @@ export default function SponsorLayout() {
         : { key: 'capture', label: 'Data Capture', icon: Database,     path: `${base}/capture` })
     : null;
 
+  /* ── Screening Report — Inclusion/Exclusion overview. HIDDEN from the nav
+        (route/page kept). Restore by reinstating the gated item below. ──────── */
+  const screeningItem = null;
+  // const screeningItem = (allowed('data_capture') && scope !== 'EPRO' && scope !== 'SURVEY')
+  //   ? { key: 'screening-report', label: 'Screening Report', icon: ClipboardCheck, path: `${base}/screening-report` }
+  //   : null;
+
   /* ── Primary nav: each leaf must be allowed by BOTH study.config AND
         the active user's role permissions. ─────────────────────────────── */
   const consentChildren = [
@@ -154,6 +162,7 @@ export default function SponsorLayout() {
 
     /* 2 — scope-driven */
     captureItem,
+    screeningItem,
 
     /* 3 — Consent Management (gated by config.consentManager + perms) */
     cfg.consentManager && consentChildren.length > 0 && {
@@ -204,16 +213,8 @@ export default function SponsorLayout() {
       icon:  BarChart2,
       path:  `${base}/reports`,
     },
-    {
-      key:   'profile',
-      label: 'Profile Settings',
-      icon:  UserCircle,
-      children: [
-        { key: 'profile-me',  label: 'My Profile',      icon: User,     path: `${base}/profile`         },
-        { key: 'profile-pwd', label: 'Change Password', icon: KeyRound, path: `${base}/change-password` },
-        { key: 'logout',      label: 'Logout',          icon: LogOut,   path: '/logout'                 },
-      ],
-    },
+    // Profile Settings removed from the left menu (spec) — now in the footer
+    // ProfileCard (My Profile / Change Password / Logout).
   ].filter(Boolean);
 
   /* Close mobile drawer at desktop width */
@@ -250,8 +251,9 @@ export default function SponsorLayout() {
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
         profilePath={`${base}/profile`}
-        settingsPath={`${base}/profile`}
+        changePasswordPath={`${base}/change-password`}
         notificationsPath={null}
+        subtitle="Sponsor"
       />
 
       <div className={clx(styles.body, collapsed && styles.bodyCollapsed)}>

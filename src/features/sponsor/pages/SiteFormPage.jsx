@@ -10,12 +10,13 @@
  */
 
 import { useEffect, useState, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { ArrowLeft } from 'lucide-react';
 
 import FormField         from '@/components/form/FormField';
 import SearchableDropdown from '@/components/form/SearchableDropdown';
+import PostalCodeSelect   from '@/features/sponsor/components/sites/PostalCodeSelect';
 import { addToast }      from '@/app/notificationSlice';
 import { sponsorSitesClient }     from '@/features/sponsor/api/sponsorSitesClient';
 import { sponsorCountriesClient } from '@/features/sponsor/api/sponsorCountriesClient';
@@ -74,15 +75,19 @@ export default function SiteFormPage() {
   const { studyId, siteId } = useParams();
   const navigate            = useNavigate();
   const dispatch            = useDispatch();
-  const isEdit              = !!siteId;
+  const location            = useLocation();
+  // View mode = the same Create/Edit form, read-only (route ends with /view).
+  const readOnly            = location.pathname.endsWith('/view');
+  const isEdit              = !!siteId && !readOnly;
 
   const [form,         setForm]        = useState(EMPTY);
   const [errors,       setErrors]      = useState({});
-  const [loading,      setLoading]     = useState(isEdit);
+  const [loading,      setLoading]     = useState(!!siteId);
   const [saving,       setSaving]      = useState(false);
   const [apiError,     setApiError]    = useState('');
   const [countryOpts,  setCountryOpts] = useState([]);
   const [dialingCodes, setDialingCodes] = useState([]);
+  const [locations,    setLocations]   = useState([]); // study postal-code master
 
   // ── Load active countries for both Country dropdown and Country Code list ──
   // Uses the auth-only lookup endpoint — populating this dropdown must not
@@ -110,20 +115,40 @@ export default function SiteFormPage() {
       });
   }, [studyId, dispatch]);
 
-  // ── Load existing site when editing ────────────────────────────────────────
+  // ── Load the study's locations (postal-code master) for the searchable
+  // Postal Code dropdown + City/District/State autofill. ─────────────────────
   useEffect(() => {
-    if (!isEdit) return;
+    sponsorSitesClient.getLocations(studyId).then(setLocations).catch(() => setLocations([]));
+  }, [studyId]);
+
+  // ── Load existing site when editing OR viewing ─────────────────────────────
+  useEffect(() => {
+    if (!siteId) return;
     setLoading(true);
     sponsorSitesClient.getById?.(studyId, siteId)
       ?.then((site) => { setForm(seedFromSite(site)); })
       .catch(() => dispatch(addToast({ type: 'error', message: 'Failed to load site.' })))
       .finally(() => setLoading(false));
-  }, [isEdit, studyId, siteId, dispatch]);
+  }, [studyId, siteId, dispatch]);
 
   const set = (field) => (val) => {
     const v = val?.target ? val.target.value : val;
     setForm((p) => ({ ...p, [field]: v }));
     setErrors((p) => { const e = { ...p }; delete e[field]; return e; });
+  };
+
+  // Selecting a Postal Code loads City / District / State (and Country) from the
+  // matched study location — per spec item 6.
+  const onPickLocation = (loc) => {
+    setForm((p) => ({
+      ...p,
+      postalCode: loc.postalCode,
+      city:       loc.city ?? '',
+      district:   loc.district ?? '',
+      state:      loc.state ?? '',
+      country:    loc.countryId || p.country,
+    }));
+    setErrors((p) => { const e = { ...p }; delete e.postalCode; return e; });
   };
 
   // ── Validation ─────────────────────────────────────────────────────────────
@@ -235,9 +260,9 @@ export default function SiteFormPage() {
           <ArrowLeft size={16} /> Back
         </button>
         <div className={styles.pageTitle}>
-          <h1 className={styles.title}>{isEdit ? 'Edit Site' : 'Create New Site'}</h1>
+          <h1 className={styles.title}>{readOnly ? 'View Site' : isEdit ? 'Edit Site' : 'Create New Site'}</h1>
           <p className={styles.sub}>
-            {isEdit ? 'Update the site details below.' : 'Fill in the details to register a new site.'}
+            {readOnly ? 'Site details (read-only).' : isEdit ? 'Update the site details below.' : 'Fill in the details to register a new site.'}
           </p>
         </div>
       </div>
@@ -246,6 +271,7 @@ export default function SiteFormPage() {
       <div className={styles.card}>
         {apiError && <div className={styles.apiError}>{apiError}</div>}
 
+        <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, pointerEvents: readOnly ? 'none' : undefined }}>
         <section className={styles.section}>
           <div className={styles.row2}>
             <FormField label="Site ID" name="siteCode" required error={errors.siteCode}>
@@ -337,12 +363,12 @@ export default function SiteFormPage() {
 
           <div className={styles.row2}>
             <FormField label="Postal Code" name="postalCode" required error={errors.postalCode}>
-              <input
-                id="postalCode"
-                className={ic(styles, errors.postalCode)}
-                placeholder="Enter postal code"
+              <PostalCodeSelect
                 value={form.postalCode}
-                onChange={set('postalCode')}
+                locations={locations}
+                invalid={!!errors.postalCode}
+                placeholder="Search postal code…"
+                onSelect={onPickLocation}
               />
             </FormField>
             <FormField label="City" name="city">
@@ -350,7 +376,9 @@ export default function SiteFormPage() {
                 id="city"
                 className={styles.input}
                 value={form.city}
-                onChange={set('city')}
+                readOnly
+                placeholder="Auto-filled from postal code"
+                title="Loaded from the selected postal code"
               />
             </FormField>
           </div>
@@ -361,7 +389,9 @@ export default function SiteFormPage() {
                 id="district"
                 className={styles.input}
                 value={form.district}
-                onChange={set('district')}
+                readOnly
+                placeholder="Auto-filled from postal code"
+                title="Loaded from the selected postal code"
               />
             </FormField>
             <FormField label="State" name="state">
@@ -369,7 +399,9 @@ export default function SiteFormPage() {
                 id="state"
                 className={styles.input}
                 value={form.state}
-                onChange={set('state')}
+                readOnly
+                placeholder="Auto-filled from postal code"
+                title="Loaded from the selected postal code"
               />
             </FormField>
           </div>
@@ -384,6 +416,7 @@ export default function SiteFormPage() {
             />
           </FormField>
         </section>
+        </fieldset>
 
         {/* Footer */}
         <div className={styles.footer}>
@@ -392,6 +425,7 @@ export default function SiteFormPage() {
               <input
                 type="checkbox"
                 checked={form.active}
+                disabled={readOnly}
                 onChange={(e) => set('active')(e.target.checked)}
               />
               <span className={`${styles.toggleTrack} ${form.active ? styles.toggleTrackOn : ''}`} />
@@ -401,11 +435,13 @@ export default function SiteFormPage() {
 
           <div className={styles.footerActions}>
             <button className={styles.btnCancel} onClick={handleCancel} disabled={saving} type="button">
-              Cancel
+              {readOnly ? 'Close' : 'Cancel'}
             </button>
-            <button className={styles.btnSave} onClick={handleSubmit} disabled={saving} type="button">
-              {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Site'}
-            </button>
+            {!readOnly && (
+              <button className={styles.btnSave} onClick={handleSubmit} disabled={saving} type="button">
+                {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Site'}
+              </button>
+            )}
           </div>
         </div>
       </div>

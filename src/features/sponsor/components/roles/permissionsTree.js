@@ -127,8 +127,8 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     dashboard:         ['view', 'export'],
     data_capture:      ['view', 'create', 'edit', 'delete', 'export', 'activity_log'],
     subjects:          ['view', 'create', 'edit', 'data_capture', 'activity_log'],
-    query_manager:     ['view', 'create', 'edit', 'delete', 'export'],
-    data_verification: ['view', 'create', 'edit', 'export'],
+    query_manager:     ['view', 'respond', 'reopen', 'escalate'],
+    data_verification: ['view', 'verify'],
     reports:           ['view', 'create', 'export'],
     sites:             ['view'],
     site_personnel:    ['view'],
@@ -136,8 +136,8 @@ export const DEFAULT_ROLE_PERMISSIONS = {
 
   'Data Reviewer': preset({
     dashboard:         ['view', 'export'],
-    data_verification: ['view', 'edit', 'verify', 'export'],
-    query_manager:     ['view'],
+    data_verification: ['view', 'verify'],
+    query_manager:     ['view', 'respond'],
     reports:           ['view', 'export'],
   }),
 

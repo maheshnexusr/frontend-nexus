@@ -11,7 +11,8 @@ function isoDaysAgo(n) {
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 
 function defaultFilters() {
-  return { site: null, country: null, dateFrom: isoDaysAgo(30), dateTo: todayISO() };
+  // Spec §4 — default to the last 15 days (today + 14 prior days, inclusive).
+  return { site: null, country: null, dateFrom: isoDaysAgo(14), dateTo: todayISO() };
 }
 
 function defaultWidgetConfig() {

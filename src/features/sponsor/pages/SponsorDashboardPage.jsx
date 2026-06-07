@@ -1,13 +1,14 @@
 /**
  * SponsorDashboardPage — /sponsor/:studyId/dashboard
  *
- * Clinical Intelligence Dashboard for the Sponsor Workspace.
- * Features: Site/Country/Date filters, drill-down, configurable widgets,
- * multi-format export (CSV / Excel / PDF tabular + PDF snapshot),
- * manual + auto refresh (60 s polling).
+ * Sponsor (all-sites) dashboard. A fixed set of cards + a day-wise enrollment
+ * graph (spec §5). Toolbar keeps Site/Country/Date filters + Snapshot; the
+ * auto-refresh / last-updated / reset / configure / export controls were
+ * removed per spec §2. Cards are gated on the `dashboard.view` permission and
+ * the Snapshot button on `dashboard.snapshot`.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import {
@@ -17,24 +18,16 @@ import {
   selectStudyError,
 } from '@/features/workspace/store/workspaceSlice';
 import { addToast } from '@/app/notificationSlice';
-import { exportTable } from '@/utils/exportTable';
+import { usePermissions } from '@/features/auth/usePermissions';
 
-import useDashboardState       from './dashboard/useDashboardState';
-import useDashboardData        from './dashboard/useDashboardData';
-import DashboardToolbar        from './dashboard/DashboardToolbar';
-import ConfigureWidgetsModal   from './dashboard/ConfigureWidgetsModal';
+import useDashboardState from './dashboard/useDashboardState';
+import useDashboardData  from './dashboard/useDashboardData';
+import DashboardToolbar  from './dashboard/DashboardToolbar';
+import KpiCard           from './dashboard/widgets/KpiCard';
+import BarWidget         from './dashboard/widgets/BarWidget';
 import { exportDashboardSnapshot } from './dashboard/exportDashboardPdf';
-import { WIDGETS_BY_ID, CATEGORY_ORDER, isWidgetPermitted } from './dashboard/widgetRegistry';
-import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
-import { selectCurrentUser } from '@/features/auth/authSlice';
 
 import styles from './dashboard/dashboard.module.css';
-
-const EXPORT_COLUMNS = [
-  { header: 'Widget', accessor: 'widget' },
-  { header: 'Label',  accessor: 'label'  },
-  { header: 'Value',  accessor: 'value'  },
-];
 
 export default function SponsorDashboardPage() {
   const dispatch    = useAppDispatch();
@@ -43,31 +36,15 @@ export default function SponsorDashboardPage() {
   const study       = useAppSelector(selectActiveStudy);
   const status      = useAppSelector(selectStudyStatus);
   const error       = useAppSelector(selectStudyError);
-  const studyConfig = study?.config;
   const gridRef     = useRef(null);
-  // Per-study permission tree for the active user (null = unrestricted) — the
-  // same resolver the sidebar menu uses. Drives which dashboard widgets show.
-  const perms       = useSiteRolePermissions(studyId);
-  // Per-role dashboard whitelist (migration 023). Either snake or camel key
-  // can come back from the backend depending on the codepath. null = use
-  // category-leaf gating; array (possibly empty) = explicit whitelist.
-  const currentUser = useAppSelector(selectCurrentUser);
-  const dashboardWidgetKeys =
-    currentUser?.dashboard_widget_keys ?? currentUser?.dashboardWidgetKeys ?? null;
-  const whitelist = Array.isArray(dashboardWidgetKeys) ? new Set(dashboardWidgetKeys) : null;
+  const { has }     = usePermissions();
+  const canView     = has('dashboard', 'view');
+  const canSnapshot = has('dashboard', 'snapshot');
 
-  const {
-    filters, setFilter, resetFilters,
-    widgets, orderedWidgetIds, toggleWidget, moveWidget, resetWidgets,
-    autoRefresh, setAutoRefresh,
-  } = useDashboardState(studyId);
+  const { filters, setFilter } = useDashboardState(studyId);
+  const { data, loading, error: dataError, refresh } = useDashboardData({ studyId, filters, autoRefresh: false });
 
-  const {
-    data, loading, error: dataError, lastUpdated, refresh,
-  } = useDashboardData({ studyId, filters, autoRefresh });
-
-  const [configureOpen, setConfigureOpen] = useState(false);
-  const [snapshotting,  setSnapshotting]  = useState(false);
+  const [snapshotting, setSnapshotting] = useState(false);
 
   useEffect(() => {
     if (studyId && study?.id !== studyId) {
@@ -83,59 +60,6 @@ export default function SponsorDashboardPage() {
     },
     [navigate, studyId],
   );
-
-  // Grouped visible widgets by category, in user-chosen order. Three gates:
-  //   1. user's personal widget config (visible flag in their saved layout)
-  //   2. role-level whitelist (dashboardWidgetKeys) — if set on the role
-  //   3. category-leaf permission gate (canViewLeaf)
-  //   4. study Step-3 config (requires fn on each widget)
-  const visibleByCategory = useMemo(() => {
-    const groups = CATEGORY_ORDER.reduce((acc, cat) => { acc[cat] = []; return acc; }, {});
-    for (const id of orderedWidgetIds) {
-      const meta = WIDGETS_BY_ID[id];
-      const cfg  = widgets[id];
-      if (!meta || !cfg?.visible) continue;
-      // Per-role whitelist — only show widgets explicitly granted on the role.
-      if (whitelist && !whitelist.has(id)) continue;
-      // Permission gate — a role only sees widgets its permissions allow.
-      if (!isWidgetPermitted(meta, perms)) continue;
-      const gatedOut = meta.requires ? !meta.requires(study, studyConfig) : false;
-      if (gatedOut) continue;
-      groups[meta.category].push(meta);
-    }
-    return groups;
-  }, [orderedWidgetIds, widgets, study, studyConfig, perms, whitelist]);
-
-  const anyVisible = Object.values(visibleByCategory).some((arr) => arr.length > 0);
-
-  const handleTabularExport = useCallback((format) => {
-    const rows = [];
-    for (const cat of CATEGORY_ORDER) {
-      for (const meta of visibleByCategory[cat]) {
-        try {
-          const exported = meta.exportRows?.(data) ?? [];
-          rows.push(...exported);
-        } catch { /* skip faulty widget */ }
-      }
-    }
-    if (!rows.length) {
-      dispatch(addToast({ type: 'error', message: 'Nothing to export — no visible widgets with data.' }));
-      return;
-    }
-    const filename = `Study${studyId}_Dashboard_${new Date().toISOString().slice(0, 10)}`;
-    try {
-      exportTable(format, {
-        columns:   EXPORT_COLUMNS,
-        rows,
-        filename,
-        sheetName: 'Dashboard',
-        title:     `${study?.title ?? 'Study'} — Dashboard`,
-      });
-      dispatch(addToast({ type: 'success', message: 'Dashboard exported.' }));
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to export dashboard.' }));
-    }
-  }, [data, dispatch, studyId, study?.title, visibleByCategory]);
 
   const handleSnapshot = useCallback(async () => {
     if (!gridRef.current) return;
@@ -169,7 +93,16 @@ export default function SponsorDashboardPage() {
     );
   }
 
+  if (!canView) {
+    return (
+      <div className={styles.center}>
+        <p className={styles.errorText}>You do not have permission to view this dashboard.</p>
+      </div>
+    );
+  }
+
   const scope = study?.scope ?? '';
+  const enrollmentByDay = Array.isArray(data.enrollmentByDay) ? data.enrollmentByDay : [];
 
   return (
     <div className={styles.page}>
@@ -184,7 +117,7 @@ export default function SponsorDashboardPage() {
               </span>
             )}
           </h1>
-          <p className={styles.subtitle}>Clinical intelligence dashboard · filter, drill down, configure and export.</p>
+          <p className={styles.subtitle}>All-sites overview · subjects, sites and enrollment.</p>
         </div>
       </div>
 
@@ -192,17 +125,12 @@ export default function SponsorDashboardPage() {
         studyId={studyId}
         filters={filters}
         setFilter={setFilter}
-        resetFilters={resetFilters}
         refreshing={loading}
         onRefresh={refresh}
-        onConfigure={() => setConfigureOpen(true)}
-        onExport={handleTabularExport}
         onSnapshot={handleSnapshot}
-        autoRefresh={autoRefresh}
-        setAutoRefresh={setAutoRefresh}
-        lastUpdated={lastUpdated}
-        exportDisabled={loading || !anyVisible}
+        canSnapshot={canSnapshot}
         snapshotting={snapshotting}
+        snapshotDisabled={loading}
       />
 
       {dataError && (
@@ -210,46 +138,29 @@ export default function SponsorDashboardPage() {
       )}
 
       <div ref={gridRef} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {!anyVisible ? (
-          <div className={styles.empty}>
-            No widgets visible. Click <strong>Configure</strong> to enable widgets for this study.
+        <section className={styles.section}>
+          <div className={styles.grid}>
+            <KpiCard label="Total Subjects"   value={data.totalSubjects}   accent="#2563eb" onClick={() => drillDown('/subjects')} />
+            <KpiCard label="Total Sites"      value={data.totalSites}      accent="#059669" onClick={() => drillDown('/sites')} />
+            <KpiCard label="Enrolled Subjects" value={data.enrolledSubjects} accent="#7c3aed" onClick={() => drillDown('/subjects?status=Enrolled')} />
+            <KpiCard label="Excluded Subjects" value={data.excludedSubjects} accent="#d97706" onClick={() => drillDown('/subjects?eligibility=Excluded')} />
           </div>
-        ) : (
-          CATEGORY_ORDER.map((cat) => {
-            const metas = visibleByCategory[cat];
-            if (!metas.length) return null;
-            return (
-              <section key={cat} className={styles.section}>
-                <h2 className={styles.sectionTitle}>{cat}</h2>
-                <div className={styles.grid}>
-                  {metas.map((meta) => (
-                    <div key={meta.id} style={{
-                      gridColumn:
-                        meta.chart === 'kpi' ? undefined :
-                        meta.chart === 'alerts' ? '1 / -1' : undefined,
-                    }}>
-                      {meta.render(data ?? {}, { drillDown })}
-                    </div>
-                  ))}
-                </div>
-              </section>
-            );
-          })
-        )}
-      </div>
+        </section>
 
-      <ConfigureWidgetsModal
-        open={configureOpen}
-        onClose={() => setConfigureOpen(false)}
-        widgets={widgets}
-        orderedWidgetIds={orderedWidgetIds}
-        toggleWidget={toggleWidget}
-        moveWidget={moveWidget}
-        resetWidgets={resetWidgets}
-        study={study}
-        studyConfig={studyConfig}
-        perms={perms}
-      />
+        <section className={styles.section}>
+          <div className={styles.grid}>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <BarWidget
+                title="All Sites — Actual Enrollments (Day-wise)"
+                data={enrollmentByDay}
+                valueKey="count"
+                labelKey="date"
+                color="#2563eb"
+              />
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

@@ -17,7 +17,8 @@
       "Bash(awk NR>=5550 && NR<=5900 *)",
       "Bash(npx eslint *)",
       "Bash(grep -n \"updateField\\\\|selectField\\\\|annotations\\\\|field\\\\\\\\.id\" C:/Users/admin/Downloads/EDC/EDC/src/features/cro/store/studyFormSlice.js)",
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Bash(git commit *)"
     ]
   }
 }

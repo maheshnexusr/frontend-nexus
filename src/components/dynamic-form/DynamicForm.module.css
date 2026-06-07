@@ -420,6 +420,14 @@
   border-bottom: 2px solid #e2e8f0;
 }
 
+.layoutH3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #334155;
+  margin: 4px 0 0;
+  padding-bottom: 4px;
+}
+
 .layoutPara {
   font-size: 0.9rem;
   color: #475569;

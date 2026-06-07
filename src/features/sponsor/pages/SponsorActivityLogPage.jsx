@@ -132,9 +132,21 @@ function DetailPanel({ log, onClose }) {
             </div>
           )}
 
+          {log.deletedCounts && (
+            <div className={css.section}>
+              <p className={css.sectionLabel}>Deleted Records</p>
+              <p className={css.sectionText}>
+                {Object.entries(log.deletedCounts)
+                  .filter(([, n]) => Number(n) > 0)
+                  .map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`)
+                  .join(' · ') || 'No child records'}
+              </p>
+            </div>
+          )}
+
           {(log.beforeValue || log.afterValue) && (
             <div className={css.section}>
-              <p className={css.sectionLabel}>Changes</p>
+              <p className={css.sectionLabel}>{log.actionType === 'DELETE' ? 'Deleted Data (snapshot)' : 'Changes'}</p>
               <div className={css.diffRow}>
                 <div className={css.diffCol}>
                   <p className={css.diffLabel}>Before</p>

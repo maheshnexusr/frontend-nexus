@@ -12,11 +12,33 @@ export const makeField = (type = 'text') => ({
   placeholder: '',
   helpText: '',
   required: false,
+  requiredMessage: '',
+  // Soft / hard check (clinical EDC edit checks):
+  //   hardCheck (default true)  → blocks Save/Submit until the field has a value.
+  //   softCheck (default false) → warning only; the user can acknowledge + continue.
+  // Each carries its own message; {Field Name} is interpolated at data entry.
+  hardCheck: true,
+  hardMessage: '',
+  softCheck: false,
+  softMessage: '',
   defaultValue: '',
   options: ['select','multiselect','radiogroup','checkboxgroup'].includes(type)
     ? [{ label: 'Option 1', value: 'opt_1' }, { label: 'Option 2', value: 'opt_2' }]
     : undefined,
-  validation: { minLength: '', maxLength: '', min: '', max: '', pattern: '' },
+  validation: { minLength: '', maxLength: '', min: '', max: '', pattern: '', patternPreset: '' },
+  // Radio / checkbox group config (spec). Harmless on other field types.
+  orientation: 'vertical',     // vertical | horizontal
+  allowOther: false,
+  otherLabel: 'Other',
+  otherFreeText: true,
+  defaultValues: [],           // checkbox group default selection
+  minSelections: '',           // checkbox group
+  maxSelections: '',           // checkbox group
+  selectAll: false,
+  randomizeOptions: false,
+  displayCodes: false,
+  captureAudit: true,
+  trackChanges: true,
   condition: { enabled: false, logic: 'AND', rules: [] },
   comments: [],
 });
@@ -57,6 +79,10 @@ const initialState = {
   },
   triggers:  [],
   comments:  [],
+  // Inclusion/Exclusion eligibility criteria (form-level). Each row:
+  // { id, type:'inclusion'|'exclusion', blockId, pageId, fieldId, fieldLabel,
+  //   operator, value, logic:'AND'|'OR' }
+  eligibilityCriteria: [],
   isDirty:   false,
 };
 
@@ -75,6 +101,7 @@ const studyFormSlice = createSlice({
         state.submissionControls = { ...state.submissionControls, ...(data.submissionControls ?? {}) };
         state.triggers           = data.triggers           ?? [];
         state.comments           = data.comments           ?? [];
+        state.eligibilityCriteria = data.eligibilityCriteria ?? [];
       } else {
         state.blocks = [makeBlock(1)];
       }
@@ -87,6 +114,11 @@ const studyFormSlice = createSlice({
     resetStudyForm() { return initialState; },
 
     setActivePanel(state, { payload }) { state.activePanel = payload; },
+
+    setEligibilityCriteria(state, { payload }) {
+      state.eligibilityCriteria = Array.isArray(payload) ? payload : [];
+      state.isDirty = true;
+    },
 
     // ── Block operations ────────────────────────────────────────────────────
     addBlock(state) {
@@ -322,6 +354,7 @@ export const {
   addPage, removePage, updatePage, selectPage, reorderPages,
   addField, removeField, updateField, duplicateField, reorderFields, selectField, deselectField,
   updateSubmissionControls,
+  setEligibilityCriteria,
   addTrigger, updateTrigger, removeTrigger,
   addComment, resolveComment,
   markSaved,
@@ -338,6 +371,7 @@ export const selectSelectedFieldId = (s) => s.studyForm.selectedFieldId;
 export const selectActivePanel     = (s) => s.studyForm.activePanel;
 export const selectSubmissionCtrl  = (s) => s.studyForm.submissionControls;
 export const selectTriggers        = (s) => s.studyForm.triggers;
+export const selectEligibilityCriteria = (s) => s.studyForm.eligibilityCriteria;
 export const selectComments        = (s) => s.studyForm.comments;
 export const selectIsDirty         = (s) => s.studyForm.isDirty;
 export const selectFormMeta        = (s) => ({ formId: s.studyForm.formId, formTitle: s.studyForm.formTitle });

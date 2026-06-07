@@ -21,27 +21,28 @@ import styles from './StudyListPage.module.css';
 const fmtDate = (iso) => formatDate(iso) || null;
 
 /**
- * Progress % for a study based on its timeline (start → expectedEnd).
- *   - Completed status / past end date → 100
- *   - Not started yet / no dates → 0
- *   - Otherwise → linear elapsed/total clipped to [0, 100]
+ * Real study progress = enrolment toward target (enrolled ÷ enrollment target),
+ * summed across the study's sites from its tenant DB. Returns null when there's
+ * no target to measure against (can't compute a meaningful %).
  */
+// Target = summed site enrolment targets if set, else the study-level
+// enrolment cap (max_enrollments). enrolled = subjects recruited (tenant).
+function enrollmentTargetOf(row) {
+  return Number(row.enrollmentTarget ?? 0) || Number(row.maxEnrollments ?? 0);
+}
 function studyProgress(row) {
-  if ((row.status ?? '').toLowerCase() === 'completed') return 100;
-  const start = row.startDate       ? new Date(row.startDate).getTime()       : null;
-  const end   = row.expectedEndDate ? new Date(row.expectedEndDate).getTime() : null;
-  if (!start || !end || end <= start) return 0;
-  const now = Date.now();
-  if (now <= start) return 0;
-  if (now >= end)   return 100;
-  return Math.round(((now - start) / (end - start)) * 100);
+  const target   = enrollmentTargetOf(row);
+  const enrolled = Number(row.enrolledSubjects ?? 0);
+  if (!target || target <= 0) return null;       // no target → can't compute
+  return Math.min(100, Math.round((enrolled / target) * 100));
 }
 
-function progressColor(pct, status) {
-  if ((status ?? '').toLowerCase() === 'completed' || pct >= 100) return '#16a34a';   // green
-  if (pct >= 75) return '#f59e0b';   // amber
-  if (pct >= 1)  return '#2563eb';   // blue
-  return '#94a3b8';                  // gray (not started)
+function progressColor(pct) {
+  if (pct >= 100) return '#16a34a';   // green  — target met
+  if (pct >= 75)  return '#22c55e';   // light green — nearly there
+  if (pct >= 40)  return '#2563eb';   // blue   — in progress
+  if (pct >= 1)   return '#f59e0b';   // amber  — early
+  return '#94a3b8';                   // gray   — none enrolled yet
 }
 
 export default function StudyListPage() {
@@ -173,17 +174,36 @@ export default function StudyListPage() {
     },
     {
       key:    'progress',
-      label:  'Progress',
-      width:  '150px',
+      label:  'Enrollment',
+      width:  '160px',
       render: (_, row) => {
-        const pct   = studyProgress(row);
-        const color = progressColor(pct, row.status);
+        const pct      = studyProgress(row);
+        const enrolled = Number(row.enrolledSubjects ?? 0);
+        const target   = enrollmentTargetOf(row);
+        // No target set / study not provisioned yet → can't show a real %.
+        if (pct === null) {
+          return (
+            <div className={styles.progressCell}>
+              <span className={styles.progressPct} style={{ color: '#94a3b8' }}>
+                {target > 0 ? '—' : 'No target'}
+              </span>
+            </div>
+          );
+        }
+        // Some enrolment but the ratio rounds to 0 (e.g. 3/5000) — show "<1%"
+        // with a visible sliver so it never reads as zero progress.
+        const tiny     = pct === 0 && enrolled > 0;
+        const color    = tiny ? '#f59e0b' : progressColor(pct);
+        const label    = tiny ? '<1%' : `${pct}%`;
+        const barWidth = tiny ? 2 : pct;
         return (
           <div className={styles.progressCell}>
             <div className={styles.progressTrack}>
-              <div className={styles.progressFill} style={{ width: `${pct}%`, background: color }} />
+              <div className={styles.progressFill} style={{ width: `${barWidth}%`, background: color }} />
             </div>
-            <span className={styles.progressPct} style={{ color }}>{pct}%</span>
+            <span className={styles.progressPct} style={{ color }}>
+              {label} <span style={{ color: '#94a3b8', fontWeight: 500 }}>({enrolled}/{target})</span>
+            </span>
           </div>
         );
       },

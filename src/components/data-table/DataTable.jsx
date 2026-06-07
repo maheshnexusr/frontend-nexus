@@ -84,6 +84,9 @@ export default function DataTable({
   searchPlaceholder,
   emptyStateMessage,
   emptyStateIllustration,
+  // `flat` matches the Data Capture table look: no drop-shadow + no row
+  // striping (plain bordered card). Opt-in so other DataTable pages are unchanged.
+  flat = false,
 }) {
   // ── Local search state (debounced before firing onSearch) ─────────────────
   const [searchValue, setSearchValue] = useState('');
@@ -124,46 +127,34 @@ export default function DataTable({
   // Render
   // ─────────────────────────────────────────────────────────────────────────
 
-  return (
-    <div className={styles.tableContainer}>
-      {/* ── Toolbar ── */}
-      <div className={styles.toolbar}>
-        <div className={styles.toolbarLeft}>
-          <div className={styles.searchWrapper}>
-            <Search size={15} className={styles.searchIcon} aria-hidden="true" />
-            <input
-              type="search"
-              className={styles.searchInput}
-              placeholder={searchPlaceholder}
-              value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
-              aria-label={searchPlaceholder}
-            />
-            {searchValue && (
-              <button
-                className={styles.searchClear}
-                onClick={() => setSearchValue('')}
-                aria-label="Clear search"
-              >
-                <X size={13} />
-              </button>
-            )}
-          </div>
-        </div>
+  // Search box (shared between the in-card toolbar and the flat above-card bar).
+  const searchBar = (
+    <div className={styles.searchWrapper}>
+      <Search size={15} className={styles.searchIcon} aria-hidden="true" />
+      <input
+        type="search"
+        className={styles.searchInput}
+        placeholder={searchPlaceholder}
+        value={searchValue}
+        onChange={(e) => setSearchValue(e.target.value)}
+        aria-label={searchPlaceholder}
+      />
+      {searchValue && (
+        <button
+          className={styles.searchClear}
+          onClick={() => setSearchValue('')}
+          aria-label="Clear search"
+        >
+          <X size={13} />
+        </button>
+      )}
+    </div>
+  );
 
-        <div className={styles.toolbarRight}>
-          {onExport && (
-            <button className={styles.exportBtn} onClick={onExport} type="button">
-              <Download size={14} />
-              <span>Export</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ── Table ── */}
-      <div className={styles.tableWrapper}>
-        <table className={styles.table}>
+  // The table block (thead + tbody) — identical in both layouts.
+  const tableBlock = (
+    <div className={styles.tableWrapper}>
+      <table className={styles.table}>
           <thead>
             <tr>
               {columns.map((col) => (
@@ -205,7 +196,7 @@ export default function DataTable({
               data.map((row, rowIndex) => (
                 <tr
                   key={row.id ?? rowIndex}
-                  className={clx(styles.row, rowIndex % 2 === 1 && styles.rowStriped)}
+                  className={clx(styles.row, !flat && rowIndex % 2 === 1 && styles.rowStriped)}
                 >
                   {columns.map((col) => (
                     <td key={col.key} className={styles.cell}>
@@ -218,6 +209,59 @@ export default function DataTable({
           </tbody>
         </table>
       </div>
+  );
+
+  // ── Flat layout (Data Capture look): search ABOVE a plain bordered card,
+  //    simple Prev/Next below. ───────────────────────────────────────────────
+  if (flat) {
+    return (
+      <div className={styles.flatRoot}>
+        {onSearch && <div className={styles.flatToolbar}>{searchBar}</div>}
+        <div className={clx(styles.tableContainer, styles.flat)}>
+          {tableBlock}
+        </div>
+        {!isEmpty && totalPages > 1 && (
+          <div className={styles.flatPagination}>
+            <button
+              className={styles.flatPageBtn}
+              disabled={page === 1}
+              onClick={() => onPageChange?.(page - 1)}
+            >
+              ← Prev
+            </button>
+            <span className={styles.flatPageInfo}>Page {page} of {totalPages}</span>
+            <button
+              className={styles.flatPageBtn}
+              disabled={page === totalPages}
+              onClick={() => onPageChange?.(page + 1)}
+            >
+              Next →
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Default layout (in-card toolbar + pagination footer). ──────────────────
+  return (
+    <div className={styles.tableContainer}>
+      {/* ── Toolbar ── */}
+      <div className={styles.toolbar}>
+        <div className={styles.toolbarLeft}>
+          {searchBar}
+        </div>
+        <div className={styles.toolbarRight}>
+          {onExport && (
+            <button className={styles.exportBtn} onClick={onExport} type="button">
+              <Download size={14} />
+              <span>Export</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {tableBlock}
 
       {/* ── Pagination ── */}
       {!isEmpty && (

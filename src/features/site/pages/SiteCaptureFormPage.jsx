@@ -32,22 +32,24 @@ export default function SiteCaptureFormPage() {
   // Per-study permission tree (null = unrestricted). A role without
   // data_capture.edit gets the form view-only.
   const perms      = useSiteRolePermissions();
-  const dc         = perms?.data_capture;
-  // Per-action gate. `complete`/`submit` are distinct data_capture actions, but
-  // a role configured before the split (no such key) inherits `edit`, so it
-  // keeps working; an EXPLICIT false withholds that one action.
-  const dcAllows   = (action) => !perms
-    ? true
-    : (typeof dc?.[action] === 'boolean' ? dc[action] === true : dc?.edit === true);
-  const canEdit    = !perms || dc?.edit === true;          // Save / data entry
-  const canComplete = dcAllows('complete');                // Mark Page Completed
-  const canSubmit   = dcAllows('submit');                  // Submit eCRF
+  // NOTE: data-entry actions (Save / Mark Completed / Submit) are gated by
+  // SUBJECT OWNERSHIP, not the data_capture.edit/complete/submit role flags —
+  // see `canEnterData` below. Only the responsible owner fills the form, which
+  // also restores edit access to the right user after a sponsor/CRO reopen.
   // A verifier (data_verification.edit) sees the "Verify Page" action even on a
   // read-only/submitted form — SDV happens on completed data.
-  const canVerify  = !perms || perms?.data_verification?.edit === true;
+  const canVerify  = !perms || perms?.data_verification?.verify === true || perms?.data_verification?.edit === true;
+
+  // Reopen a submitted form needs its own permission (data_capture.reopen) — the
+  // controlled unlock path so submitted data isn't directly editable.
+  const canReopen  = !perms || perms?.data_capture?.reopen === true;
 
   const [blocks,      setBlocks]      = useState([]);
+  const [eligCriteria, setEligCriteria] = useState([]);
+  const [formStatus,  setFormStatus]  = useState('In Progress');
   const [formTitle,   setFormTitle]   = useState('Form');
+  // Study name (not the form name) — shown in the top bar next to Back.
+  const [studyName,   setStudyName]   = useState('');
   const [defaults,    setDefaults]    = useState({});
   // { [pageId]: { completedAt, status } } — pages already Marked Completed.
   const [completedPages, setCompletedPages] = useState({});
@@ -58,6 +60,20 @@ export default function SiteCaptureFormPage() {
   const [error,       setError]       = useState(null);
   const [noFormsHere, setNoFormsHere] = useState(false);
   const [submitted,   setSubmitted]   = useState(false);
+  // Whether the signed-in site user is the subject's RESPONSIBLE owner. Set from
+  // the backend `is_owner` flag on load. Only the owner may fill/submit the form
+  // (and regain edit access after a sponsor/CRO reopen) — everyone else is
+  // read-only, independent of the role's edit permission. Defaults true so the
+  // owner is never briefly locked out before the flag loads (the backend also
+  // enforces this on every save).
+  const [isOwner, setIsOwner] = useState(true);
+  // Owner-scoped data entry. Drives every editable affordance below.
+  const canEnterData = isOwner;
+  // Step-3 study module toggles (from the form GET). When off, the form hides
+  // the verification workflow (Verify / Mark Completed / "Under Verification"
+  // chip) and the query chips. Default true until the form loads.
+  const [verificationEnabled, setVerificationEnabled] = useState(true);
+  const [queryEnabled,        setQueryEnabled]        = useState(true);
 
   // ── Auto-resolve formId: each study has a single form. ─────────────────
   useEffect(() => {
@@ -99,13 +115,19 @@ export default function SiteCaptureFormPage() {
         const form = formRes?.form ?? formRes ?? {};
         const struct = form.structure ?? {};
         setFormTitle(form.title ?? struct.formTitle ?? 'Form');
+        setStudyName(form.studyTitle ?? form.study_title ?? '');
         setBlocks(Array.isArray(struct.blocks) ? struct.blocks : []);
+        setEligCriteria(struct.eligibilityCriteria ?? struct.eligibility_criteria ?? []);
+        setVerificationEnabled(form.verificationEnabled ?? form.verification_enabled ?? true);
+        setQueryEnabled(form.queryEnabled ?? form.query_enabled ?? true);
 
         if (subjectId) {
           const dataRes = await siteWorkspaceClient.getSubjectFormData(subjectId, formId);
           if (cancelled) return;
           const row = dataRes?.data ?? null;
           setDefaults(row?.form_data ?? row?.formData ?? {});
+          setFormStatus(row?.status ?? 'In Progress');
+          if (row) setIsOwner(row.is_owner !== false);
 
           // Which pages are already Marked Completed → the runner shows a
           // "Page Completed" badge instead of the button. Non-fatal on error.
@@ -119,7 +141,7 @@ export default function SiteCaptureFormPage() {
                 // PAGE row (field_name empty) → completion + page-level verify status.
                 if (!r.field_name) {
                   if (r.completed_at) cmap[r.page_id] = { completedAt: r.completed_at, status: r.status };
-                  vpages[r.page_id] = { status: r.status, verifiedByName: r.verified_by_name, verifiedAt: r.verified_at };
+                  vpages[r.page_id] = { status: r.status, recordStatus: r.record_status, verifiedByName: r.verified_by_name, verifiedAt: r.verified_at };
                 } else {
                   // FIELD row → per-field verify status (drives the green tag).
                   vfields[r.field_name] = { status: r.status, verifiedByName: r.verified_by_name, verifiedAt: r.verified_at };
@@ -139,10 +161,35 @@ export default function SiteCaptureFormPage() {
     return () => { cancelled = true; };
   }, [formId, subjectId]);
 
+  // A Submitted form is read-only here, and the site owner has no Reopen button
+  // of their own — only a sponsor/CRO can reopen it (from a different session).
+  // Without a live push, the owner's read-only view would stay stale until a
+  // hard reload. Re-pull just the form status whenever this tab regains focus,
+  // so a sponsor-reopened form flips back to editable for the responsible user
+  // automatically. Only touches `formStatus` — never the in-progress values.
+  useEffect(() => {
+    if (!formId || !subjectId) return undefined;
+    const refresh = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      try {
+        const dataRes = await siteWorkspaceClient.getSubjectFormData(subjectId, formId);
+        const row = dataRes?.data ?? null;
+        if (row?.status) setFormStatus(row.status);
+        if (row) setIsOwner(row.is_owner !== false);
+      } catch { /* best-effort status refresh */ }
+    };
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [formId, subjectId]);
+
   const handleSubmit = useCallback(async (formData) => {
-    if (!canSubmit) {
-      dispatch(addToast({ type: 'info', message: 'Your role cannot submit this form.' }));
-      throw new Error('no-submit');
+    if (!canEnterData) {
+      dispatch(addToast({ type: 'info', message: "Only the subject's owner can submit this form." }));
+      throw new Error('not-owner');
     }
     if (!subjectId) {
       dispatch(addToast({ type: 'error', message: 'Cannot save: no subject selected.' }));
@@ -156,23 +203,23 @@ export default function SiteCaptureFormPage() {
       dispatch(addToast({ type: 'success', message: 'Form submitted.' }));
       setSubmitted(true);
     } catch (e) {
-      dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to save form.' }));
+      dispatch(addToast({ type: 'error', message: e?.response?.data?.message || e?.message || 'Failed to save form.' }));
       throw e;
     }
-  }, [subjectId, formId, canSubmit, dispatch]);
+  }, [subjectId, formId, canEnterData, dispatch]);
 
   // Mark the current page Completed → it becomes a Verification Manager
   // work-item. (handleSave runs first inside the runner so values are current.)
   const handleCompletePage = useCallback(async (pageId, pageTitle) => {
-    if (!canComplete || !subjectId) return;
+    if (!canEnterData || !subjectId) return;
     try {
       await siteWorkspaceClient.markPageCompleted(subjectId, formId, pageId, pageTitle);
       dispatch(addToast({ type: 'success', message: 'Page marked completed — sent for verification.' }));
     } catch (e) {
-      dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to mark page completed.' }));
+      dispatch(addToast({ type: 'error', message: e?.response?.data?.message || e?.message || 'Failed to mark page completed.' }));
       throw e;
     }
-  }, [subjectId, formId, canComplete, dispatch]);
+  }, [subjectId, formId, canEnterData, dispatch]);
 
   // Verify the current page (SDV). `fields` = the page's data fields flagged
   // verified; the backend persists field rows and derives the page status.
@@ -187,10 +234,20 @@ export default function SiteCaptureFormPage() {
         fields,
       });
       const skipped = res?.skipped ?? [];
-      if (skipped.length) {
+      const skippedEmpty = res?.skippedEmpty ?? res?.skipped_empty ?? [];
+      const missingRequired = res?.missingRequired ?? res?.missing_required ?? [];
+      if (missingRequired.length) {
+        dispatch(addToast({
+          type: 'warning',
+          message: `Page not fully verified — ${missingRequired.length} required field(s) still empty: ${missingRequired.join(', ')}.`,
+        }));
+      } else if (skipped.length || skippedEmpty.length) {
+        const parts = [];
+        if (skipped.length) parts.push(`${skipped.length} with an open query`);
+        if (skippedEmpty.length) parts.push(`${skippedEmpty.length} empty`);
         dispatch(addToast({
           type: 'info',
-          message: `${skipped.length} field(s) have an open query and were not verified: ${skipped.join(', ')}`,
+          message: `Page verified. Skipped ${parts.join(' and ')} field(s) (not verifiable).`,
         }));
       } else {
         dispatch(addToast({ type: 'success', message: 'Page verified.' }));
@@ -199,20 +256,35 @@ export default function SiteCaptureFormPage() {
       // immediately — using the verifier name the BACKEND resolved (the actual
       // stored verifier), NOT the clicking user's own name, so it matches what
       // every other viewer sees on reload.
-      return { skipped, pageStatus: res?.pageStatus, verifiedByName: res?.verifiedByName ?? res?.verified_by_name ?? null };
+      return { skipped, skippedEmpty, missingRequired, pageStatus: res?.pageStatus, verifiedByName: res?.verifiedByName ?? res?.verified_by_name ?? null };
     } catch (e) {
       dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to verify page.' }));
       throw e;
     }
   }, [subjectId, formId, canVerify, myName, dispatch]);
 
+  // Controlled unlock — reopen a submitted form so the owner can correct it.
+  const handleReopen = useCallback(async () => {
+    if (!canReopen || !subjectId) return;
+    // eslint-disable-next-line no-alert
+    const reason = window.prompt('Reason for reopening this submitted form:');
+    if (reason == null || !reason.trim()) return;
+    try {
+      await siteWorkspaceClient.reopenForm(subjectId, formId, reason.trim());
+      setFormStatus('In Progress');
+      dispatch(addToast({ type: 'success', message: 'Form reopened — it is editable again.' }));
+    } catch (e) {
+      dispatch(addToast({ type: 'error', message: e?.response?.data?.message || e?.message || 'Failed to reopen form.' }));
+    }
+  }, [subjectId, formId, canReopen, dispatch]);
+
   // Save progress without finalising. Backend keeps the form "In Progress" and
   // moves the subject Enrolled → Screening (data capture has begun). Stays on
   // the form so the user can keep editing.
   const handleSave = useCallback(async (formData) => {
-    if (!canEdit) {
-      dispatch(addToast({ type: 'info', message: 'Your role has view-only access to this form.' }));
-      throw new Error('view-only');
+    if (!canEnterData) {
+      dispatch(addToast({ type: 'info', message: "Only the subject's owner can edit this form." }));
+      throw new Error('not-owner');
     }
     if (!subjectId) {
       dispatch(addToast({ type: 'error', message: 'Cannot save: no subject selected.' }));
@@ -228,7 +300,7 @@ export default function SiteCaptureFormPage() {
       dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to save form.' }));
       throw e;
     }
-  }, [subjectId, formId, canEdit, dispatch]);
+  }, [subjectId, formId, canEnterData, dispatch]);
 
   // ── States ─────────────────────────────────────────────────────────────
   if (loading) {
@@ -273,7 +345,7 @@ export default function SiteCaptureFormPage() {
           <button className={s.backBtn} onClick={() => navigate('/site/capture')} style={{ marginBottom: 0 }}>
             <ArrowLeft size={14} /> All subjects
           </button>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{formTitle || 'Data Capture'}</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{studyName || 'Data Capture'}</span>
         </div>
         <div className={s.successCard}>
           <CheckCircle2 size={44} className={s.successIcon} />
@@ -303,13 +375,47 @@ export default function SiteCaptureFormPage() {
   }
 
   // ── Form fill ──────────────────────────────────────────────────────────
+  // A Submitted/Completed form is read-only (data entry locked) until reopened.
+  const isSubmitted = ['Submitted', 'Completed'].includes(formStatus);
   return (
     <div className={s.page}>
       <div className={s.topBar}>
         <button className={s.backBtn} onClick={() => navigate(-1)} style={{ marginBottom: 0 }}>
           <ArrowLeft size={14} /> Back
         </button>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{formTitle || 'Data Capture'}</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{studyName || 'Data Capture'}</span>
+        {isSubmitted && (
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px',
+              borderRadius: 999, fontSize: 11.5, fontWeight: 700,
+              background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
+            }}>
+              🔒 Submitted — read-only
+            </span>
+            {canReopen && (
+              <button
+                type="button"
+                onClick={handleReopen}
+                style={{
+                  padding: '4px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                  border: '1px solid #f59e0b', background: '#fffbeb', color: '#b45309', cursor: 'pointer',
+                }}
+              >
+                Reopen
+              </button>
+            )}
+          </span>
+        )}
+        {!isSubmitted && !isOwner && (
+          <span style={{
+            marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5,
+            padding: '3px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700,
+            background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
+          }}>
+            👁 View-only — only the subject's owner can edit
+          </span>
+        )}
       </div>
 
       {/* Identity strip — Protocol Number / Site Code / Screening Number /
@@ -322,14 +428,17 @@ export default function SiteCaptureFormPage() {
         formTitle={formTitle}
         defaultValues={defaults}
         onSubmit={handleSubmit}
-        onSave={canEdit ? handleSave : undefined}
-        onCompletePage={canComplete ? handleCompletePage : undefined}
-        onVerifyPage={canVerify ? handleVerifyPage : undefined}
+        onSave={canEnterData ? handleSave : undefined}
+        onCompletePage={canEnterData && verificationEnabled ? handleCompletePage : undefined}
+        onVerifyPage={canVerify && verificationEnabled ? handleVerifyPage : undefined}
+        eligibilityCriteria={eligCriteria}
         completedPages={completedPages}
         verification={verification}
-        canSubmit={canSubmit}
-        submitLabel={canEdit ? 'Submit eCRF' : 'Read-only view'}
-        readOnly={!canEdit}
+        verificationEnabled={verificationEnabled}
+        queryEnabled={queryEnabled}
+        canSubmit={canEnterData}
+        submitLabel={canEnterData ? 'Submit eCRF' : 'Read-only view'}
+        readOnly={!canEnterData || isSubmitted}
       />
     </div>
   );

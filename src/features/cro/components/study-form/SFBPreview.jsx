@@ -412,7 +412,7 @@ export default function SFBPreview({ onExitPreview }) {
               </div>
             ) : (
               page.fields.map((field) => {
-                const isLayout = ['h2', 'paragraph', 'divider'].includes(field.type);
+                const isLayout = ['h2', 'h3', 'paragraph', 'divider'].includes(field.type);
                 if (isLayout) {
                   return (
                     <div
@@ -643,6 +643,8 @@ function FieldInput({ field, value, onChange }) {
     }
     case 'h2':
       return <h2 className={s.h2}>{field.label || 'Section Title'}</h2>;
+    case 'h3':
+      return <h3 className={s.h3}>{field.label || 'Sub-heading'}</h3>;
     case 'paragraph':
       return <p className={s.paragraph}>{field.content || field.label || 'Paragraph text.'}</p>;
     case 'divider':

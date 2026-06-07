@@ -25,9 +25,59 @@ import sponsorAxiosClient from '@/api/sponsorAxiosClient';
 import { formatDateTime } from '@/utils/formatDate';
 import s from './ActivityLogDrawer.module.css';
 
+// Uniform audit renderer (spec §Audit): Previous → New value + Reason, plus a
+// per-field change list for data updates. Falls back to remaining metadata.
+const fmtAuditVal = (v) => {
+  if (v === null || v === undefined || v === '') return '—';
+  if (Array.isArray(v)) return v.join(', ') || '—';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+};
+const AUDIT_OMIT = new Set(['actor_name', 'previous_value', 'new_value', 'reason', 'changes', 'subject_id', 'form_id', 'comment_id']);
+function AuditChange({ metadata }) {
+  if (!metadata || typeof metadata !== 'object') return null;
+  const { previous_value, new_value, reason, changes } = metadata;
+  const hasPrevNew = previous_value != null || new_value != null;
+  const extras = Object.entries(metadata).filter(([k, v]) => !AUDIT_OMIT.has(k) && v != null && v !== '');
+  if (!hasPrevNew && !reason && !(Array.isArray(changes) && changes.length) && !extras.length) return null;
+  const pill = { fontSize: 11.5, padding: '1px 7px', borderRadius: 5, fontFamily: 'monospace' };
+  return (
+    <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {hasPrevNew && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ ...pill, background: '#fef2f2', color: '#b91c1c' }}>{fmtAuditVal(previous_value)}</span>
+          <span style={{ color: '#94a3b8' }}>→</span>
+          <span style={{ ...pill, background: '#ecfdf5', color: '#047857' }}>{fmtAuditVal(new_value)}</span>
+        </div>
+      )}
+      {Array.isArray(changes) && changes.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {changes.map((c, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 12 }}>
+              <span style={{ fontWeight: 600, color: '#475569' }}>{c.field}:</span>
+              <span style={{ ...pill, background: '#fef2f2', color: '#b91c1c' }}>{fmtAuditVal(c.previous_value)}</span>
+              <span style={{ color: '#94a3b8' }}>→</span>
+              <span style={{ ...pill, background: '#ecfdf5', color: '#047857' }}>{fmtAuditVal(c.new_value)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {reason && (
+        <div style={{ fontSize: 12, color: '#475569' }}><strong>Reason:</strong> {reason}</div>
+      )}
+      {extras.length > 0 && (
+        <div style={{ fontSize: 11, color: '#94a3b8', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {extras.map(([k, v]) => <span key={k}>{k}: {fmtAuditVal(v)}</span>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const TYPE_LABELS = {
-  subject: 'Subject',
-  form:    'Form',
+  subject:   'Subject',
+  form:      'Form',
+  site_role: 'Site Role',
 };
 
 export default function ActivityLogDrawer({
@@ -136,14 +186,12 @@ export default function ActivityLogDrawer({
                       <span className={s.time}>{formatDateTime(item.created_at ?? item.timestamp)}</span>
                     </div>
                     <div className={s.entryMeta}>
-                      {(item.actor_name ?? item.user_name) && (
-                        <span>by <strong>{item.actor_name ?? item.user_name}</strong></span>
+                      {(item.actor_name ?? item.user_name ?? item.metadata?.actor_name) && (
+                        <span>by <strong>{item.actor_name ?? item.user_name ?? item.metadata?.actor_name}</strong></span>
                       )}
                       {item.resource_type && <span>· {item.resource_type}</span>}
                     </div>
-                    {item.metadata && Object.keys(item.metadata).length > 0 && (
-                      <pre className={s.entryMetadata}>{JSON.stringify(item.metadata, null, 2)}</pre>
-                    )}
+                    <AuditChange metadata={item.metadata} />
                     {item.action_description && (
                       <p className={s.entryDesc}>{item.action_description}</p>
                     )}
@@ -160,7 +208,7 @@ export default function ActivityLogDrawer({
 
 ActivityLogDrawer.propTypes = {
   open:          PropTypes.bool.isRequired,
-  resourceType:  PropTypes.oneOf(['subject', 'form']).isRequired,
+  resourceType:  PropTypes.oneOf(['subject', 'form', 'site_role']).isRequired,
   resourceId:    PropTypes.string,
   resourceLabel: PropTypes.string,
   onClose:       PropTypes.func.isRequired,

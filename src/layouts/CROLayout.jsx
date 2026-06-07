@@ -18,7 +18,6 @@ import {
   Layers,
   FlaskConical,
   Users,
-  UserCircle,
   Activity,
 } from 'lucide-react';
 import { useAppSelector, useAppDispatch } from '@/app/hooks';
@@ -95,17 +94,8 @@ const NAV_ITEMS = [
   },
 ];
 
-const BOTTOM_NAV = [
-  {
-    key:   'profile',
-    label: 'Profile Settings',
-    icon:  UserCircle,
-    children: [
-      { key: 'my-profile',      label: 'My Profile',      path: '/cro/profile'          },
-      { key: 'change-password', label: 'Change Password',  path: '/cro/profile/password' },
-    ],
-  },
-];
+// Profile Settings is no longer a left-menu group — it lives in the footer
+// ProfileCard (My Profile / Change Password / Logout). See Sidebar.ProfileCard.
 
 /* ── Layout component ─────────────────────────────────────────────────────── */
 export default function CROLayout() {
@@ -146,7 +136,9 @@ export default function CROLayout() {
       .filter((item) => !item.children || item.children.length > 0);
 
   const navItems    = filterItems(NAV_ITEMS);
-  const bottomItems = filterItems(BOTTOM_NAV);
+  // Profile Settings removed from the left menu (spec) — My Profile / Change
+  // Password / Logout now live only in the footer ProfileCard.
+  const bottomItems = [];
 
   /* Close mobile drawer when viewport becomes desktop */
   useEffect(() => {
@@ -183,7 +175,7 @@ export default function CROLayout() {
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
         profilePath="/cro/profile"
-        settingsPath="/cro/profile"
+        changePasswordPath="/cro/profile/password"
         notificationsPath="/cro/activity-log"
       />
 

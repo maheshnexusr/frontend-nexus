@@ -4,23 +4,28 @@
 
 .container {
   position: fixed;
-  top: calc(var(--sp-5) + var(--safe-top));
-  right: var(--sp-5);
+  /* Bottom-middle of the viewport. */
+  bottom: calc(var(--sp-5) + var(--safe-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
   z-index: var(--z-toast);
 
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: var(--sp-2);
 
   /* allow clicks to pass through the gap between toasts */
   pointer-events: none;
 }
 
-/* ── Mobile: stretch to full width, pin to top ───────────────────────────── */
+/* ── Mobile: stretch to full width, pin to bottom ────────────────────────── */
 @media (max-width: 479px) {
   .container {
-    top: calc(var(--sp-3) + var(--safe-top));
-    right: var(--sp-3);
+    bottom: calc(var(--sp-3) + var(--safe-bottom, 0px));
     left: var(--sp-3);
+    right: var(--sp-3);
+    transform: none;
+    align-items: stretch;
   }
 }

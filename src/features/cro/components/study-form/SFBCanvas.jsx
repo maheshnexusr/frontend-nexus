@@ -8,7 +8,7 @@ import {
   Trash2, Copy, GripVertical,
   Type, Hash, Mail, Phone, Calendar, CheckSquare, List, Circle,
   FileUp, PenLine, AlignLeft, ToggleLeft, Clock, Star, Image,
-  Minus, AlignCenter, SlidersHorizontal,
+  Minus, AlignCenter, SlidersHorizontal, Heading,
   MessageSquare, StickyNote, HelpCircle, Paperclip, BadgeCheck, Eraser,
 } from 'lucide-react';
 import {
@@ -42,7 +42,7 @@ const TYPE_ICON = {
   select: List, radiogroup: Circle, checkboxgroup: CheckSquare,
   toggle: ToggleLeft, file: FileUp, signature: PenLine,
   rating: Star, slider: SlidersHorizontal, image: Image,
-  h2: AlignCenter, paragraph: AlignLeft, divider: Minus,
+  h2: AlignCenter, h3: Heading, paragraph: AlignLeft, divider: Minus,
 };
 
 export default function SFBCanvas() {
@@ -169,7 +169,7 @@ function DropLine() {
 function FieldCard({ fld, idx, blockId, pageId, selected }) {
   const dispatch = useDispatch();
   const Icon     = TYPE_ICON[fld.type] ?? Type;
-  const isLayout = ['h2', 'paragraph', 'divider'].includes(fld.type);
+  const isLayout = ['h2', 'h3', 'paragraph', 'divider'].includes(fld.type);
   const collab   = fld.collaboration ?? {};
 
   // Live counts pulled from the runtime collaboration store so the icon
@@ -377,6 +377,8 @@ function FieldPreviewRow({ fld }) {
     }
     case 'h2':
       return <div className={s.previewH2}>{fld.label || 'Section Title'}</div>;
+    case 'h3':
+      return <div className={s.previewH3}>{fld.label || 'Sub-heading'}</div>;
     case 'paragraph':
       return <div className={s.previewParagraph}>{fld.content || fld.label || 'Paragraph text…'}</div>;
     case 'divider':

@@ -400,7 +400,7 @@ export default function LocationsPage() {
       </div>
 
       {/* Table */}
-      <DataTable
+      <DataTable flat
         columns={columns}
         data={pageData}
         loading={loading}

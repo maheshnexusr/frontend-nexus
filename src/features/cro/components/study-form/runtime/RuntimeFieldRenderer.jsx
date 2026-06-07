@@ -143,11 +143,12 @@ export default function RuntimeFieldRenderer({
   if (evalResult.hidden) return null;
 
   // Field input is disabled when:
-  //   - rule logic flagged it as disabled, OR
+  //   - a conditional rule flagged it disabled OR read-only (Show/Hide/Read-Only
+  //     conditional logic, or the field's static Read-only toggle), OR
   //   - the form's overall status forbids edits (Locked/Frozen/Signed), OR
   //   - the field itself is locked/frozen, OR
   //   - the user lacks `canEditField` capability.
-  const isDisabled = evalResult.disabled || !gate.canEditField;
+  const isDisabled = evalResult.disabled || evalResult.readOnly || !gate.canEditField;
   const lockedMeta = gate.fieldLock || {};
 
   return (

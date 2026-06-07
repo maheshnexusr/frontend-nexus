@@ -1,12 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useSelector } from 'react-redux';
 import {
   Info, MessageSquare, Clock, AlertTriangle,
   CheckCircle, RotateCcw, Download, Paperclip,
   User, ArrowUp,
 } from 'lucide-react';
 import Modal from '@/components/feedback/Modal';
+import { usePermissions } from '@/features/auth/usePermissions';
+import { selectCurrentUser } from '@/features/auth/authSlice';
 import { sponsorQueryClient, PRIORITY_SLA_DAYS } from '@/features/sponsor/api/sponsorQueryClient';
 import { formatDate, formatDateTime } from '@/utils/formatDate';
+import { resolveFileUrl } from '@/api/fileUrl';
 import styles from './QueryDetailsModal.module.css';
 
 // Both sponsor and site query clients expose getById(queryId) with the same
@@ -15,6 +19,7 @@ import styles from './QueryDetailsModal.module.css';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const PRIORITY_META = {
+  Critical: { color: '#991b1b', bg: '#fee2e2' },
   High:   { color: '#dc2626', bg: '#fef2f2' },
   Medium: { color: '#f59e0b', bg: '#fffbeb' },
   Low:    { color: '#3b82f6', bg: '#eff6ff' },
@@ -50,6 +55,12 @@ export default function QueryDetailsModal({ query, onClose, onAction, client = s
   const [details,   setDetails]   = useState(null);
   const [loading,   setLoading]   = useState(true);
 
+  // Escalate uses the discrete query_manager.escalate leaf, with edit as the
+  // fallback so existing edit-capable roles keep escalating (migration 034).
+  // Scope-aware: usePermissions reads whichever workspace (sponsor/site) is live.
+  const { has } = usePermissions();
+  const canEscalate = has('query_manager', 'escalate') || has('query_manager', 'edit');
+
   useEffect(() => {
     if (!query) return;
     setLoading(true);
@@ -64,15 +75,30 @@ export default function QueryDetailsModal({ query, onClose, onAction, client = s
   const sm = STATUS_META[d?.status]     ?? STATUS_META.Open;
   const sla = PRIORITY_SLA_DAYS[d?.priority] ?? 7;
 
+  // Identity keys for the logged-in user — used to render "you" instead of the
+  // person's own name on the Assigned / Escalated / Reassigned rows. assigned_to
+  // / escalated_to is a personnel_id that can differ from the auth user id, so we
+  // also match on name/email (same loose match the Queries list "only mine" uses).
+  const user = useSelector(selectCurrentUser);
+  const meKeys = useMemo(() => new Set(
+    [user?.id, user?.email, user?.username, user?.fullName]
+      .filter(Boolean)
+      .map((v) => String(v).toLowerCase()),
+  ), [user]);
+  const isMe = (id, name) =>
+    Boolean((id && meKeys.has(String(id).toLowerCase())) ||
+            (name && meKeys.has(String(name).toLowerCase())));
+  const youOr = (id, name, fallback) => (isMe(id, name) ? 'you' : (name || fallback || '—'));
+
   function renderInfo() {
     return (
       <div className={styles.section}>
         {/* Header grid */}
         <div className={styles.infoGrid}>
           <div className={styles.infoItem}><span className={styles.infoLabel}>Query ID</span><span className={styles.infoValue}><code className={styles.qid} title={d.id}>{displayId ?? d.id}</code></span></div>
-          <div className={styles.infoItem}><span className={styles.infoLabel}>Site</span><span className={styles.infoValue}>{d.siteName ? `${d.siteName}${d.siteCode ? ` (${d.siteCode})` : ''}` : '—'}</span></div>
-          <div className={styles.infoItem}><span className={styles.infoLabel}>Subject</span><span className={styles.infoValue} title={d.subjectId}>{d.subjectInitials || d.subjectId || '—'}</span></div>
-          <div className={styles.infoItem}><span className={styles.infoLabel}>Form / CRF</span><span className={styles.infoValue}>{d.formName || '—'}</span></div>
+          <div className={styles.infoItem}><span className={styles.infoLabel}>Site Details</span><span className={styles.infoValue}>{(d.siteCode || d.siteName) ? `${d.siteCode || '—'}${d.siteName ? ` — ${d.siteName}` : ''}` : '—'}</span></div>
+          <div className={styles.infoItem}><span className={styles.infoLabel}>Subject Details</span><span className={styles.infoValue} title={d.subjectId}>{(d.subjectNumber || d.subjectId) ? `${d.subjectNumber || d.subjectId}${d.subjectName ? ` — ${d.subjectName}` : ''}` : '—'}</span></div>
+          <div className={styles.infoItem}><span className={styles.infoLabel}>CRF Block / Page</span><span className={styles.infoValue}>{[d.blockName, d.pageName].filter(Boolean).join(' / ') || '—'}</span></div>
           <div className={styles.infoItem}><span className={styles.infoLabel}>Field Name</span><span className={styles.infoValue}>{d.fieldLabel || d.fieldName || '—'}</span></div>
           <div className={styles.infoItem}><span className={styles.infoLabel}>Current Value</span><span className={styles.infoValue}>{d.currentFieldValue || '—'}</span></div>
           <div className={styles.infoItem}><span className={styles.infoLabel}>Raised By</span><span className={styles.infoValue}>{d.raisedByName || d.raisedBy || '—'}{d.raisedByRole ? ` · ${d.raisedByRole}` : ''}</span></div>
@@ -100,7 +126,7 @@ export default function QueryDetailsModal({ query, onClose, onAction, client = s
         {/* Query details card */}
         <div className={styles.detailCard}>
           <div className={styles.detailRow}>
-            <span className={styles.detailLabel}>Query Text</span>
+            <span className={styles.detailLabel}>Query Description</span>
             <p className={styles.detailValue}>{d.queryText || '—'}</p>
           </div>
           {d.queryReason && (
@@ -124,7 +150,38 @@ export default function QueryDetailsModal({ query, onClose, onAction, client = s
           {(d.assignedToName || d.assignedTo) && (
             <div className={styles.detailRow}>
               <span className={styles.detailLabel}>Assigned To</span>
-              <span className={styles.detailValue}>{d.assignedToName || d.assignedTo}{d.assignedToRole ? ` · ${d.assignedToRole}` : ''}</span>
+              <span
+                className={styles.detailValue}
+                style={isMe(d.assignedTo, d.assignedToName) ? { color: '#0d9488', fontWeight: 600 } : undefined}
+              >
+                {youOr(d.assignedTo, d.assignedToName, d.assignedTo)}
+                {d.assignedToRole ? ` · ${d.assignedToRole}` : ''}
+              </span>
+            </div>
+          )}
+          {d.isReassigned && (
+            <div className={styles.detailRow}>
+              <span className={styles.detailLabel}>Reassigned To</span>
+              <span
+                className={styles.detailValue}
+                style={isMe(d.assignedTo, d.assignedToName) ? { color: '#0d9488', fontWeight: 600 } : undefined}
+              >
+                {youOr(d.assignedTo, d.assignedToName, d.assignedTo)}
+                {d.previousAssignedToName ? ` · was ${d.previousAssignedToName}` : ''}
+                {d.reassignedAt ? ` · ${fmtDateShort(d.reassignedAt)}` : ''}
+              </span>
+            </div>
+          )}
+          {d.isEscalated && (d.escalatedToName || d.escalatedTo) && (
+            <div className={styles.detailRow}>
+              <span className={styles.detailLabel}>Escalated To</span>
+              <span
+                className={styles.detailValue}
+                style={isMe(d.escalatedTo, d.escalatedToName) ? { color: '#b45309', fontWeight: 600 } : { color: '#b45309' }}
+              >
+                ⬆ {youOr(d.escalatedTo, d.escalatedToName, d.escalatedTo)}
+                {d.escalatedAt ? ` · ${fmtDateShort(d.escalatedAt)}` : ''}
+              </span>
             </div>
           )}
         </div>
@@ -187,8 +244,8 @@ export default function QueryDetailsModal({ query, onClose, onAction, client = s
                 {r.attachments?.length > 0 && (
                   <div className={styles.attachments}>
                     <Paperclip size={12} />
-                    {r.attachments.map((a) => (
-                      <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className={styles.attachLink}>
+                    {r.attachments.map((a, ai) => (
+                      <a key={a.id || ai} href={resolveFileUrl(a.url)} target="_blank" rel="noreferrer" download={a.name} className={styles.attachLink}>
                         {a.name}
                       </a>
                     ))}
@@ -248,9 +305,11 @@ export default function QueryDetailsModal({ query, onClose, onAction, client = s
                 <button className={styles.btnClose_}  onClick={() => onAction('close',   d)} type="button">
                   <CheckCircle  size={13} /> Close Query
                 </button>
-                <button className={styles.btnEscalate} onClick={() => onAction('escalate', d)} type="button">
-                  <AlertTriangle size={13} /> Escalate
-                </button>
+                {canEscalate && (
+                  <button className={styles.btnEscalate} onClick={() => onAction('escalate', d)} type="button">
+                    <AlertTriangle size={13} /> Escalate
+                  </button>
+                )}
               </>
             )}
             {isClosed && (
@@ -268,7 +327,7 @@ export default function QueryDetailsModal({ query, onClose, onAction, client = s
         <div className={styles.strip} style={{ background: sm.bg, borderColor: sm.color }}>
           <div className={styles.stripLeft}>
             <code className={styles.stripId} title={d?.id}>{displayId ?? d?.id}</code>
-            <span className={styles.stripField}>{(d?.fieldLabel || d?.fieldName) && `${d?.formName} → ${d?.fieldLabel || d?.fieldName}`}</span>
+            <span className={styles.stripField}>{(d?.fieldLabel || d?.fieldName) && `${[d?.blockName, d?.pageName].filter(Boolean).join(' / ') ? `${[d?.blockName, d?.pageName].filter(Boolean).join(' / ')} → ` : ''}${d?.fieldLabel || d?.fieldName}`}</span>
           </div>
           <div className={styles.stripRight}>
             <span className={styles.badge} style={{ color: pm.color, background: pm.bg, marginRight: 6 }}>{d?.priority}</span>

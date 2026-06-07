@@ -71,11 +71,26 @@ export function createField(type) {
     showLabel: true,
     validation: {
       required: false, minLength: '', maxLength: '', min: '', max: '',
-      pattern: '', email: false, url: false, numeric: false, validateOn: 'submit', rules: [],
+      pattern: '', patternPreset: '', email: false, url: false, numeric: false, validateOn: 'submit', rules: [],
+      // Soft / hard check model (clinical EDC edit checks):
+      //   hardCheck (default true)  → blocks Save/Submit until satisfied.
+      //   softCheck (default false) → warning only; user can acknowledge + continue.
+      // Each carries its own author-defined message. {Field Name} is interpolated.
+      hardCheck: true,
+      hardMessage: '',
+      softCheck: false,
+      softMessage: '',
+      // Checkbox-group min/max selections.
+      minSelections: '', maxSelections: '',
     },
     conditions: { enabled: false, logic: 'AND', rules: [] },
     attributes: { disabled: false, readonly: false, autofocus: false, autocomplete: '', id: '', class: '' },
     decorators: { prefix: '', suffix: '', before: '', after: '' },
+    // Field-level display + behaviour (spec: Field Configuration / Appearance).
+    helpText: '',
+    hiddenByDefault: false,
+    fieldWidth: 'auto',   // auto | 25 | 50 | 75 | 100 (%)
+    alignment: 'left',    // left | center | right
     // Clinical / EDC field metadata. Empty viewRoles/editRoles arrays mean
     // "no restriction" (every role) — so forms built before this existed stay
     // fully open. Consumed by the form runner + backend save enforcement.
@@ -126,8 +141,53 @@ export function createField(type) {
     case 'multifile': case 'multiimage': base.accept = type === 'multiimage' ? 'image/*' : ''; base.maxSize = 5; base.maxFiles = 10; base.placeholder = ''; break;
     case 'paragraph': base.content = 'Paragraph text goes here.'; base.showLabel = false; base.placeholder = ''; break;
   }
+
+  // Radio / checkbox group shared config (spec: Options + Appearance).
+  if (['radiogroup', 'checkboxgroup'].includes(type)) {
+    base.orientation = 'vertical';   // vertical | horizontal
+    base.allowOther  = false;
+    base.otherLabel  = 'Other';
+    base.otherFreeText = true;
+  }
+  // Checkbox group only (spec: Selection Rules + Advanced + Audit).
+  if (type === 'checkboxgroup') {
+    base.defaultValues     = [];
+    base.selectAll         = false;
+    base.randomizeOptions  = false;
+    base.displayCodes      = false;
+    base.captureAudit      = true;
+    base.trackChanges      = true;
+  }
+
   return base;
 }
+
+// ── Pattern (Regex) preset library ─────────────────────────────────────────
+// Picked in the Validation tab's "Pattern" dropdown; the ? popover lets the
+// author copy or insert the expression. Selecting a preset writes both
+// validation.patternPreset (the key) and validation.pattern (the regex).
+export const REGEX_PRESETS = [
+  { category: 'Contact Information', name: 'Email Address',              regex: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$', example: 'john.doe@example.com' },
+  { category: 'Contact Information', name: 'Phone Number (US)',          regex: '^\\(\\d{3}\\)\\s\\d{3}-\\d{4}$',                     example: '(123) 456-7890' },
+  { category: 'Contact Information', name: 'Phone Number (International)', regex: '^\\+\\d{1,3}\\s\\d{3,14}$',                         example: '+1 1234567890' },
+  { category: 'Contact Information', name: 'Postal Code (US)',           regex: '^\\d{5}(-\\d{4})?$',                                 example: '12345 / 12345-6789' },
+  { category: 'Personal Information', name: 'Full Name',                 regex: "^[a-zA-Z\\s'-]+$",                                   example: "John O'Connor" },
+  { category: 'Personal Information', name: 'First/Last Name',           regex: "^[a-zA-Z'-]+$",                                      example: 'Mary-Jane' },
+  { category: 'Personal Information', name: 'Username',                  regex: '^[a-zA-Z0-9_-]{3,20}$',                             example: 'john_doe' },
+  { category: 'Medical/Clinical', name: 'Patient ID',                   regex: '^P\\d{6}$',                                         example: 'P123456' },
+  { category: 'Medical/Clinical', name: 'Medical Record',               regex: '^MR\\d{8}$',                                        example: 'MR12345678' },
+  { category: 'Medical/Clinical', name: 'Drug Code',                    regex: '^[A-Z]{3}\\d{4}$',                                  example: 'ABC1234' },
+  { category: 'Study/Business', name: 'Study ID',                       regex: '^STU-\\d{4}-[A-Z]{2}$',                             example: 'STU-2024-AB' },
+  { category: 'Study/Business', name: 'Site Code',                      regex: '^[A-Z]{3}-\\d{3}$',                                 example: 'NYC-001' },
+  { category: 'Study/Business', name: 'Protocol Number',                regex: '^PROT-\\d{6}$',                                     example: 'PROT-123456' },
+  { category: 'Simple Validations', name: 'Numbers Only',               regex: '^\\d+$',                                            example: '12345' },
+  { category: 'Simple Validations', name: 'Letters Only',               regex: '^[a-zA-Z]+$',                                       example: 'Hello' },
+  { category: 'Simple Validations', name: 'Alphanumeric',               regex: '^[a-zA-Z0-9]+$',                                    example: 'Hello123' },
+  { category: 'Simple Validations', name: 'Uppercase Only',             regex: '^[A-Z\\s]+$',                                       example: 'HELLO WORLD' },
+  { category: 'Simple Validations', name: 'Lowercase Only',             regex: '^[a-z\\s]+$',                                       example: 'hello world' },
+  { category: 'Simple Validations', name: 'Alpha with Space',           regex: '^[a-zA-Z\\s]+$',                                    example: 'Hello World' },
+  { category: 'Simple Validations', name: 'Alpha Numeric + Underscore', regex: '^\\w+$',                                            example: 'hello_world_123' },
+];
 
 export const OPERATORS = [
   { value: '==',        label: 'equals' },

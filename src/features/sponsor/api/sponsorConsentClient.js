@@ -10,6 +10,7 @@
  */
 
 import sponsorAxiosClient from '@/api/sponsorAxiosClient';
+import { uploadFormFile } from '@/api/formFileClient';
 
 const BASE      = '/api/v1/sponsor/workspace/consent';
 const WORKSPACE = '/api/v1/sponsor/workspace';
@@ -70,17 +71,16 @@ export const sponsorConsentClient = {
     return normalizeConfig(res?.item ?? res ?? {});
   },
 
-  /** Upload a supporting document. */
-  async uploadDocument(_studyId, roleId, file) {
-    const fd = new FormData();
-    fd.append('file', file);
-    const res = await sponsorAxiosClient.post(`${BASE}/${roleId}/documents`, fd);
-    const d = res?.item ?? res ?? {};
+  /** Upload a supporting document to the study disk store
+   *  (/var/www/uploads/<env>/<study_id>/). The returned reference is persisted
+   *  as part of the consent config (documents array) via saveConfig. */
+  async uploadDocument(_studyId, _roleId, file) {
+    const r = await uploadFormFile(file); // { url, name, size, type }
     return {
-      id:   d.id       ?? d.doc_id    ?? crypto.randomUUID(),
-      name: d.name     ?? file.name,
-      size: d.size     ?? file.size,
-      url:  d.url      ?? d.file_url  ?? '',
+      id:   crypto.randomUUID(),
+      name: r.name ?? file.name,
+      size: r.size ?? file.size,
+      url:  r.url  ?? '',
     };
   },
 

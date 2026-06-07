@@ -25,6 +25,7 @@ export const emailTemplateService = {
       limit:  params.limit ?? params.pageSize,
       search: params.search,
       status: params.status,
+      codes:  params.codes,
     };
     return axiosClient.get(`/api/v1/masters/email-templates${buildQueryString(query)}`);
   },

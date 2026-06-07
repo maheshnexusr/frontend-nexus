@@ -2,36 +2,33 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
-  Plus, Search, X, RefreshCw, Shield,
-  Pencil, Trash2, Eye, Copy, AlertTriangle,
-  ChevronUp, ChevronDown, ChevronsUpDown, ToggleLeft, ToggleRight,
+  Plus, Search, X, RefreshCw,
+  Pencil, Trash2, Eye, History, AlertTriangle,
+  ChevronUp, ChevronDown, ChevronsUpDown,
 } from 'lucide-react';
 
 import { addToast }            from '@/app/notificationSlice';
 import { sponsorRolesClient }  from '../api/sponsorRolesClient';
 import ViewPermissionsModal    from '../components/roles/ViewPermissionsModal';
+import ActivityLogDrawer       from '../components/activity/ActivityLogDrawer';
 import ConfirmDialog           from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }     from '@/features/workspace/hooks/useReadOnlyView';
 import { usePermissions }      from '@/features/auth/usePermissions';
 import { countPermissions } from '../components/roles/permissionsTree';
-import { formatDate } from '@/utils/formatDate';
 import css from './RolesPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_OPTIONS = ['All', 'Active', 'Inactive'];
 
+// Description, Created By, Created Date and Last Modified are intentionally not
+// columns — audit detail lives behind the per-row Activity Log drawer.
 const COLS = [
-  { key: 'roleName',    label: 'Role Name',     sortable: true  },
-  { key: 'description', label: 'Description',   sortable: false },
-  { key: 'userCount',   label: 'Users',         sortable: true  },
-  { key: 'createdBy',   label: 'Created By',    sortable: false },
-  { key: 'createdAt',   label: 'Created Date',  sortable: true  },
-  { key: 'updatedAt',   label: 'Last Modified', sortable: true  },
-  { key: 'status',      label: 'Status',        sortable: true  },
+  { key: 'roleName',    label: 'Role Name',   sortable: true  },
+  { key: 'userCount',   label: 'Users',       sortable: true  },
+  { key: 'status',      label: 'Status',      sortable: true  },
+  { key: 'permissions', label: 'Permissions', sortable: false },
 ];
-
-const fmtDate = (str) => formatDate(str) || '—';
 
 function SortIcon({ colKey, sort }) {
   if (sort.key !== colKey) return <ChevronsUpDown size={11} style={{ opacity: .35 }} />;
@@ -62,19 +59,19 @@ export default function RolesPage() {
   const [sort, setSort] = useState({ key: 'roleName', dir: 'asc' });
 
   // Modals
-  const [viewRole,      setViewRole]      = useState(null);
-  const [deleteTarget,  setDeleteTarget]  = useState(null);
-  const [duplicateName, setDuplicateName] = useState('');
-  const [duplicateTarget, setDuplicateTarget] = useState(null);
+  const [viewRole,     setViewRole]     = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [activityRole, setActivityRole] = useState(null);
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
+  // The backend list endpoint does not filter by status, so All/Active/Inactive
+  // are applied client-side (in `filtered`) — fetch the full set once per study.
   const loadRoles = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     else        setRefreshing(true);
     try {
-      const filters = statusFilter !== 'All' ? { status: statusFilter } : {};
-      const list = await sponsorRolesClient.list(studyId, filters);
+      const list = await sponsorRolesClient.list(studyId);
       setRoles(list);
     } catch (e) {
       dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to load roles.' }));
@@ -82,7 +79,7 @@ export default function RolesPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [studyId, statusFilter, dispatch]);
+  }, [studyId, dispatch]);
 
   useEffect(() => { loadRoles(); }, [loadRoles]);
 
@@ -90,6 +87,9 @@ export default function RolesPage() {
 
   const filtered = useMemo(() => {
     let list = roles;
+    if (statusFilter !== 'All') {
+      list = list.filter((r) => (r.status ?? 'Active') === statusFilter);
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -104,7 +104,7 @@ export default function RolesPage() {
       bv = String(bv).toLowerCase();
       return sort.dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
     });
-  }, [roles, search, sort]);
+  }, [roles, statusFilter, search, sort]);
 
   function toggleSort(key) {
     setSort((prev) => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' });
@@ -132,36 +132,6 @@ export default function RolesPage() {
     }
   }
 
-  async function handleDuplicate() {
-    if (!duplicateTarget) return;
-    const name = duplicateName.trim() || `${duplicateTarget.roleName} (Copy)`;
-    try {
-      const created = await sponsorRolesClient.duplicate(studyId, duplicateTarget.id, name);
-      setRoles((prev) => [created, ...prev]);
-      dispatch(addToast({ type: 'success', message: `Role '${created.roleName}' created successfully.` }));
-    } catch (e) {
-      dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to duplicate role.' }));
-    } finally {
-      setDuplicateTarget(null);
-      setDuplicateName('');
-    }
-  }
-
-  async function handleToggleStatus(role) {
-    if (role.isSystem) {
-      dispatch(addToast({ type: 'warning', message: 'Role is system-protected and cannot be modified.' }));
-      return;
-    }
-    const newStatus = role.status === 'Active' ? 'Inactive' : 'Active';
-    try {
-      const updated = await sponsorRolesClient.toggleStatus(studyId, role.id, newStatus);
-      setRoles((prev) => prev.map((r) => r.id === updated.id ? updated : r));
-      dispatch(addToast({ type: 'success', message: `Role '${role.roleName}' ${newStatus === 'Active' ? 'activated' : 'inactivated'}.` }));
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to update role status.' }));
-    }
-  }
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -169,7 +139,7 @@ export default function RolesPage() {
       {/* Header */}
       <div className={css.header}>
         <div>
-          <h1 className={css.title}>Role & Access Control</h1>
+          <h1 className={css.title}>Site Role</h1>
           <p  className={css.sub}>Define custom roles and configure granular permissions for the Sponsor Workspace.</p>
         </div>
         <div className={css.headerActions}>
@@ -191,13 +161,6 @@ export default function RolesPage() {
             </button>
           )}
         </div>
-      </div>
-
-      {/* Info banner */}
-      <div className={css.infoBanner}>
-        <Shield size={14} />
-        Default system roles (CRO Administrator, Data Manager, Data Reviewer, Site Monitor) are pre-configured and cannot be deleted.
-        Role changes take effect immediately after user session refresh.
       </div>
 
       {/* Toolbar */}
@@ -260,7 +223,7 @@ export default function RolesPage() {
                 <tr key={i} className={css.row}>
                   {COLS.map((c) => (
                     <td key={c.key} className={css.td}>
-                      <div className={css.skeleton} style={{ width: c.key === 'description' ? 200 : 80 }} />
+                      <div className={css.skeleton} style={{ width: 80 }} />
                     </td>
                   ))}
                   <td className={css.tdActions} />
@@ -289,24 +252,20 @@ export default function RolesPage() {
                       </div>
                     </td>
                     <td className={css.td}>
-                      <span className={css.description}>{role.description || '—'}</span>
-                    </td>
-                    <td className={css.td}>
                       <span className={css.userCount}>{role.userCount ?? 0}</span>
                     </td>
-                    <td className={css.td}>{role.createdBy || '—'}</td>
-                    <td className={css.td}>{fmtDate(role.createdAt)}</td>
-                    <td className={css.td}>{fmtDate(role.updatedAt)}</td>
+                    <td className={css.td}>
+                      <span
+                        className={css.statusBadge}
+                        style={role.status === 'Active'
+                          ? { color: '#059669', background: '#ecfdf5', borderColor: '#a7f3d0' }
+                          : { color: '#dc2626', background: '#fef2f2', borderColor: '#fecaca' }}
+                      >
+                        {role.status}
+                      </span>
+                    </td>
                     <td className={css.td}>
                       <div className={css.statusCell}>
-                        <span
-                          className={css.statusBadge}
-                          style={role.status === 'Active'
-                            ? { color: '#059669', background: '#ecfdf5', borderColor: '#a7f3d0' }
-                            : { color: '#dc2626', background: '#fef2f2', borderColor: '#fecaca' }}
-                        >
-                          {role.status}
-                        </span>
                         <div className={css.permBar} title={`${enabled}/${total} permissions`}>
                           <div className={css.permFill} style={{ width: `${pct}%` }} />
                         </div>
@@ -314,13 +273,21 @@ export default function RolesPage() {
                       </div>
                     </td>
                     <td className={css.tdActions}>
-                      {/* View Permissions */}
+                      {/* View (read-only form) */}
                       <button
                         className={css.actionBtn}
-                        title="View Permissions"
-                        onClick={() => setViewRole(role)}
+                        title="View"
+                        onClick={() => navigate(`/sponsor/${studyId}/roles/${role.id}/view`)}
                       >
                         <Eye size={13} />
+                      </button>
+                      {/* Activity Log */}
+                      <button
+                        className={css.actionBtn}
+                        title="Activity Log"
+                        onClick={() => setActivityRole(role)}
+                      >
+                        <History size={13} />
                       </button>
                       {/* Edit */}
                       {canEdit && (
@@ -332,29 +299,6 @@ export default function RolesPage() {
                           onClick={() => !role.isSystem && !ro.isReadOnly && navigate(`/sponsor/${studyId}/roles/${role.id}/edit`)}
                         >
                           <Pencil size={13} />
-                        </button>
-                      )}
-                      {/* Duplicate */}
-                      {canCreate && (
-                        <button
-                          className={`${css.actionBtn} ${css.actionDuplicate}`}
-                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Duplicate'}
-                          onClick={() => { setDuplicateTarget(role); setDuplicateName(`${role.roleName} (Copy)`); }}
-                          {...ro.disabledProps('Duplicate role')}
-                        >
-                          <Copy size={13} />
-                        </button>
-                      )}
-                      {/* Toggle status */}
-                      {canEdit && (
-                        <button
-                          className={`${css.actionBtn} ${role.status === 'Active' ? css.actionDeactivate : css.actionActivate}`}
-                          title={ro.isReadOnly ? ro.readOnlyMessage : (role.status === 'Active' ? 'Inactivate' : 'Activate')}
-                          disabled={role.isSystem || ro.isReadOnly}
-                          aria-disabled={role.isSystem || ro.isReadOnly}
-                          onClick={() => !ro.isReadOnly && handleToggleStatus(role)}
-                        >
-                          {role.status === 'Active' ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
                         </button>
                       )}
                       {/* Delete */}
@@ -400,35 +344,14 @@ export default function RolesPage() {
         />
       )}
 
-      {/* Duplicate Confirm */}
-      {duplicateTarget && (
-        <div className={css.dialogOverlay}>
-          <div className={css.dialogCard}>
-            <h3 className={css.dialogTitle}>Duplicate Role</h3>
-            <p className={css.dialogDesc}>
-              Creating a copy of <strong>{duplicateTarget.roleName}</strong> with all its permissions.
-            </p>
-            <div className={css.dialogField}>
-              <label className={css.dialogLabel}>New Role Name</label>
-              <input
-                className={css.dialogInput}
-                value={duplicateName}
-                onChange={(e) => setDuplicateName(e.target.value)}
-                placeholder="Enter new role name"
-                autoFocus
-              />
-            </div>
-            <div className={css.dialogFooter}>
-              <button className={css.btnCancel} onClick={() => { setDuplicateTarget(null); setDuplicateName(''); }}>
-                Cancel
-              </button>
-              <button className={css.btnSave} onClick={handleDuplicate}>
-                Create Copy
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Activity Log Drawer */}
+      <ActivityLogDrawer
+        open={Boolean(activityRole)}
+        resourceType="site_role"
+        resourceId={activityRole?.id}
+        resourceLabel={activityRole?.roleName}
+        onClose={() => setActivityRole(null)}
+      />
     </div>
   );
 }

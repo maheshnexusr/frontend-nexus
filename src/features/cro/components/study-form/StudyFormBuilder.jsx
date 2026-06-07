@@ -5,11 +5,11 @@
  */
 import { useState, useEffect }      from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Settings2, Zap, Users, ArrowLeft, ArrowRight, Save, LayoutTemplate, Eye, Maximize2, Minimize2 } from 'lucide-react';
+import { Settings2, Zap, Users, ArrowLeft, ArrowRight, Save, LayoutTemplate, Eye, Maximize2, Minimize2, ShieldCheck } from 'lucide-react';
 import {
   initForm, setActivePanel,
   selectActivePanel, selectBlocks, selectIsDirty, markSaved,
-  selectTriggers, selectSubmissionCtrl,
+  selectTriggers, selectSubmissionCtrl, selectEligibilityCriteria,
 } from '@/features/cro/store/studyFormSlice';
 import { selectStep1 }              from '@/features/cro/store/studyWizardSlice';
 import { studiesClient }            from '@/features/cro/api/studiesClient';
@@ -20,6 +20,7 @@ import SFBCanvas                    from './SFBCanvas';
 import SFBRight                     from './SFBRight';
 import SFBTopPanels                 from './SFBTopPanels';
 import SFBPreview                   from './SFBPreview';
+import EligibilityCriteriaModal     from './EligibilityCriteriaModal';
 import s from './StudyFormBuilder.module.css';
 
 export default function StudyFormBuilder({ formId, formTitle, onPrevious, onNext }) {
@@ -27,10 +28,12 @@ export default function StudyFormBuilder({ formId, formTitle, onPrevious, onNext
   const activePanel  = useSelector(selectActivePanel);
   const [previewing, setPreviewing] = useState(false);
   const [maximized,  setMaximized]  = useState(false);
+  const [eligOpen,   setEligOpen]   = useState(false);
   const blocks       = useSelector(selectBlocks);
   const isDirty      = useSelector(selectIsDirty);
   const triggers     = useSelector(selectTriggers);
   const submissionControls = useSelector(selectSubmissionCtrl);
+  const eligibilityCriteria = useSelector(selectEligibilityCriteria);
   const step1        = useSelector(selectStep1);
 
   // ── Load form data from the study record ─────────────────────────────────
@@ -58,7 +61,7 @@ export default function StudyFormBuilder({ formId, formTitle, onPrevious, onNext
       throw new Error('Study record not found. Please complete Step 1 first.');
     }
     await studiesClient.step4(step1.studyDbId, {
-      formStructure: { blocks, submissionControls },
+      formStructure: { blocks, submissionControls, eligibilityCriteria },
       version: 1,
       triggers: triggers.map((t) => ({
         triggerCondition:  t.conditions ?? null,
@@ -137,6 +140,15 @@ export default function StudyFormBuilder({ formId, formTitle, onPrevious, onNext
             <Eye size={13} />
             {previewing ? 'Exit Preview' : 'Preview'}
           </button>
+          {!previewing && has('studies', 'conditional_visibility') && (
+            <button
+              className={s.btnPreview}
+              onClick={() => setEligOpen(true)}
+              title="Configure Inclusion / Exclusion criteria"
+            >
+              <ShieldCheck size={13} /> Eligibility
+            </button>
+          )}
           {!previewing && (
             <button className={s.btnSave} onClick={handleSave}>
               <Save size={13} /> Save Design
@@ -144,6 +156,8 @@ export default function StudyFormBuilder({ formId, formTitle, onPrevious, onNext
           )}
         </div>
       </div>
+
+      {eligOpen && <EligibilityCriteriaModal onClose={() => setEligOpen(false)} />}
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
       <div className={s.body}>

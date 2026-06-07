@@ -11,6 +11,7 @@ import {
   GripVertical, Type, Hash, Mail, Phone, Calendar, CheckSquare,
   List, Circle, FileUp, PenLine, AlignLeft, ToggleLeft, Clock,
   Star, Image, Minus, AlignCenter, LayoutList, Pencil, SlidersHorizontal,
+  Heading,
 } from 'lucide-react';
 import {
   selectBlocks, selectSelectedBlockId, selectSelectedPageId,
@@ -64,6 +65,7 @@ const FIELD_GROUPS = [
     group: 'Layout',
     fields: [
       { type: 'h2',           label: 'Section Title',Icon: AlignCenter },
+      { type: 'h3',           label: 'Sub-heading',  Icon: Heading     },
       { type: 'paragraph',    label: 'Paragraph',    Icon: AlignLeft   },
       { type: 'divider',      label: 'Divider',      Icon: Minus       },
     ],

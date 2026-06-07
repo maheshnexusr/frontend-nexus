@@ -67,6 +67,20 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
   // the drawer raises / answers / closes a query.
   const formQueries = useFormQueries();
 
+  // Identity keys for the logged-in user — used to render "you" instead of the
+  // person's own name on assignee / escalated / reassigned meta lines. The
+  // query's assigned_to/escalated_to is a personnel_id which may differ from the
+  // auth user id, so we also match on name/email (same loose match the Queries
+  // list uses for its "only mine" filter).
+  const meKeys = useMemo(() => new Set(
+    [user?.id, user?.email, user?.username, user?.fullName]
+      .filter(Boolean)
+      .map((v) => String(v).toLowerCase()),
+  ), [user]);
+  const isMe = (id, name) =>
+    Boolean((id && meKeys.has(String(id).toLowerCase())) ||
+            (name && meKeys.has(String(name).toLowerCase())));
+
   // (subject, form) come from the form runner URL.
   const subjectId = params.get('subjectId') ?? '';
   const formId    = params.get('formId')    ?? '';
@@ -228,6 +242,10 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
         // ID so the Queries table can render "Date of Birth" instead of the
         // raw fieldId. Falls back to fieldId at display time if missing.
         fieldLabel,
+        // Structural ids (not just labels) so the Query Manager can deep-link
+        // straight to this page of the form instead of opening page 1.
+        blockId:   loc?.blockId   || undefined,
+        pageId:    loc?.pageId    || undefined,
         blockName: loc?.blockName || undefined,
         pageName:  loc?.pageName  || undefined,
         queryText: text,
@@ -247,7 +265,12 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
       // field-icon count update immediately too.
       formQueries.refresh();
     } catch (e) {
-      dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to raise query.' }));
+      // Surfaces the backend workflow gate ("Queries can only be raised after
+      // verification is completed or clarification is requested") verbatim.
+      dispatch(addToast({
+        type: 'error',
+        message: e?.response?.data?.message || e?.message || 'Failed to raise query.',
+      }));
     } finally {
       setSubmitting(false);
     }
@@ -425,10 +448,20 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
         <div className={s.itemList}>
           {queries.map((q) => {
             const status = normalizeStatus(q.status);
-            const assigneeLabel =
+            const assigneeName =
               q.assignedToName
               || assignees.items.find((x) => x.id === q.assignedTo)?.fullName
               || q.assignedTo;
+            const escalatedToName =
+              q.escalatedToName
+              || assignees.items.find((x) => x.id === q.escalatedTo)?.fullName
+              || q.escalatedTo;
+            // Show "you" when the logged-in user is the assignee / escalation
+            // target, otherwise the person's name.
+            const assignedToMe   = isMe(q.assignedTo, assigneeName);
+            const escalatedToMe  = isMe(q.escalatedTo, escalatedToName);
+            const assigneeLabel    = assignedToMe  ? 'you' : assigneeName;
+            const escalatedToLabel = escalatedToMe ? 'you' : escalatedToName;
             const raisedByLabel    = q.raisedByName    || q.raisedBy    || 'Unknown';
             const respondedByLabel = q.respondedByName || q.respondedBy || '';
             const isOpen           = status !== 'Resolved';
@@ -441,12 +474,40 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
                       <span className={s.itemAuthor}>Query</span>
                       <span className={`${s.pill} ${pillClass(status)}`}>{status}</span>
                       <span className={`${s.pill} ${priorityPill(q.priority)}`}>{q.priority}</span>
+                      {/* Escalation is explicit here: an amber "Escalated" badge
+                          so it's obvious at a glance the query was escalated, and
+                          the meta line below names WHO it went to. */}
+                      {q.isEscalated && (
+                        <span
+                          className={s.pill}
+                          style={{ background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a' }}
+                          title={escalatedToLabel ? `Escalated to ${escalatedToLabel}` : 'Escalated'}
+                        >
+                          ⬆ Escalated
+                        </span>
+                      )}
                     </div>
                     <div className={s.itemMeta}>
                       Raised by {raisedByLabel} · {fmt(q.raisedDate)}
                       {q.assignedTo && <> · @{assigneeLabel}</>}
                       {q.siteName && <> · {q.siteName}</>}
                     </div>
+                    {q.isEscalated && escalatedToLabel && (
+                      <div className={s.itemMeta} style={{ color: '#b45309', fontWeight: 600 }}>
+                        ⬆ Escalated to {escalatedToLabel}
+                        {q.escalatedAt ? ` · ${fmt(q.escalatedAt)}` : ''}
+                      </div>
+                    )}
+                    {q.isReassigned && (
+                      <div
+                        className={s.itemMeta}
+                        style={{ color: assignedToMe ? '#0d9488' : '#64748b', fontWeight: assignedToMe ? 600 : 400 }}
+                      >
+                        ↪ Reassigned to {assigneeLabel}
+                        {q.previousAssignedToName ? ` · was ${q.previousAssignedToName}` : ''}
+                        {q.reassignedAt ? ` · ${fmt(q.reassignedAt)}` : ''}
+                      </div>
+                    )}
                   </div>
                   <div className={s.itemActions}>
                     {/* PI / responder can Answer while the query is still open. */}
@@ -480,8 +541,10 @@ export default function QueryDrawer({ fieldId, fieldLabel, anchorRect, onClose }
                 {q.queryText && <div className={s.itemBody}>{q.queryText}</div>}
 
                 {/* Latest answer / resolution shown inline so the Query
-                    Manager can read the PI's reason without leaving the form. */}
-                {q.latestResponseText && (
+                    Manager can read the PI's reason without leaving the form.
+                    Skip lifecycle markers ([Escalated]/[Reopened]) — those are
+                    shown as the badge/line above, not as an "Answer". */}
+                {q.latestResponseText && !/^\s*\[(escalated|reopened)\]/i.test(q.latestResponseText) && (
                   <div
                     style={{
                       marginTop: 8,

@@ -55,7 +55,8 @@ function normalizeSite(raw) {
     lockReason:          raw.lock_reason          ?? raw.lockReason          ?? '',
     // Contact (new schema uses point_of_contact_name; old uses contact_person)
     pointOfContactName:  raw.point_of_contact_name ?? raw.pointOfContactName ?? raw.contact_person ?? raw.contactPerson ?? '',
-    contactPerson:       raw.contact_person       ?? raw.contactPerson       ?? '',
+    contactPerson:       raw.point_of_contact_name ?? raw.pointOfContactName
+                       ?? raw.contact_person       ?? raw.contactPerson       ?? '',
     email:               raw.email                ?? '',
     countryCode:         raw.country_code         ?? raw.countryCode         ?? '+91',
     contactNumber:       raw.contact_number       ?? raw.contactNumber       ?? '',
@@ -68,7 +69,7 @@ function normalizeSite(raw) {
     city:                raw.city                 ?? '',
     district:            raw.district             ?? '',
     state:               raw.state                ?? '',
-    country:             raw.country              ?? '',
+    country:             raw.country_name         ?? raw.countryName         ?? raw.country ?? '',
   };
 }
 
@@ -261,6 +262,25 @@ export const sponsorSitesClient = {
       const res = await sponsorAxiosClient.get('/api/v1/sponsor/workspace/lookups/countries');
       const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
       return arr.map((c) => (typeof c === 'string' ? c : (c.name ?? c.country ?? '')));
+    } catch { return []; }
+  },
+
+  /** GET /lookups/locations — study locations (postal code → city/district/state)
+   *  for the Add-Site postal dropdown + autofill. */
+  async getLocations(_studyId) {
+    try {
+      const res = await sponsorAxiosClient.get('/api/v1/sponsor/workspace/lookups/locations');
+      const arr = res?.locations ?? (Array.isArray(res) ? res : (res?.items ?? []));
+      return arr.map((l) => ({
+        locationId:  l.location_id ?? l.locationId ?? '',
+        countryId:   l.country_id  ?? l.countryId  ?? '',
+        countryName: l.country_name ?? l.countryName ?? '',
+        state:       l.state ?? '',
+        district:    l.district ?? '',
+        city:        l.city ?? '',
+        postalCode:  l.postal_code ?? l.postalCode ?? '',
+        status:      l.status ?? 'Active',
+      })).filter((l) => l.postalCode && (l.status ?? 'Active') === 'Active');
     } catch { return []; }
   },
 };

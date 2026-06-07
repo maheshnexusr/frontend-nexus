@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { ArrowLeft } from 'lucide-react';
 
@@ -37,7 +37,9 @@ export default function SiteRoleFormPage() {
   const { studyId, roleId } = useParams();
   const navigate            = useNavigate();
   const dispatch            = useDispatch();
-  const isEdit              = !!roleId;
+  const location            = useLocation();
+  const readOnly            = location.pathname.endsWith('/view');
+  const isEdit              = !!roleId && !readOnly;
 
   const [form,        setForm]        = useState({
     roleName:    '',
@@ -49,13 +51,13 @@ export default function SiteRoleFormPage() {
   // (possibly empty) = explicit whitelist of widget IDs this role can see.
   const [widgetKeys,  setWidgetKeys]  = useState(null);
   const [errors,      setErrors]      = useState({});
-  const [loading,     setLoading]     = useState(isEdit);
+  const [loading,     setLoading]     = useState(!!roleId);
   const [saving,      setSaving]      = useState(false);
   const [apiError,    setApiError]    = useState('');
 
   // ── Load existing role when editing ────────────────────────────────────────
   useEffect(() => {
-    if (!isEdit) return;
+    if (!roleId) return;
     setLoading(true);
     sponsorRolesClient.getById(studyId, roleId)
       .then((r) => {
@@ -70,7 +72,7 @@ export default function SiteRoleFormPage() {
       })
       .catch(() => dispatch(addToast({ type: 'error', message: 'Failed to load role.' })))
       .finally(() => setLoading(false));
-  }, [isEdit, studyId, roleId, dispatch]);
+  }, [studyId, roleId, dispatch]);
 
   const set = (field) => (val) => {
     const v = val?.target ? val.target.value : val;
@@ -130,8 +132,9 @@ export default function SiteRoleFormPage() {
         <ArrowLeft size={14} aria-hidden="true" /> Site Roles
       </Link>
 
-      <h1 className={styles.title}>{isEdit ? 'Edit Site Role' : 'Add Site Role'}</h1>
+      <h1 className={styles.title}>{readOnly ? 'View Site Role' : isEdit ? 'Edit Site Role' : 'Add Site Role'}</h1>
 
+      <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, pointerEvents: readOnly ? 'none' : undefined }}>
       {/* Role Details card */}
       <div className={styles.card}>
         <h2 className={styles.cardHeading}>Role Details</h2>
@@ -200,6 +203,7 @@ export default function SiteRoleFormPage() {
       <div className={styles.card}>
         <DashboardWidgetPicker value={widgetKeys} onChange={setWidgetKeys} />
       </div>
+      </fieldset>
 
       {/* Footer */}
       <div className={styles.footer}>
@@ -209,16 +213,18 @@ export default function SiteRoleFormPage() {
           onClick={handleCancel}
           disabled={saving}
         >
-          Cancel
+          {readOnly ? 'Close' : 'Cancel'}
         </button>
-        <button
-          type="button"
-          className={styles.btnSave}
-          onClick={handleSubmit}
-          disabled={saving}
-        >
-          {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Role'}
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            className={styles.btnSave}
+            onClick={handleSubmit}
+            disabled={saving}
+          >
+            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Role'}
+          </button>
+        )}
       </div>
     </div>
   );
