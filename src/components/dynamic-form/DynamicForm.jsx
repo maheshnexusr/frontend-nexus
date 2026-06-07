@@ -68,7 +68,7 @@ function validateField(field, value) {
   const name = label || field.id;
 
   /* layout fields never validate */
-  if (['h2', 'paragraph', 'divider'].includes(type)) return null;
+  if (['h2', 'h3', 'paragraph', 'divider'].includes(type)) return null;
 
   /* required check */
   if (required) {

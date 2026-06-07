@@ -19,13 +19,15 @@ import { useDispatch } from 'react-redux';
 import {
   Database, RefreshCw, Search, X, Filter,
   ClipboardList, FileText, UserCheck, AlertCircle,
-  Clock, CheckCircle2, PauseCircle, XCircle, History, Trash2,
+  Clock, CheckCircle2, PauseCircle, XCircle, History, Trash2, ArrowRightLeft,
 } from 'lucide-react';
+import BarWidget from '@/features/sponsor/pages/dashboard/widgets/BarWidget';
 import axiosClient  from '@/api/sponsorAxiosClient';
 import { addToast } from '@/app/notificationSlice';
 import { formatDate } from '@/utils/formatDate';
 import SnapshotButton from '@/components/feedback/SnapshotButton';
 import ActivityLogDrawer from '@/features/sponsor/components/activity/ActivityLogDrawer';
+import TransferOwnershipModal from '@/components/subject/TransferOwnershipModal';
 import { usePermissions } from '@/features/auth/usePermissions';
 import css from './CapturePage.module.css';
 
@@ -71,6 +73,9 @@ function normalize(raw) {
     // cases where initials were never captured.
     subjectInitials:   raw.subject_initials  ?? raw.subjectInitials  ?? '',
     subjectCode:       raw.subject_number    ?? raw.subject_code     ?? raw.subjectCode    ?? raw.subjectNumber ?? '',
+    // Study ID / Protocol Number captured at study creation — joined in from the
+    // tenant studies table so the list can show it without a second study fetch.
+    protocolNumber:    raw.protocol_number   ?? raw.protocolNumber   ?? '',
     siteCode:          raw.site_code         ?? raw.siteCode         ?? raw.site_number   ?? '',
     siteName:          raw.site_name         ?? raw.siteName         ?? '',
     siteId:            raw.site_id           ?? raw.siteId,
@@ -82,17 +87,45 @@ function normalize(raw) {
     enrolledAt:        raw.enrolled_at       ?? raw.enrolledAt       ?? '',
     formId:            raw.form_id           ?? raw.formId,
     hasData:           raw.has_data          ?? raw.hasData ?? false,
+    // Responsible PI (subject owner). Falls back to created_by for legacy rows
+    // backfilled at migration time.
+    ownerId:           raw.owner_id          ?? raw.ownerId          ?? raw.created_by ?? raw.createdBy ?? '',
+    ownerName:         raw.owner_name        ?? raw.ownerName        ?? raw.created_by_name ?? raw.createdByName ?? '',
+    // Inclusion/Exclusion eligibility (auto-derived from form criteria).
+    eligibilityStatus: raw.eligibility_status ?? raw.eligibilityStatus ?? '',
+    eligibilityReason: raw.eligibility_reason ?? raw.eligibilityReason ?? '',
   };
+}
+
+// Eligibility badge — Included (green) / Excluded (red) / Pending Review (amber) /
+// Screen Failed (grey-red).
+const ELIG_STYLE = {
+  'Included':        { bg: '#dcfce7', color: '#15803d', border: '#86efac' },
+  'Excluded':        { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' },
+  'Pending Review':  { bg: '#fffbeb', color: '#b45309', border: '#fde68a' },
+  'Screen Failed':   { bg: '#fef2f2', color: '#9f1239', border: '#fecdd3' },
+};
+function EligibilityBadge({ status, reason }) {
+  if (!status) return null;
+  const st = ELIG_STYLE[status] || ELIG_STYLE['Pending Review'];
+  return (
+    <span title={reason || status} style={{
+      display: 'inline-flex', alignItems: 'center', padding: '1px 8px', borderRadius: 999,
+      fontSize: 10.5, fontWeight: 700, background: st.bg, color: st.color, border: `1px solid ${st.border}`,
+    }}>
+      {status}
+    </span>
+  );
 }
 
 /* ── Skeleton row ────────────────────────────────────────────────────────── */
 function SkeletonRow() {
-  // 5 columns: Subject, Site, Screening Status, Enrollment Date, Actions.
+  // 6 columns: Subject, Site, Responsible PI, Screening Status, Enrollment Date, Actions.
   return (
     <tr className={css.row}>
-      {[1,2,3,4,5].map((i) => (
+      {[1,2,3,4,5,6].map((i) => (
         <td key={i} className={css.td}>
-          <div className={css.skeleton} style={{ width: i === 1 ? '80px' : i === 5 ? '80px' : '120px' }} />
+          <div className={css.skeleton} style={{ width: i === 1 ? '80px' : i === 6 ? '80px' : '120px' }} />
         </td>
       ))}
     </tr>
@@ -112,10 +145,13 @@ export default function CapturePage() {
   const canViewSubjectActivity = has('data_capture', 'activity_log');
   const canOpenForm            = has('data_capture', 'subject_data_capture');
   const canDeleteSubject       = has('data_capture', 'subject_delete');
+  const canTransferOwnership   = has('data_capture', 'subject_edit');
   const [activitySubject, setActivitySubject] = useState(null);
+  const [transferSubject, setTransferSubject] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
   const [subjects,     setSubjects]     = useState([]);
+  const [crfBySite,    setCrfBySite]    = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [query,        setQuery]        = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -144,6 +180,24 @@ export default function CapturePage() {
 
   useEffect(() => { loadSubjects(); }, [loadSubjects]);
 
+  /* ── CRF completion % by site (completeness graph) ── */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await axiosClient.get('/api/v1/sponsor/workspace/crf-completion-by-site');
+        const items = Array.isArray(res) ? res : (res?.items ?? []);
+        if (!cancelled) {
+          setCrfBySite(items.map((r) => ({
+            site: r.siteCode || r.site_code || r.siteName || r.site_name || '—',
+            completion: r.completion ?? 0,
+          })));
+        }
+      } catch { /* non-fatal — graph just stays empty */ }
+    })();
+    return () => { cancelled = true; };
+  }, [studyId]);
+
   /* ── Delete subject (hard delete + all its data) ── */
   const handleDelete = useCallback(async (subject) => {
     const label = subject.subjectCode || subject.subjectInitials || 'this subject';
@@ -164,6 +218,31 @@ export default function CapturePage() {
       setDeletingId(null);
     }
   }, [dispatch]);
+
+  /* ── Transfer subject ownership (moves owner + open queries to a new PI) ── */
+  const handleTransfer = useCallback(async ({ newOwnerId, reason }) => {
+    const subject = transferSubject;
+    if (!subject) return;
+    try {
+      const res = await axiosClient.post(
+        `/api/v1/sponsor/workspace/subjects/${subject.id}/transfer-ownership`,
+        { new_owner_id: newOwnerId, reason }
+      );
+      const moved = res?.queriesMoved ?? res?.queries_moved;
+      dispatch(addToast({
+        type: 'success',
+        message: `Ownership transferred to ${res?.newOwnerName ?? res?.new_owner_name ?? 'the new PI'}.`
+          + (moved ? ` ${moved} open quer${moved === 1 ? 'y' : 'ies'} moved.` : ''),
+      }));
+      setTransferSubject(null);
+      loadSubjects(true);
+    } catch (err) {
+      dispatch(addToast({
+        type: 'error',
+        message: err?.response?.data?.message || err?.message || 'Failed to transfer ownership.',
+      }));
+    }
+  }, [transferSubject, dispatch, loadSubjects]);
 
   /* ── Resolve the study's form (per-study eCRF). Picks the first form
         returned by the sponsor forms endpoint and caches its id. ── */
@@ -294,6 +373,21 @@ export default function CapturePage() {
         </div>
       )}
 
+      {/* CRF completeness by site */}
+      {crfBySite.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <BarWidget
+            title="CRF Completion % by Site"
+            data={crfBySite}
+            valueKey="completion"
+            labelKey="site"
+            color="#059669"
+            unit="%"
+            domainMax={100}
+          />
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className={css.toolbar}>
         <div className={css.toolbarLeft}>
@@ -313,7 +407,7 @@ export default function CapturePage() {
           <div className={css.filterRow}>
             <Filter size={13} className={css.filterIcon} />
             {/* Pills filter by the enrollment lifecycle (the unified status). */}
-            {['All', 'Enrolled', 'Screening', 'Completed', 'Withdrawn', 'Discontinued'].map((s) => (
+            {['All', 'Enrolled', 'Screening', 'Completed'].map((s) => (
               <button
                 key={s}
                 className={`${css.filterBtn} ${statusFilter === s ? css.filterBtnActive : ''}`}
@@ -341,6 +435,7 @@ export default function CapturePage() {
             <tr>
               <th className={css.th}>Subject</th>
               <th className={css.th}>Site</th>
+              <th className={css.th}>Responsible PI</th>
               <th className={css.th}>Screening Status</th>
               <th className={css.th}>Enrollment Date</th>
               <th className={css.thActions}>Actions</th>
@@ -351,7 +446,7 @@ export default function CapturePage() {
               Array.from({ length: 8 }, (_, i) => <SkeletonRow key={i} />)
             ) : pageData.length === 0 ? (
               <tr>
-                <td colSpan={5} className={css.emptyCell}>
+                <td colSpan={6} className={css.emptyCell}>
                   <div className={css.empty}>
                     <Database size={40} strokeWidth={1.25} className={css.emptyIcon} />
                     <p className={css.emptyTitle}>
@@ -382,6 +477,11 @@ export default function CapturePage() {
                           {subject.subjectInitials && subject.subjectCode && (
                             <div className={css.subjectSubLabel}>{subject.subjectCode}</div>
                           )}
+                          {subject.eligibilityStatus && (
+                            <div style={{ marginTop: 3 }}>
+                              <EligibilityBadge status={subject.eligibilityStatus} reason={subject.eligibilityReason} />
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -392,6 +492,12 @@ export default function CapturePage() {
                       {subject.siteName && (
                         <div className={css.siteName}>{subject.siteName}</div>
                       )}
+                    </td>
+                    {/* Responsible PI (subject owner). */}
+                    <td className={css.td}>
+                      {subject.ownerName
+                        ? <span className={css.siteCode}>{subject.ownerName}</span>
+                        : <span className={css.na}>—</span>}
                     </td>
                     {/* Screening pipeline (Screening / Eligible / Screen Failed / Ineligible). */}
                     <td className={css.td}>
@@ -417,10 +523,21 @@ export default function CapturePage() {
                           type="button"
                           className={css.iconBtn}
                           onClick={() => openForm(subject)}
-                          title="Enter / Edit CRF Data"
-                          aria-label="Enter / Edit CRF Data"
+                          title="Navigate to CRF"
+                          aria-label="Navigate to CRF"
                         >
                           <FileText size={16} />
+                        </button>
+                      )}
+                      {canTransferOwnership && (
+                        <button
+                          type="button"
+                          className={css.iconBtn}
+                          onClick={() => setTransferSubject(subject)}
+                          title={`Transfer ownership${subject.ownerName ? ` (PI: ${subject.ownerName})` : ''}`}
+                          aria-label="Transfer subject ownership"
+                        >
+                          <ArrowRightLeft size={16} />
                         </button>
                       )}
                       {canDeleteSubject && (
@@ -472,6 +589,14 @@ export default function CapturePage() {
         resourceLabel={activitySubject ? `${activitySubject.subjectCode} — ${activitySubject.siteName}` : ''}
         onClose={() => setActivitySubject(null)}
       />
+
+      {transferSubject && (
+        <TransferOwnershipModal
+          subject={transferSubject}
+          onConfirm={handleTransfer}
+          onClose={() => setTransferSubject(null)}
+        />
+      )}
     </div>
   );
 }

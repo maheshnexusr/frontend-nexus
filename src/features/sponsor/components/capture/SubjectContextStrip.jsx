@@ -16,11 +16,8 @@
 import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { useLocation } from 'react-router-dom';
-import { History } from 'lucide-react';
 import sponsorAxiosClient from '@/api/sponsorAxiosClient';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
-import { usePermissions } from '@/features/auth/usePermissions';
-import ActivityLogDrawer from '@/features/sponsor/components/activity/ActivityLogDrawer';
 import s from './SubjectContextStrip.module.css';
 
 // Scope-aware fetchers. CaptureFormPage (sponsor) and SiteCaptureFormPage both
@@ -45,14 +42,11 @@ async function fetchStudyByScope(scope) {
 }
 
 export default function SubjectContextStrip({ studyId, subjectId }) {
-  const { has } = usePermissions();
-  const canViewAudit = has('data_capture', 'activity_log');
   const location = useLocation();
   const scope = location.pathname.startsWith('/site/') ? 'site' : 'sponsor';
 
   const [subject, setSubject] = useState(null);
   const [study,   setStudy]   = useState(null);
-  const [auditOpen, setAuditOpen] = useState(false);
 
   useEffect(() => {
     if (!subjectId) return undefined;
@@ -86,65 +80,35 @@ export default function SubjectContextStrip({ studyId, subjectId }) {
        subject?.siteCode   ?? subject?.site_code
     ?? subject?.siteNumber ?? subject?.site_number
     ?? '—';
-  const screeningNumber =
-       subject?.screeningNumber ?? subject?.screening_number
-    ?? subject?.subjectCode     ?? subject?.subject_code
+  const subjectNumber =
+       subject?.subjectNumber ?? subject?.subject_number
+    ?? subject?.subjectCode  ?? subject?.subject_code
     ?? '—';
   const initials =
        subject?.subjectInitials ?? subject?.subject_initials
     ?? '—';
-  const subjectLabel = `${screeningNumber} — ${siteCode}`;
 
   return (
-    <>
-      <div className={s.strip} data-snapshot-ignore="true">
-        <table className={s.table}>
-          <thead>
-            <tr>
-              <th>Protocol Number</th>
-              <th>Site Code</th>
-              <th>Screening Number</th>
-              <th>Subject Initials</th>
-              <th className={s.actionCol}>Audit Log</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>{protocolNumber}</td>
-              <td>{siteCode}</td>
-              <td>{screeningNumber}</td>
-              <td>{initials}</td>
-              <td className={s.actionCol}>
-                {/* ActivityLogDrawer currently hits the sponsor activity-log
-                    endpoint; the site workspace has no equivalent route yet,
-                    so hide the button there to avoid a 401. The column header
-                    stays in place so the strip layout matches across scopes. */}
-                {canViewAudit && scope !== 'site' ? (
-                  <button
-                    type="button"
-                    className={s.auditBtn}
-                    onClick={() => setAuditOpen(true)}
-                    title="View activity log for this subject"
-                  >
-                    <History size={13} /> View
-                  </button>
-                ) : (
-                  <span className={s.noAccess}>—</span>
-                )}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <ActivityLogDrawer
-        open={auditOpen}
-        resourceType="subject"
-        resourceId={subjectId}
-        resourceLabel={subjectLabel}
-        onClose={() => setAuditOpen(false)}
-      />
-    </>
+    <div className={s.strip} data-snapshot-ignore="true">
+      <table className={s.table}>
+        <thead>
+          <tr>
+            <th>Protocol Number</th>
+            <th>Site Code</th>
+            <th>Subject Number</th>
+            <th>Subject Initials</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{protocolNumber}</td>
+            <td>{siteCode}</td>
+            <td>{subjectNumber}</td>
+            <td>{initials}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   );
 }
 

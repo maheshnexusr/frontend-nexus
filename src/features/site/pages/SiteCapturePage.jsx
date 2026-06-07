@@ -15,13 +15,14 @@ import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
   Database, RefreshCw, Search, X, Filter, Plus,
-  ClipboardList, FileText, Pencil, UserCheck, AlertCircle, Trash2,
+  ClipboardList, FileText, Pencil, UserCheck, AlertCircle, Trash2, ArrowRightLeft,
   Clock, CheckCircle2, PauseCircle, XCircle,
 } from 'lucide-react';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
 import { addToast } from '@/app/notificationSlice';
 import { formatDate } from '@/utils/formatDate';
 import { usePermissions } from '@/features/auth/usePermissions';
+import TransferOwnershipModal from '@/components/subject/TransferOwnershipModal';
 import css from '@/features/sponsor/pages/CapturePage.module.css';
 import pageCss from './SiteCapturePage.module.css';
 
@@ -46,15 +47,40 @@ function normalize(raw) {
     visitsTotal:     raw.visits_total      ?? raw.visitsTotal     ?? 0,
     visitsCompleted: raw.visits_completed  ?? raw.visitsCompleted ?? 0,
     lastEntryAt:     raw.last_activity_at  ?? raw.last_entry_at   ?? raw.lastEntryAt,
+    siteId:          raw.site_id           ?? raw.siteId,
+    // Responsible PI (subject owner); falls back to created_by for legacy rows.
+    ownerId:         raw.owner_id          ?? raw.ownerId   ?? raw.created_by ?? raw.createdBy ?? '',
+    ownerName:       raw.owner_name        ?? raw.ownerName ?? raw.created_by_name ?? raw.createdByName ?? '',
+    eligibilityStatus: raw.eligibility_status ?? raw.eligibilityStatus ?? '',
+    eligibilityReason: raw.eligibility_reason ?? raw.eligibilityReason ?? '',
   };
+}
+
+const ELIG_STYLE = {
+  'Included':       { bg: '#dcfce7', color: '#15803d', border: '#86efac' },
+  'Excluded':       { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' },
+  'Pending Review': { bg: '#fffbeb', color: '#b45309', border: '#fde68a' },
+  'Screen Failed':  { bg: '#fef2f2', color: '#9f1239', border: '#fecdd3' },
+};
+function EligibilityBadge({ status, reason }) {
+  if (!status) return null;
+  const st = ELIG_STYLE[status] || ELIG_STYLE['Pending Review'];
+  return (
+    <span title={reason || status} style={{
+      display: 'inline-flex', alignItems: 'center', padding: '1px 8px', borderRadius: 999,
+      fontSize: 10.5, fontWeight: 700, background: st.bg, color: st.color, border: `1px solid ${st.border}`,
+    }}>
+      {status}
+    </span>
+  );
 }
 
 function SkeletonRow() {
   return (
     <tr className={css.row}>
-      {[1,2,3,4,5].map((i) => (
+      {[1,2,3,4,5,6].map((i) => (
         <td key={i} className={css.td}>
-          <div className={css.skeleton} style={{ width: i === 1 ? '80px' : i === 5 ? '80px' : '120px' }} />
+          <div className={css.skeleton} style={{ width: i === 1 ? '80px' : i === 6 ? '80px' : '120px' }} />
         </td>
       ))}
     </tr>
@@ -89,7 +115,11 @@ export default function SiteCapturePage() {
   const canEditSubject   = has('data_capture', 'subject_edit');
   const canDeleteSubject = has('data_capture', 'subject_delete');
   const canOpenForm      = has('data_capture', 'subject_data_capture');
+  // Ownership transfer reuses the subject_edit gate (it changes the responsible
+  // PI + reassigns the subject's open queries — a write on the subject).
+  const canTransferOwnership = canEditSubject;
 
+  const [transferSubject, setTransferSubject] = useState(null);
   const [deletingId,   setDeletingId]   = useState(null);
   const [subjects,     setSubjects]     = useState([]);
   const [loading,      setLoading]      = useState(true);
@@ -166,6 +196,31 @@ export default function SiteCapturePage() {
       setDeletingId(null);
     }
   }, [dispatch]);
+
+  /* ── Transfer ownership (moves owner + open queries to a new PI) ── */
+  const handleTransfer = useCallback(async ({ newOwnerId, reason }) => {
+    const subject = transferSubject;
+    if (!subject) return;
+    try {
+      const res = await siteWorkspaceClient.transferSubjectOwnership(subject.id, {
+        new_owner_id: newOwnerId,
+        reason,
+      });
+      const moved = res?.queriesMoved ?? res?.queries_moved;
+      dispatch(addToast({
+        type: 'success',
+        message: `Ownership transferred to ${res?.newOwnerName ?? res?.new_owner_name ?? 'the new PI'}.`
+          + (moved ? ` ${moved} open quer${moved === 1 ? 'y' : 'ies'} moved.` : ''),
+      }));
+      setTransferSubject(null);
+      loadSubjects(true);
+    } catch (err) {
+      dispatch(addToast({
+        type: 'error',
+        message: err?.response?.data?.message || err?.message || 'Failed to transfer ownership.',
+      }));
+    }
+  }, [transferSubject, dispatch, loadSubjects]);
 
   const counts = useMemo(() => {
     const m = {};
@@ -257,6 +312,7 @@ export default function SiteCapturePage() {
             <tr>
               <th className={css.th}>Subject ID</th>
               <th className={css.th}>Initials</th>
+              <th className={css.th}>Responsible PI</th>
               <th className={css.th}>Status</th>
               <th className={css.th}>Enrolled</th>
               <th className={css.thActions}>Actions</th>
@@ -289,10 +345,22 @@ export default function SiteCapturePage() {
                     <td className={css.td}>
                       <div className={css.subjectCell}>
                         <ClipboardList size={14} className={css.subjectIcon} />
-                        <span className={css.subjectCode}>{subject.subjectCode}</span>
+                        <div>
+                          <span className={css.subjectCode}>{subject.subjectCode}</span>
+                          {subject.eligibilityStatus && (
+                            <div style={{ marginTop: 3 }}>
+                              <EligibilityBadge status={subject.eligibilityStatus} reason={subject.eligibilityReason} />
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className={css.td}>{subject.subjectInitials || '—'}</td>
+                    <td className={css.td}>
+                      {subject.ownerName
+                        ? <span className={css.subjectCode}>{subject.ownerName}</span>
+                        : <span className={css.na}>—</span>}
+                    </td>
                     <td className={css.td}>
                       <span className={`${css.statusBadge} ${meta.cls}`}>
                         {meta.icon}{meta.label}
@@ -320,6 +388,16 @@ export default function SiteCapturePage() {
                           aria-label="Enter eCRF data"
                         >
                           <FileText size={14} />
+                        </button>
+                      )}
+                      {canTransferOwnership && (
+                        <button
+                          className={pageCss.iconBtn}
+                          onClick={() => setTransferSubject(subject)}
+                          title={`Transfer ownership${subject.ownerName ? ` (PI: ${subject.ownerName})` : ''}`}
+                          aria-label="Transfer subject ownership"
+                        >
+                          <ArrowRightLeft size={14} />
                         </button>
                       )}
                       {canDeleteSubject && (
@@ -360,6 +438,14 @@ export default function SiteCapturePage() {
             Next →
           </button>
         </div>
+      )}
+
+      {transferSubject && (
+        <TransferOwnershipModal
+          subject={transferSubject}
+          onConfirm={handleTransfer}
+          onClose={() => setTransferSubject(null)}
+        />
       )}
 
     </div>

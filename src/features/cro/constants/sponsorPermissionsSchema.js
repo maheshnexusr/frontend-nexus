@@ -13,7 +13,11 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const PERM_LABEL_OVERRIDES = {
   raise_query:        'Raise Query',
   close_query:        'Close Query',
+  escalate:           'Escalate Query',
+  respond:            'Respond',
+  reopen:             'Reopen',
   complete:           'Mark Completed',
+  reopen:             'Reopen Form',
   review:             'Mark Reviewed',
   verify:             'Verify',
   sign:               'Sign Form',
@@ -69,7 +73,7 @@ export const SPONSOR_PERMISSION_GROUPS = [
     group: 'Workspace',
     key: 'workspace',
     features: [
-      { label: 'Dashboard',         key: 'dashboard',         desc: 'Study metrics and overview widgets.',          perms: perms(['view', 'export']) },
+      { label: 'Dashboard',         key: 'dashboard',         desc: 'Study metrics and overview cards. Snapshot = download dashboard PDF.', perms: perms(['view', 'snapshot', 'export']) },
       // Data Capture — runtime form lifecycle. `lock_block` is distinct from
       // `lock` (Lock Form); `activity_log` lets a role see the form-level audit
       // even without other rights; `snapshot` gates capture-screen snapshot
@@ -87,27 +91,32 @@ export const SPONSOR_PERMISSION_GROUPS = [
         perms: perms(['view', 'create', 'edit', 'delete', 'export',
                       'subject_create', 'subject_edit', 'subject_delete', 'subject_lock',
                       'subject_data_capture',
-                      'complete', 'submit', 'review', 'verify', 'sign',
+                      'complete', 'submit', 'reopen', 'review', 'verify', 'sign',
                       'freeze', 'lock', 'lock_block',
                       'raise_query', 'close_query',
                       'activity_log', 'snapshot']) },
-      { label: 'Query Manager',     key: 'query_manager',     desc: 'Raise, answer and resolve data queries.',
-        perms: perms(['view', 'create', 'edit', 'delete',
+      // Granular per-action model (migration 035): the old create / edit / delete
+      // umbrellas are dropped from the editor — respond / reopen / escalate are
+      // the real actions. (edit still lives in the BE skeleton as a route
+      // fallback for roles created before the split.) Standalone reassign was
+      // removed — escalate covers handler hand-offs, transfer covers ownership.
+      { label: 'Query Manager',     key: 'query_manager',     desc: 'Answer, reopen and escalate data queries.',
+        perms: perms(['view', 'respond', 'reopen', 'escalate',
                       'sla_settings', 'snapshot']) },
       // Verification Manager (the BE leaf key is `data_verification` — kept
       // so existing role rows and routes don't break). Trimmed per spec to the
       // core CRUD + SLA + Snapshot set; the per-status `mark_*` toggles are
       // dropped from the editor (any role still carrying them in storage is
       // simply unable to edit the bit until the trim is reverted).
-      { label: 'Verification Manager', key: 'data_verification', desc: 'Source data verification and review.',
-        perms: perms(['view', 'create', 'edit', 'delete',
-                      'sla_settings', 'snapshot']) },
-      // Reports — each report type carries its own download permission so a
-      // role can be allowed to download Queries but not Sites, etc.
-      { label: 'Reports',           key: 'reports',           desc: 'Operational and study reports. Download is gated per report.',
-        perms: perms(['view', 'create', 'export',
-                      'download_enrollment', 'download_data_completeness',
-                      'download_queries', 'download_sites', 'download_audit']) },
+      // Granular per-action model (migration 035): create / edit / delete dropped
+      // from the editor — "Verify" is the real action. (edit stays in the BE
+      // skeleton as a route fallback for pre-split roles.)
+      { label: 'Verification Manager', key: 'data_verification', desc: 'Source data verification.',
+        perms: perms(['view', 'verify', 'sla_settings', 'snapshot']) },
+      // Reports — per spec the sponsor workspace exposes only the Enrollment
+      // Report (Excel). View = see the page; Download Enrollment = download it.
+      { label: 'Reports',           key: 'reports',           desc: 'Enrollment Report (Excel). View shows the page; Download Enrollment allows the export.',
+        perms: perms(['view', 'download_enrollment']) },
     ],
   },
   {
@@ -129,7 +138,7 @@ export const SPONSOR_PERMISSION_GROUPS = [
     features: [
       { label: 'Sites',          key: 'sites',          desc: 'Study sites and their configuration. Lock Site supports single, multi-select and bulk via one permission.',
         perms: perms(['view', 'create', 'edit', 'delete', 'lock_site', 'import', 'export']) },
-      { label: 'Site Personnel', key: 'site_personnel', desc: 'PI, coordinators and other site staff.', perms: perms(['view', 'create', 'edit', 'delete', 'export']) },
+      { label: 'Site Personnel', key: 'site_personnel', desc: 'PI, coordinators and other site staff. Create = Add/Invite; Edit covers Resend Invitation; Import = bulk upload.', perms: perms(['view', 'create', 'edit', 'delete', 'import', 'export']) },
       { label: 'Site Roles',     key: 'site_roles',     desc: 'Roles assignable to site personnel.',    perms: perms(['view', 'create', 'edit', 'delete']) },
     ],
   },
@@ -138,9 +147,9 @@ export const SPONSOR_PERMISSION_GROUPS = [
     key: 'masters',
     features: [
       { label: 'Masters',         key: 'masters',         desc: 'Study-scoped master data.',     perms: perms(['view', 'create', 'edit', 'delete', 'import', 'export']) },
-      { label: 'Email Templates', key: 'email_templates', desc: 'Workspace email templates.',     perms: perms(['view', 'create', 'edit', 'delete']) },
+      { label: 'Email Templates', key: 'email_templates', desc: 'Workspace email templates — View and Edit only (templates are pre-configured; no create/duplicate/delete).', perms: perms(['view', 'edit']) },
       { label: 'Countries',       key: 'countries',       desc: 'Country master list.',           perms: perms(['view', 'create', 'edit', 'delete']) },
-      { label: 'Locations',       key: 'locations',       desc: 'Location master list.',          perms: perms(['view', 'create', 'edit', 'delete']) },
+      { label: 'Locations',       key: 'locations',       desc: 'Location master list. Import = bulk upload (Excel/CSV).', perms: perms(['view', 'create', 'edit', 'delete', 'import']) },
       { label: 'Regions',         key: 'regions',         desc: 'Region master list.',            perms: perms(['view', 'create', 'edit', 'delete']) },
       { label: 'Activity Log',    key: 'activity_log',    desc: 'Workspace audit trail.',         perms: perms(['view', 'export']) },
     ],

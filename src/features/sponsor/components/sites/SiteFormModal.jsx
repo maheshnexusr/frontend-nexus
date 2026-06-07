@@ -78,7 +78,7 @@ function seedFromSite(site) {
   };
 }
 
-export default function SiteFormModal({ site, countries, onSave, onClose }) {
+export default function SiteFormModal({ site, countries, onSave, onClose, readOnly = false }) {
   const isEdit = !!site;
   const [form,       setForm]       = useState(() => seedFromSite(site));
   const [errors,     setErrors]     = useState({});
@@ -124,7 +124,7 @@ export default function SiteFormModal({ site, countries, onSave, onClose }) {
           <button type="button" className={css.backBtn} onClick={onClose} aria-label="Back">
             <ArrowLeft size={15} /> Back
           </button>
-          <span className={css.titleText}>{isEdit ? 'Edit Site' : 'Create New Site'}</span>
+          <span className={css.titleText}>{readOnly ? 'View Site' : isEdit ? 'Edit Site' : 'Create New Site'}</span>
         </span>
       }
       footer={
@@ -134,6 +134,7 @@ export default function SiteFormModal({ site, countries, onSave, onClose }) {
               <input
                 type="checkbox"
                 checked={form.active}
+                disabled={readOnly}
                 onChange={(e) => set('active')(e.target.checked)}
               />
               <span className={`${css.toggleTrack} ${form.active ? css.toggleTrackOn : ''}`} />
@@ -142,14 +143,19 @@ export default function SiteFormModal({ site, countries, onSave, onClose }) {
           </label>
 
           <div className={css.footerActions}>
-            <button className={css.btnCancel} onClick={onClose} disabled={submitting}>Cancel</button>
-            <button className={css.btnSave} onClick={handleSubmit} disabled={submitting}>
-              {submitting ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Site'}
+            <button className={css.btnCancel} onClick={onClose} disabled={submitting}>
+              {readOnly ? 'Close' : 'Cancel'}
             </button>
+            {!readOnly && (
+              <button className={css.btnSave} onClick={handleSubmit} disabled={submitting}>
+                {submitting ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Site'}
+              </button>
+            )}
           </div>
         </div>
       }
     >
+      <fieldset disabled={readOnly} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div className={css.body}>
         {apiError && <div className={css.apiError}>{apiError}</div>}
 
@@ -289,6 +295,7 @@ export default function SiteFormModal({ site, countries, onSave, onClose }) {
           )}
         </Field>
       </div>
+      </fieldset>
     </Modal>
   );
 }

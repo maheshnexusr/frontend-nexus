@@ -368,6 +368,14 @@ const formRuntimeSlice = createSlice({
       });
     },
 
+    // Replace a field's attachments wholesale — used to hydrate from the backend
+    // (GET collaboration) so the list survives reloads. No audit entry.
+    setAttachments(state, { payload }) {
+      const { fieldId, attachments } = payload;
+      const bucket = ensureBucket(state, fieldId);
+      bucket.attachments = Array.isArray(attachments) ? attachments : [];
+    },
+
     /* ── Verification ───────────────────────────────────────────────────── */
     setVerification(state, { payload }) {
       const { fieldId, verified, by, byName, comment } = payload;
@@ -564,6 +572,7 @@ export const {
   deleteQuery,
   addAttachment,
   removeAttachment,
+  setAttachments,
   setVerification,
   setValidationError,
   hydrateRuntime,

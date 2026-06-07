@@ -41,10 +41,15 @@ async function fetchAssignees() {
   const scope = detectScope();
   if (scope === 'sponsor') {
     // lookup() — drops the site_personnel.view gate so Query-Manager-only
-    // roles still see the Associated dropdown populated.
-    const res = await sponsorPersonnelClient.lookup();
+    // roles still see the Associated dropdown populated. studyTeam() adds the
+    // CRO team members assigned to this study so they can be assigned/escalated
+    // to as well (best-effort — never blocks the site-personnel list).
+    const [res, croTeam] = await Promise.all([
+      sponsorPersonnelClient.lookup(),
+      sponsorPersonnelClient.studyTeam(),
+    ]);
     const rows = Array.isArray(res) ? res : (res?.personnel ?? res?.items ?? res ?? []);
-    return rows.map((r) => ({
+    const sitePeople = rows.map((r) => ({
       id:       r.id ?? r.personnelId ?? r.personnel_id,
       fullName: r.fullName ?? r.full_name ?? '',
       email:    r.email ?? r.emailAddress ?? r.email_address ?? '',
@@ -55,6 +60,19 @@ async function fetchAssignees() {
       siteName: r.siteName ?? r.site_name ?? '',
       status:   r.status ?? r.activeStatus ?? r.active_status ?? 'Active',
     }));
+    const croMembers = (croTeam ?? []).map((m) => ({
+      id:       m.id,
+      fullName: m.fullName,
+      email:    m.email,
+      role:     m.role || 'CRO',
+      siteId:   '',
+      siteIds:  [],
+      siteName: 'CRO Team',
+      status:   'Active',
+    }));
+    // De-dupe by id in case a CRO member is also surfaced as personnel.
+    const seen = new Set(sitePeople.map((p) => p.id));
+    return [...sitePeople, ...croMembers.filter((m) => m.id && !seen.has(m.id))];
   }
   if (scope === 'site') {
     const res = await siteWorkspaceClient.listPersonnel();

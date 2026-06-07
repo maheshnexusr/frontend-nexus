@@ -5,10 +5,11 @@ import { selectCurrentUser } from '@/features/auth/authSlice';
 import {
   Eye, MessageSquare, CheckCircle, FileText, Filter, Search, X as XIcon,
   RefreshCw, RotateCcw, ChevronUp, ChevronDown, ChevronsUpDown,
-  MessageSquareWarning, AlertTriangle, Clock,
+  MessageSquareWarning, AlertTriangle, Clock, ArrowRightLeft,
 } from 'lucide-react';
 import { siteQueryClient } from '@/features/site/api/siteQueryClient';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
+import TransferOwnershipModal from '@/components/subject/TransferOwnershipModal';
 import { addToast }         from '@/app/notificationSlice';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDate }       from '@/utils/formatDate';
@@ -24,12 +25,13 @@ import styles from '@/features/sponsor/pages/QueriesPage.module.css';
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STATUS_OPTIONS   = ['All', 'Raised', 'Answered', 'Resolved', 'Closed', 'Overdue'];
-const PRIORITY_OPTIONS = ['All', 'High', 'Medium', 'Low'];
+const PRIORITY_OPTIONS = ['All', 'Critical', 'High', 'Medium', 'Low'];
 
 const PRIORITY_META = {
-  High:   { color: '#dc2626', bg: '#fef2f2', dot: '#dc2626' },
-  Medium: { color: '#f59e0b', bg: '#fffbeb', dot: '#f59e0b' },
-  Low:    { color: '#3b82f6', bg: '#eff6ff', dot: '#3b82f6' },
+  Critical: { color: '#991b1b', bg: '#fee2e2', dot: '#991b1b' },
+  High:     { color: '#dc2626', bg: '#fef2f2', dot: '#dc2626' },
+  Medium:   { color: '#f59e0b', bg: '#fffbeb', dot: '#f59e0b' },
+  Low:      { color: '#3b82f6', bg: '#eff6ff', dot: '#3b82f6' },
 };
 
 // Status palette per Query Manager requirements:
@@ -79,13 +81,20 @@ export default function SiteQueriesPage() {
   //   /queries/:id/close  → data_capture.close_query  (migration 026 split)
   // Without these checks the buttons would render and 403 on click.
   const { has } = usePermissions();
-  const canRespond  = has('query_manager', 'edit');
+  // Granular QM actions — the discrete leaf is AUTHORITATIVE (no `|| edit`
+  // fallback) so the role editor's toggles actually control button visibility.
+  // A site role must be explicitly granted respond / escalate / reopen.
+  const canRespond  = has('query_manager', 'respond');
   const canClose    = has('data_capture', 'close_query');
-  const canEscalate = has('query_manager', 'edit');
-  const canReopen   = has('query_manager', 'edit');
+  const canEscalate = has('query_manager', 'escalate');
+  const canReopen   = has('query_manager', 'reopen');
   // SLA Settings: panel is visible to anyone with query_manager.view; edit is
   // separately gated server-side AND client-side by `sla_settings`.
   const canEditSla  = has('query_manager', 'sla_settings');
+  // Direct query reassignment is retired — instead the row offers a "Transfer
+  // Subject Ownership" action (moves the subject + ALL its open queries to the
+  // new PI). Gated by the subject-edit leaf, same as the Data Capture list.
+  const canTransferOwnership = has('data_capture', 'subject_edit');
   const [slaOpen, setSlaOpen] = useState(false);
 
   // ── Data ─────────────────────────────────────────────────────────────────
@@ -108,6 +117,7 @@ export default function SiteQueriesPage() {
   const [detailsTarget,  setDetails]  = useState(null);
   const [escalateTarget, setEscalate] = useState(null);
   const [reopenTarget,   setReopen]   = useState(null);
+  const [transferQuery,  setTransferQuery] = useState(null);
 
   // ── Filters ──────────────────────────────────────────────────────────────
   const [statusFilter,   setStatusFilter]   = useState('Raised');
@@ -177,14 +187,24 @@ export default function SiteQueriesPage() {
       dispatch(addToast({ type: 'error', message: 'Cannot open the form — no form or subject for this query.' }));
       return;
     }
-    navigate(`/site/capture/form?formId=${formId}&subjectId=${q.subjectId}`);
+    // Deep-link straight to the page the query was raised against (the form
+    // runner reads ?pageId=… and jumps there). Falls back to page 1 for legacy
+    // queries with no stored page_id.
+    const pageQS = q.pageId ? `&pageId=${encodeURIComponent(q.pageId)}` : '';
+    navigate(`/site/capture/form?formId=${formId}&subjectId=${q.subjectId}${pageQS}`);
   };
 
   // ── Local filter & sort ───────────────────────────────────────────────────
   const filtered = useMemo(() => {
     let rows = queries;
     if (onlyMine) {
-      rows = rows.filter((q) => meAssigneeKeys.has(String(q.assignedTo ?? '').toLowerCase()));
+      // "My Queries" = queries the current user RAISED. The raiser is stored as
+      // an id (raised_by) plus a snapshotted name (raised_by_name); match the
+      // current user against both so it works whichever resolved.
+      rows = rows.filter((q) =>
+        [q.raisedBy, q.raisedByName]
+          .some((v) => v && meAssigneeKeys.has(String(v).toLowerCase()))
+      );
     }
     rows = rows.filter((q) => {
       if (!query) return true;
@@ -196,8 +216,8 @@ export default function SiteQueriesPage() {
       rows = [...rows].sort((a, b) => {
         let av = a[sortKey], bv = b[sortKey];
         if (sortKey === 'priority') {
-          const ORDER = { High: 0, Medium: 1, Low: 2 };
-          av = ORDER[av] ?? 1; bv = ORDER[bv] ?? 1;
+          const ORDER = { Critical: 0, High: 1, Medium: 2, Low: 3 };
+          av = ORDER[av] ?? 2; bv = ORDER[bv] ?? 2;
           return sortDir === 'asc' ? av - bv : bv - av;
         }
         if (sortKey === 'daysOpen') return sortDir === 'asc' ? av - bv : bv - av;
@@ -287,6 +307,34 @@ export default function SiteQueriesPage() {
     }
   };
 
+  // Transfer the SUBJECT'S ownership from a query row — moves the subject + ALL
+  // its open queries (incl. this one) to the new PI, with an audit trail. The
+  // sanctioned alternative to query-level reassignment.
+  const handleTransferOwnership = async ({ newOwnerId, reason }) => {
+    const q = transferQuery;
+    if (!q?.subjectId) return;
+    try {
+      const res = await siteWorkspaceClient.transferSubjectOwnership(q.subjectId, {
+        new_owner_id: newOwnerId,
+        reason,
+      });
+      const moved = res?.queriesMoved ?? res?.queries_moved;
+      dispatch(addToast({
+        type: 'success',
+        message: `Subject ownership transferred to ${res?.newOwnerName ?? res?.new_owner_name ?? 'the new PI'}.`
+          + (moved ? ` ${moved} open quer${moved === 1 ? 'y' : 'ies'} moved.` : ''),
+      }));
+      setTransferQuery(null);
+      load();
+      loadAll();
+    } catch (err) {
+      dispatch(addToast({
+        type: 'error',
+        message: err?.response?.data?.message || err?.message || 'Failed to transfer ownership.',
+      }));
+    }
+  };
+
   const handleReopen = async (data) => {
     try {
       await siteQueryClient.reopen(reopenTarget.id, data);
@@ -304,15 +352,16 @@ export default function SiteQueriesPage() {
   // Spec'd grid columns — paired fields share one cell (stacked vertically).
   const COLUMNS = [
     { key: 'id',                label: 'Query ID'                  },
-    { key: 'siteId',            label: 'Site'                      },
-    { key: 'subjectId',         label: 'Subject'                   },
-    { key: 'pageName',          label: 'Block / Page'              },
+    { key: 'siteId',            label: 'Site Details'              },
+    { key: 'subjectId',         label: 'Subject Details'           },
+    { key: 'pageName',          label: 'CRF Block / Page'          },
     { key: 'fieldName',         label: 'Field / Query Description' },
     { key: 'status',            label: 'Status / Priority'         },
     { key: 'daysOpen',          label: 'Aging'                     },
     { key: 'raisedBy',          label: 'Actioned By'               },
     { key: 'raisedDate',        label: 'Actioned Date'             },
-    { key: 'resolutionComment', label: 'Resolution'                },
+    // Resolution column hidden for now (keep the cell below in sync if re-enabled).
+    // { key: 'resolutionComment', label: 'Resolution'                },
   ];
 
   return (
@@ -535,10 +584,13 @@ export default function SiteQueriesPage() {
                     </div>
                   </td>
 
-                  {/* Subject — initials only. Subject id is internal; the
-                      study coordinator identifies subjects by initials. */}
+                  {/* Subject — number (SUB-…) on top, initials below. Subject id
+                      is internal; coordinators identify subjects by number/initials. */}
                   <td className={styles.td}>
-                    <span className={styles.pill}>{q.subjectInitials || '—'}</span>
+                    <div className={styles.subjectStack}>
+                      <span className={styles.subjectNum}>{q.subjectNumber || '—'}</span>
+                      <span className={styles.subjectInit}>{q.subjectInitials || q.subjectId || '—'}</span>
+                    </div>
                   </td>
 
                   {/* Block + Page (Block grey, Page black per Query Manager spec). */}
@@ -587,11 +639,13 @@ export default function SiteQueriesPage() {
                   </td>
                   <td className={styles.td}>{actionedBy || '—'}</td>
                   <td className={styles.td}>{fmtDate(actionedDate)}</td>
+                  {/* Resolution column hidden for now — re-enable with the COLUMNS entry above.
                   <td className={styles.td} title={q.resolutionComment || ''}>
                     {q.resolutionComment
                       ? (q.resolutionComment.length > 40 ? `${q.resolutionComment.slice(0, 40)}…` : q.resolutionComment)
                       : '—'}
                   </td>
+                  */}
                   <td className={styles.tdActions}>
                     <button className={styles.actionBtn} title="View Details" onClick={() => setDetails(q)}>
                       <Eye size={12} />
@@ -624,6 +678,15 @@ export default function SiteQueriesPage() {
                         onClick={() => setEscalate(q)}
                       >
                         <AlertTriangle size={12} />
+                      </button>
+                    )}
+                    {isActive && canTransferOwnership && q.subjectId && (
+                      <button
+                        className={`${styles.actionBtn} ${styles.actionReassign}`}
+                        title="Transfer subject ownership"
+                        onClick={() => setTransferQuery(q)}
+                      >
+                        <ArrowRightLeft size={12} />
                       </button>
                     )}
                     {canReopenStep && canReopen && (
@@ -713,6 +776,20 @@ export default function SiteQueriesPage() {
           query={reopenTarget}
           onConfirm={handleReopen}
           onClose={() => setReopen(null)}
+        />
+      )}
+      {transferQuery && (
+        <TransferOwnershipModal
+          subject={{
+            id:              transferQuery.subjectId,
+            subjectInitials: transferQuery.subjectInitials,
+            subjectCode:     transferQuery.subjectNumber,
+            siteId:          transferQuery.siteId,
+            ownerId:         transferQuery.assignedTo,
+            ownerName:       transferQuery.assignedToName,
+          }}
+          onConfirm={handleTransferOwnership}
+          onClose={() => setTransferQuery(null)}
         />
       )}
       <SlaSettingsModal

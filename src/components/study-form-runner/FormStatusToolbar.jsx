@@ -26,7 +26,7 @@ import SignFormModal from './SignFormModal';
 
 // Field `type` values that don't capture data (headings, paragraphs, dividers).
 // Kept aligned with StudyFormRunner's isLayout check.
-const LAYOUT_TYPES = new Set(['h2', 'paragraph', 'divider']);
+const LAYOUT_TYPES = new Set(['h2', 'h3', 'paragraph', 'divider']);
 
 const isEmptyValue = (v) =>
   v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);

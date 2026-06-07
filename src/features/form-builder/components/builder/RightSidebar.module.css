@@ -186,3 +186,31 @@
   transition: border-color 0.1s, color 0.1s;
 }
 .addCondBtn:hover { border-color: #07bf9b; color: #07bf9b; }
+
+/* Number stepper (increment/decrement) */
+.stepper { display: inline-flex; align-items: center; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; background: #fff; }
+.stepperBtn {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 28px; color: #64748b; background: #f8fafc; cursor: pointer;
+  border: none; flex-shrink: 0;
+}
+.stepperBtn:hover { background: #eef2f7; color: #0f172a; }
+.stepperInput { width: 56px; height: 28px; text-align: center; border: none; outline: none; font-size: 12.5px; color: #0f172a; -moz-appearance: textfield; }
+.stepperInput::-webkit-outer-spin-button, .stepperInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Regex ? help button */
+.helpBtn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; flex-shrink: 0; cursor: pointer;
+  color: #64748b; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+}
+.helpBtn:hover { color: #07bf9b; border-color: #07bf9b; }
+
+/* Option reorder arrows */
+.optionMove { font-size: 7px; line-height: 1; color: #94a3b8; padding: 1px 2px; cursor: pointer; background: none; border: none; }
+.optionMove:hover:not(:disabled) { color: #07bf9b; }
+.optionMove:disabled { opacity: 0.3; cursor: default; }
+
+/* Validation hint note */
+.helpNote { font-size: 10.5px; line-height: 1.5; color: #94a3b8; margin: 6px 0 0; }
+.helpNote code { font-family: monospace; color: #475569; background: #f1f5f9; padding: 0 3px; border-radius: 3px; }

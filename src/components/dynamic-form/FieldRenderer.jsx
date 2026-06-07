@@ -28,6 +28,7 @@ export default function FieldRenderer({ field, value, error, onChange, readOnly 
 
   /* ── layout-only elements ─────────────────────────────────────────────── */
   if (type === 'h2')       return <h2  className={s.layoutH2}>{label || 'Section'}</h2>;
+  if (type === 'h3')       return <h3  className={s.layoutH3}>{label || 'Sub-heading'}</h3>;
   if (type === 'paragraph') return <p   className={s.layoutPara}>{field.content || label || ''}</p>;
   if (type === 'divider')   return <hr  className={s.layoutDivider} />;
 

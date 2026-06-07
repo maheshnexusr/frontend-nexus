@@ -51,6 +51,7 @@ function normalizeSubject(raw) {
     id:               raw.id             ?? raw.subject_id   ?? '',
     // Spec §VM: Subject Details = Subject ID + Initials.
     subjectNumber:    raw.subject_number  ?? raw.subjectNumber ?? '',
+    subjectName:      raw.subject_name    ?? raw.subjectName   ?? '',
     initials:         raw.subject_initials ?? raw.initials    ?? '',
     siteCode:         raw.site_code      ?? raw.siteCode     ?? '',
     siteName:         raw.site_name      ?? raw.siteName     ?? '',
@@ -84,8 +85,10 @@ function normalizeSubject(raw) {
     fieldName:        raw.field_name     ?? raw.fieldName    ?? '',
     completedBy:      raw.completed_by   ?? raw.completedBy  ?? '',
     completedAt:      raw.completed_at   ?? raw.completedAt  ?? '',
-    // Spec §VM: Block / Page = the form + the specific eCRF page being verified.
-    blockPage:        [raw.form_name ?? raw.formName, raw.page_title ?? raw.pageTitle]
+    // CRF Block / Page — the parent block + the specific eCRF page being verified.
+    blockName:        raw.block_name     ?? raw.blockName    ?? '',
+    pageName:         raw.page_title     ?? raw.pageTitle    ?? '',
+    blockPage:        [raw.block_name ?? raw.blockName, raw.page_title ?? raw.pageTitle]
                         .filter(Boolean).join(' / ') || (raw.form_name ?? raw.formName ?? ''),
     // Days from row creation → verified_at (or NOW() if pending).
     ageDays:          Number(raw.age_days ?? raw.ageDays ?? 0),
@@ -292,7 +295,7 @@ export const sponsorVerificationClient = {
 
   async bulkVerify(_studyId, ids) {
     const res = await pickScope().axios.post(`${pickScope().base}/bulk-verify`, { subjectIds: ids });
-    return res?.verified ?? ids.length;
+    return { verified: res?.verified ?? 0, processed: res?.processed ?? 0 };
   },
 
   async bulkApprove(_studyId, ids) {

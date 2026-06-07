@@ -13,6 +13,12 @@
   background: #f8fafc;
 }
 
+/* Outline hidden ("Hide Outline") — drop the 240px rail column so the form
+   content reflows to the full width instead of leaving an empty left gap. */
+.rootCollapsed {
+  grid-template-columns: 1fr;
+}
+
 /* ═════════════════════════════════════════════════════════════════════════
    SIDEBAR — compact left rail
    ═════════════════════════════════════════════════════════════════════════ */
@@ -508,6 +514,14 @@
   border-bottom: 1px solid #e2e8f0;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  margin: 0;
+  padding-bottom: 2px;
 }
 .paragraph {
   font-size: 12px;

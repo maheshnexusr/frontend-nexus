@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
-  Plus, Search, X, RefreshCw, Download, Upload,
+  Plus, Search, X, RefreshCw, Upload,
   Filter, Lock, Unlock, Eye, Pencil, Trash2,
   ChevronUp, ChevronDown, ChevronsUpDown, AlertTriangle,
 } from 'lucide-react';
@@ -11,6 +11,7 @@ import { addToast }             from '@/app/notificationSlice';
 import { sponsorSitesClient }   from '../api/sponsorSitesClient';
 import LockUnlockModal          from '../components/sites/LockUnlockModal';
 import SiteDetailsModal         from '../components/sites/SiteDetailsModal';
+import SiteImportModal          from '../components/sites/SiteImportModal';
 import ConfirmDialog            from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }      from '@/features/workspace/hooks/useReadOnlyView';
 import { usePermissions }       from '@/features/auth/usePermissions';
@@ -29,8 +30,6 @@ const COLS = [
   { key: 'contactNumber',       label: 'Phone',        sortable: false },
   { key: 'city',                label: 'City',         sortable: true  },
   { key: 'country',             label: 'Country',      sortable: true  },
-  { key: 'expectedEnrollments', label: 'Expected',     sortable: true  },
-  { key: 'actualEnrollments',   label: 'Actual',       sortable: true  },
   { key: 'status',              label: 'Status',       sortable: true  },
   { key: 'isLocked',            label: 'Lock',         sortable: true  },
 ];
@@ -44,19 +43,12 @@ function SortIcon({ colKey, sort }) {
   return sort.dir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />;
 }
 
-function progressColor(pct) {
-  if (pct >= 80) return '#10b981';
-  if (pct >= 50) return '#f59e0b';
-  return '#ef4444';
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function SitesPage() {
   const { studyId } = useParams();
   const navigate    = useNavigate();
   const dispatch    = useDispatch();
-  const importRef   = useRef(null);
   const ro          = useReadOnlyView();
   const { has }     = usePermissions();
   const canCreate   = has('sites', 'create');
@@ -64,7 +56,6 @@ export default function SitesPage() {
   const canDelete   = has('sites', 'delete');
   const canLockSite = has('sites', 'lock_site');
   const canImport   = has('sites', 'import');
-  const canExport   = has('sites', 'export');
 
   // Data
   const [sites,      setSites]      = useState([]);
@@ -88,7 +79,7 @@ export default function SitesPage() {
   const [lockTarget,     setLockTarget]     = useState(null);      // { mode, site }
   const [detailSite,     setDetailSite]     = useState(null);
   const [deleteTarget,   setDeleteTarget]   = useState(null);      // site object
-  const [importResult,   setImportResult]   = useState(null);      // { imported, failed, errors }
+  const [importOpen,     setImportOpen]     = useState(false);     // Import Sites modal
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -122,6 +113,18 @@ export default function SitesPage() {
 
   const filtered = useMemo(() => {
     let list = sites;
+    // Status / Lock / Country filters are applied CLIENT-SIDE — the backend
+    // listSites returns every site for the study and ignores query params, so
+    // these tabs/dropdowns must filter the loaded list here.
+    if (statusFilter !== 'All') {
+      list = list.filter((s) => (s.status ?? 'Active') === statusFilter);
+    }
+    if (lockFilter !== 'All') {
+      list = list.filter((s) => Boolean(s.isLocked) === (lockFilter === 'Locked'));
+    }
+    if (countryFilter !== 'All') {
+      list = list.filter((s) => (s.country ?? '') === countryFilter);
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -148,7 +151,7 @@ export default function SitesPage() {
       bv = String(bv).toLowerCase();
       return sort.dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
     });
-  }, [sites, search, citySearch, sort]);
+  }, [sites, search, citySearch, sort, statusFilter, lockFilter, countryFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage   = Math.min(page, totalPages);
@@ -193,35 +196,6 @@ export default function SitesPage() {
     setLockTarget(null);
   }
 
-  async function handleExport(format) {
-    try {
-      await sponsorSitesClient.export(studyId, format, {
-        status:  statusFilter  !== 'All' ? statusFilter  : undefined,
-        country: countryFilter !== 'All' ? countryFilter : undefined,
-      });
-      dispatch(addToast({ type: 'success', message: 'Sites exported successfully.' }));
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to export sites.' }));
-    }
-  }
-
-  async function handleImport(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
-    try {
-      const result = await sponsorSitesClient.import(studyId, file);
-      setImportResult(result);
-      dispatch(addToast({
-        type: result.failed > 0 ? 'warning' : 'success',
-        message: `Sites imported. ${result.imported} imported, ${result.failed} failed.`,
-      }));
-      loadSites(true);
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to import sites. Please check file format.' }));
-    }
-  }
-
   // ── Pagination helpers ────────────────────────────────────────────────────
 
   function pageRange(cur, total) {
@@ -245,23 +219,10 @@ export default function SitesPage() {
           {canImport && (
             <button
               className={css.btnSecondary}
-              onClick={() => importRef.current?.click()}
+              onClick={() => setImportOpen(true)}
               {...ro.disabledProps('Import sites')}
             >
-              <Upload size={14} /> Import
-            </button>
-          )}
-          {canImport && (
-            <input ref={importRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleImport} />
-          )}
-          {canExport && (
-            <button className={css.btnSecondary} onClick={() => handleExport('csv')}>
-              <Download size={14} /> CSV
-            </button>
-          )}
-          {canExport && (
-            <button className={css.btnSecondary} onClick={() => handleExport('xlsx')}>
-              <Download size={14} /> Excel
+              <Upload size={14} /> Import Sites
             </button>
           )}
           <button
@@ -402,10 +363,6 @@ export default function SitesPage() {
               </tr>
             ) : (
               pageData.map((site) => {
-                const enrollPct = site.expectedEnrollments
-                  ? Math.min(100, Math.round(((site.actualEnrollments ?? 0) / site.expectedEnrollments) * 100))
-                  : 0;
-                const atTarget = (site.actualEnrollments ?? 0) >= (site.expectedEnrollments ?? 1);
                 return (
                   <tr
                     key={site.id ?? site.siteCode}
@@ -423,20 +380,6 @@ export default function SitesPage() {
                     <td className={css.td}>{site.contactNumber || '—'}</td>
                     <td className={css.td}>{site.city || '—'}</td>
                     <td className={css.td}>{site.country || '—'}</td>
-                    <td className={css.td}>{site.expectedEnrollments ?? 0}</td>
-                    <td className={css.td}>
-                      <div className={css.enrollCell}>
-                        <div className={css.progressMini}>
-                          <div
-                            className={css.progressMiniFill}
-                            style={{ width: `${enrollPct}%`, background: progressColor(enrollPct) }}
-                          />
-                        </div>
-                        <span style={{ color: atTarget ? '#059669' : undefined, fontWeight: atTarget ? 700 : undefined }}>
-                          {site.actualEnrollments ?? 0}
-                        </span>
-                      </div>
-                    </td>
                     <td className={css.td}>
                       <span
                         className={css.statusBadge}
@@ -458,7 +401,7 @@ export default function SitesPage() {
                       <button
                         className={css.actionBtn}
                         title="View Details"
-                        onClick={() => setDetailSite(site)}
+                        onClick={() => navigate(`/sponsor/${studyId}/sites/${site.id ?? site.siteCode}/view`)}
                       >
                         <Eye size={13} />
                       </button>
@@ -537,29 +480,13 @@ export default function SitesPage() {
         </div>
       )}
 
-      {/* Import Result */}
-      {importResult && (
-        <div className={css.importResult}>
-          <div className={css.importSummary}>
-            <span className={css.importSuccess}>{importResult.imported} imported</span>
-            {importResult.failed > 0 && (
-              <span className={css.importFail}>{importResult.failed} failed</span>
-            )}
-            <button className={css.importClose} onClick={() => setImportResult(null)}>
-              <X size={12} />
-            </button>
-          </div>
-          {importResult.errors?.length > 0 && (
-            <ul className={css.importErrors}>
-              {importResult.errors.slice(0, 10).map((e, i) => (
-                <li key={i}>{e}</li>
-              ))}
-              {importResult.errors.length > 10 && (
-                <li>…and {importResult.errors.length - 10} more errors.</li>
-              )}
-            </ul>
-          )}
-        </div>
+      {/* Import Sites Modal */}
+      {importOpen && (
+        <SiteImportModal
+          studyId={studyId}
+          onClose={() => setImportOpen(false)}
+          onImported={() => loadSites(true)}
+        />
       )}
 
       {/* Lock / Unlock Modal */}

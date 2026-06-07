@@ -45,15 +45,24 @@ export default function CaptureFormPage() {
     : (typeof dc?.[action] === 'boolean' ? dc[action] === true : dc?.edit === true);
   const canEdit    = !perms || dc?.edit === true;
   const canSubmit  = dcAllows('submit');
-  const canVerify  = !perms || perms?.data_verification?.edit === true;
-  const isReadOnly = ro.isReadOnly || !canEdit;
+  const canVerify  = !perms || perms?.data_verification?.verify === true || perms?.data_verification?.edit === true;
+  // Reopen a submitted form needs its own permission (data_capture.reopen).
+  const canReopen  = !perms || perms?.data_capture?.reopen === true;
 
   const [blocks,    setBlocks]    = useState([]);
+  const [eligCriteria, setEligCriteria] = useState([]);
+  const [formStatus, setFormStatus] = useState('In Progress');
   const [formTitle, setFormTitle] = useState('Study Form');
+  // Study name (not the form name) — shown in the top bar next to Back.
+  const [studyName, setStudyName] = useState('');
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState(null);
   const [defaults,  setDefaults]  = useState({});
   const [submitted, setSubmitted] = useState(false);
+  // Step-3 study module toggles (from the form GET) — hide the verification
+  // workflow / query chips when the study doesn't enable those managers.
+  const [verificationEnabled, setVerificationEnabled] = useState(true);
+  const [queryEnabled,        setQueryEnabled]        = useState(true);
   // { [pageId]: { completedAt, status } } — pages already Marked Completed.
   const [completedPages, setCompletedPages] = useState({});
   // Persisted verification: { fields: { [fieldId]: {...} }, pages: { [pageId]: {...} } }
@@ -76,7 +85,11 @@ export default function CaptureFormPage() {
         const structure = form.structure ?? form.studyFormData ?? {};
         if (!cancelled) {
           setFormTitle(form.title || 'Study Form');
+          setStudyName(form.studyTitle || form.study_title || '');
           setBlocks(Array.isArray(structure.blocks) ? structure.blocks : []);
+          setEligCriteria(structure.eligibilityCriteria ?? structure.eligibility_criteria ?? []);
+          setVerificationEnabled(form.verificationEnabled ?? form.verification_enabled ?? true);
+          setQueryEnabled(form.queryEnabled ?? form.query_enabled ?? true);
         }
 
         if (subjectId) {
@@ -84,7 +97,7 @@ export default function CaptureFormPage() {
             `/api/v1/sponsor/workspace/subjects/${subjectId}/forms/${formId}/data`,
           );
           const row = dataRes?.data ?? null;
-          if (!cancelled) setDefaults(row?.form_data ?? row?.formData ?? {});
+          if (!cancelled) { setDefaults(row?.form_data ?? row?.formData ?? {}); setFormStatus(row?.status ?? 'In Progress'); }
 
           // Which pages are already Marked Completed → the runner shows a
           // "Page Completed" badge instead of the button. Non-fatal on error.
@@ -99,7 +112,7 @@ export default function CaptureFormPage() {
               for (const r of (ps?.pages ?? [])) {
                 if (!r.field_name) {
                   if (r.completed_at) cmap[r.page_id] = { completedAt: r.completed_at, status: r.status };
-                  vpages[r.page_id] = { status: r.status, verifiedByName: r.verified_by_name, verifiedAt: r.verified_at };
+                  vpages[r.page_id] = { status: r.status, recordStatus: r.record_status, verifiedByName: r.verified_by_name, verifiedAt: r.verified_at };
                 } else {
                   vfields[r.field_name] = { status: r.status, verifiedByName: r.verified_by_name, verifiedAt: r.verified_at };
                 }
@@ -145,10 +158,15 @@ export default function CaptureFormPage() {
       }));
       throw new Error('subject required');
     }
-    await sponsorAxiosClient.post(
-      `/api/v1/sponsor/workspace/subjects/${subjectId}/forms/${formId}/data`,
-      { form_data: formData, status: 'Submitted' },
-    );
+    try {
+      await sponsorAxiosClient.post(
+        `/api/v1/sponsor/workspace/subjects/${subjectId}/forms/${formId}/data`,
+        { form_data: formData, status: 'Submitted' },
+      );
+    } catch (e) {
+      dispatch(addToast({ type: 'error', message: e?.response?.data?.message || e?.message || 'Failed to submit form.' }));
+      throw e;
+    }
     dispatch(addToast({ type: 'success', message: 'Form saved.' }));
     setSubmitted(true);
   }, [formId, subjectId, ro.isReadOnly, ro.readOnlyMessage, canSubmit, dispatch]);
@@ -163,20 +181,49 @@ export default function CaptureFormPage() {
         { subject_id: subjectId, form_id: formId, page_id: pageId, page_title: pageTitle, fields },
       );
       const skipped = res?.skipped ?? [];
-      if (skipped.length) {
+      const skippedEmpty = res?.skippedEmpty ?? res?.skipped_empty ?? [];
+      const missingRequired = res?.missingRequired ?? res?.missing_required ?? [];
+      if (missingRequired.length) {
+        dispatch(addToast({
+          type: 'warning',
+          message: `Page not fully verified — ${missingRequired.length} required field(s) still empty: ${missingRequired.join(', ')}.`,
+        }));
+      } else if (skipped.length || skippedEmpty.length) {
+        const parts = [];
+        if (skipped.length) parts.push(`${skipped.length} with an open query`);
+        if (skippedEmpty.length) parts.push(`${skippedEmpty.length} empty`);
         dispatch(addToast({
           type: 'info',
-          message: `${skipped.length} field(s) have an open query and were not verified: ${skipped.join(', ')}`,
+          message: `Page verified. Skipped ${parts.join(' and ')} field(s) (not verifiable).`,
         }));
       } else {
         dispatch(addToast({ type: 'success', message: 'Page verified.' }));
       }
-      return { skipped, pageStatus: res?.pageStatus, verifiedByName: res?.verifiedByName ?? res?.verified_by_name ?? null };
+      return { skipped, skippedEmpty, missingRequired, pageStatus: res?.pageStatus, verifiedByName: res?.verifiedByName ?? res?.verified_by_name ?? null };
     } catch (e) {
       dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to verify page.' }));
       throw e;
     }
   }, [formId, subjectId, canVerify, myName, dispatch]);
+
+
+  // Controlled unlock — reopen a submitted form so it can be corrected.
+  const handleReopen = useCallback(async () => {
+    if (!canReopen || !subjectId) return;
+    // eslint-disable-next-line no-alert
+    const reason = window.prompt('Reason for reopening this submitted form:');
+    if (reason == null || !reason.trim()) return;
+    try {
+      await sponsorAxiosClient.post(`/api/v1/sponsor/workspace/subjects/${subjectId}/forms/${formId}/reopen`, { reason: reason.trim() });
+      setFormStatus('In Progress');
+      dispatch(addToast({ type: 'success', message: 'Form reopened — it is editable again.' }));
+    } catch (e) {
+      dispatch(addToast({ type: 'error', message: e?.response?.data?.message || e?.message || 'Failed to reopen form.' }));
+    }
+  }, [subjectId, formId, canReopen, dispatch]);
+
+  const isSubmitted = ['Submitted', 'Completed'].includes(formStatus);
+  const isReadOnly  = ro.isReadOnly || !canEdit || isSubmitted;
 
   if (loading) {
     return (
@@ -210,7 +257,7 @@ export default function CaptureFormPage() {
           >
             <ArrowLeft size={14} /> All subjects
           </button>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{formTitle || 'Data Capture'}</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{studyName || 'Data Capture'}</span>
         </div>
         <div className={s.successCard}>
           <CheckCircle2 size={44} className={s.successIcon} />
@@ -244,7 +291,30 @@ export default function CaptureFormPage() {
         <button className={s.backBtn} onClick={() => navigate(-1)} style={{ marginBottom: 0 }}>
           <ArrowLeft size={14} /> Back
         </button>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{formTitle || 'Data Capture'}</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{studyName || 'Data Capture'}</span>
+        {isSubmitted && (
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px',
+              borderRadius: 999, fontSize: 11.5, fontWeight: 700,
+              background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
+            }}>
+              🔒 Submitted — read-only
+            </span>
+            {canReopen && (
+              <button
+                type="button"
+                onClick={handleReopen}
+                style={{
+                  padding: '4px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                  border: '1px solid #f59e0b', background: '#fffbeb', color: '#b45309', cursor: 'pointer',
+                }}
+              >
+                Reopen
+              </button>
+            )}
+          </span>
+        )}
       </div>
 
       <SubjectContextStrip studyId={studyId} subjectId={subjectId} />
@@ -254,9 +324,12 @@ export default function CaptureFormPage() {
         formTitle={formTitle}
         defaultValues={defaults}
         onSubmit={handleSubmit}
-        onVerifyPage={canVerify ? handleVerifyPage : undefined}
+        onVerifyPage={canVerify && verificationEnabled ? handleVerifyPage : undefined}
+        eligibilityCriteria={eligCriteria}
         completedPages={completedPages}
         verification={verification}
+        verificationEnabled={verificationEnabled}
+        queryEnabled={queryEnabled}
         canSubmit={canSubmit}
         submitLabel={isReadOnly ? 'Read-only view' : 'Submit eCRF'}
         readOnly={isReadOnly}

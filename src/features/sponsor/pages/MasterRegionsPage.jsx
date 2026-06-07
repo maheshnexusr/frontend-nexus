@@ -197,7 +197,7 @@ export default function MasterRegionsPage() {
         </span>
       </div>
 
-      <DataTable
+      <DataTable flat
         columns={columns}
         data={pageData}
         loading={loading}

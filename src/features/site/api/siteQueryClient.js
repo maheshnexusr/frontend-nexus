@@ -14,23 +14,29 @@
  */
 
 import siteAxiosClient from '@/api/siteAxiosClient';
-import { humanizeAuditAction, asReopenSystemEntry } from '@/features/sponsor/api/sponsorQueryClient';
+import { humanizeAuditAction, asReopenSystemEntry, asEscalateSystemEntry, uploadAttachments } from '@/features/sponsor/api/sponsorQueryClient';
 
 const BASE = '/api/v1/site/workspace/queries';
 
 // Response-thread + audit-trail row shapes the shared QueryDetailsModal reads.
 function normalizeResponse(raw) {
   const responderName = raw.responder_name ?? raw.responderName ?? 'Unknown';
-  // "[Reopened] <reason>" comments render as a distinct system status line.
+  // "[Reopened]" / "[Escalated]" comments render as distinct system event lines.
   const reopen = asReopenSystemEntry(raw, responderName);
   if (reopen) return reopen;
+  const escalate = asEscalateSystemEntry(raw, responderName);
+  if (escalate) return escalate;
   return {
     id:            raw.id            ?? raw.comment_id ?? crypto.randomUUID(),
     responderName,
     responderRole: raw.responder_role ?? raw.responderRole ?? '',
     responseText:  raw.response_text  ?? raw.responseText  ?? raw.comment_text ?? raw.answer ?? '',
     timestamp:     raw.timestamp      ?? raw.created_at     ?? '',
-    attachments:   [],
+    attachments:   (raw.attachments   ?? []).map((a) => ({
+      id:   a.id   ?? '',
+      name: a.name ?? '',
+      url:  a.url  ?? '',
+    })),
   };
 }
 function normalizeAudit(raw) {
@@ -45,8 +51,11 @@ function normalizeAudit(raw) {
 
 export const PRIORITY_SLA_DAYS = { High: 1, Medium: 3, Low: 7 };
 
-const SEVERITY_FROM_PRIORITY = { High: 'Critical', Medium: 'Major', Low: 'Minor' };
-const PRIORITY_FROM_SEVERITY = { Critical: 'High', Major: 'Medium', Minor: 'Low' };
+// Severity and priority share ONE 4-level scale: Critical > High > Medium > Low.
+// Maps are identity for the four values; PRIORITY_FROM_SEVERITY also folds
+// legacy Major/Minor rows back to Medium/Low so old data still reads sensibly.
+const SEVERITY_FROM_PRIORITY = { Critical: 'Critical', High: 'High', Medium: 'Medium', Low: 'Low' };
+const PRIORITY_FROM_SEVERITY = { Critical: 'Critical', High: 'High', Medium: 'Medium', Low: 'Low', Major: 'Medium', Minor: 'Low' };
 
 function daysOpen(dateStr) {
   if (!dateStr) return 0;
@@ -60,22 +69,26 @@ function slaRemaining(priority, dateStr) {
 }
 
 function normalizeQuery(raw) {
-  const severity   = raw.severity ?? raw.priority ?? 'Major';
+  const severity   = raw.severity ?? raw.priority ?? 'Medium';
   const priority   = PRIORITY_FROM_SEVERITY[severity] ?? raw.priority ?? 'Medium';
   const status     = raw.status     ?? 'Open';
   const raisedDate = raw.raised_date ?? raw.raisedDate ?? raw.created_at ?? '';
   return {
     id:           raw.id           ?? raw.query_id    ?? raw.queryId ?? '',
-    studyName:    raw.study_name   ?? raw.studyName   ?? '',
+    studyName:    raw.study_title  ?? raw.studyTitle  ?? raw.study_name ?? raw.studyName ?? '',
     siteName:     raw.site_name    ?? raw.siteName    ?? '',
     siteCode:     raw.site_number  ?? raw.siteNumber  ?? raw.site_code ?? raw.siteCode ?? '',
     siteId:       raw.site_id      ?? raw.siteId      ?? raw.site_code ?? raw.siteCode ?? '',
     subjectId:    raw.subject_id   ?? raw.subjectId   ?? '',
+    subjectNumber: raw.subject_number ?? raw.subjectNumber ?? '',
+    subjectName:   raw.subject_name   ?? raw.subjectName   ?? '',
     subjectInitials: raw.subject_initials ?? raw.subjectInitials ?? '',
     // FormQueriesContext filters by (subjectId, formId) so the per-field /
     // per-page / per-block count badges work. Without formId here the site
     // workspace silently dropped every query → no badges for site users.
     formId:       raw.form_id      ?? raw.formId      ?? '',
+    blockId:      raw.block_id     ?? raw.blockId     ?? '',
+    pageId:       raw.page_id      ?? raw.pageId      ?? '',
     blockName:    raw.block_name   ?? raw.blockName   ?? '',
     pageName:     raw.page_name    ?? raw.pageName    ?? raw.form_name ?? raw.formName ?? '',
     formName:     raw.form_name    ?? raw.formName    ?? '',
@@ -108,6 +121,19 @@ function normalizeQuery(raw) {
     assignedTo:     raw.assigned_to       ?? raw.assignedTo     ?? '',
     assignedToName: raw.assigned_to_name  ?? raw.assignedToName ?? '',
     assignedToRole: raw.assigned_to_role  ?? raw.assignedToRole ?? '',
+    // Escalation target — see sponsorQueryClient note. Lets the data-capture
+    // drawer show "Escalated to <name>" for site viewers too.
+    escalatedTo:     raw.escalated_to       ?? raw.escalatedTo     ?? '',
+    escalatedToName: raw.escalated_to_name  ?? raw.escalatedToName ?? '',
+    escalatedByName: raw.escalated_by_name  ?? raw.escalatedByName ?? '',
+    escalatedAt:     raw.escalated_at       ?? raw.escalatedAt     ?? '',
+    escalationReason: raw.escalation_reason ?? raw.escalationReason ?? '',
+    isEscalated:     Boolean(raw.escalated_to ?? raw.escalatedTo),
+    // Previous owner before the last reassignment (label only).
+    previousAssignedTo:     raw.previous_assigned_to       ?? raw.previousAssignedTo     ?? '',
+    previousAssignedToName: raw.previous_assigned_to_name  ?? raw.previousAssignedToName ?? '',
+    reassignedAt:           raw.reassigned_at              ?? raw.reassignedAt           ?? '',
+    isReassigned:           Boolean(raw.previous_assigned_to ?? raw.previousAssignedTo),
   };
 }
 
@@ -151,18 +177,21 @@ export const siteQueryClient = {
     const severity = data.severity
       ?? SEVERITY_FROM_PRIORITY[data.priority]
       ?? data.priority
-      ?? 'Major';
+      ?? 'Medium';
     const res = await siteAxiosClient.post(BASE, {
       subject_id:  data.subjectId,
       form_id:     data.formId,
       field_name:  data.fieldName ?? data.fieldKey,
       field_label: data.fieldLabel ?? undefined,
+      block_id:    data.blockId   ?? undefined,
+      page_id:     data.pageId    ?? undefined,
       block_name:  data.blockName ?? undefined,
       page_name:   data.pageName ?? undefined,
       query_text:  data.queryText ?? data.question,
       severity,
       assigned_to: data.assignedTo || undefined,
       due_at:      data.dueAt      || undefined,
+      attachments: await uploadAttachments(data.attachments),
     });
     return normalizeQuery(res?.item ?? res?.query ?? res ?? {});
   },
@@ -181,6 +210,7 @@ export const siteQueryClient = {
       answer:            data.responseText,
       statusUpdate:      data.statusUpdate,
       updatedFieldValue: data.updatedFieldValue,
+      attachments:       await uploadAttachments(data.attachments),
     });
     return normalizeQuery(res?.item ?? res?.query ?? res ?? {});
   },

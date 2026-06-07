@@ -327,7 +327,7 @@ export default function CountryPage() {
       </div>
 
       {/* Table — DataTable's onExport shows its own Export button in toolbar */}
-      <DataTable
+      <DataTable flat
         columns={columns}
         data={pageData}
         loading={loading}

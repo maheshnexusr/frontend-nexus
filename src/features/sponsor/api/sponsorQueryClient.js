@@ -12,6 +12,23 @@
  */
 
 import sponsorAxiosClient from '@/api/sponsorAxiosClient';
+import { uploadFormFile } from '@/api/formFileClient';
+
+// Upload any File instances to the study disk store and return reference
+// objects ({ url, name, size, type }); pass-through anything already a ref.
+export async function uploadAttachments(files) {
+  if (!files?.length) return [];
+  const out = [];
+  for (const f of files) {
+    if (typeof File !== 'undefined' && f instanceof File) {
+      const r = await uploadFormFile(f);
+      out.push({ url: r.url, name: r.name, size: r.size, type: r.type });
+    } else if (f?.url) {
+      out.push({ url: f.url, name: f.name, size: f.size, type: f.type });
+    }
+  }
+  return out;
+}
 
 const BASE      = '/api/v1/sponsor/workspace/queries';
 const WORKSPACE = '/api/v1/sponsor/workspace';
@@ -19,9 +36,12 @@ const WORKSPACE = '/api/v1/sponsor/workspace';
 export const PRIORITY_SLA_DAYS = { High: 1, Medium: 3, Low: 7 };
 
 // Spec §4.5 severity ↔ UI priority aliasing.
-// UI surfaces High/Medium/Low; backend authoritative values are Critical/Major/Minor.
-const SEVERITY_FROM_PRIORITY = { High: 'Critical', Medium: 'Major', Low: 'Minor' };
-const PRIORITY_FROM_SEVERITY = { Critical: 'High', Major: 'Medium', Minor: 'Low' };
+// Severity and priority share ONE 4-level scale: Critical > High > Medium > Low.
+// (No separate Major/Minor vocabulary.) The maps are identity for the four
+// values; PRIORITY_FROM_SEVERITY additionally folds legacy Major/Minor rows
+// back to Medium/Low so old data still reads sensibly.
+const SEVERITY_FROM_PRIORITY = { Critical: 'Critical', High: 'High', Medium: 'Medium', Low: 'Low' };
+const PRIORITY_FROM_SEVERITY = { Critical: 'Critical', High: 'High', Medium: 'Medium', Low: 'Low', Major: 'Medium', Minor: 'Low' };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function daysOpen(dateStr) {
@@ -37,19 +57,24 @@ function slaRemaining(priority, dateStr) {
 
 // ── Normalizers ────────────────────────────────────────────────────────────────
 function normalizeQuery(raw) {
-  const severity   = raw.severity ?? raw.priority ?? 'Major';
+  const severity   = raw.severity ?? raw.priority ?? 'Medium';
   const priority   = PRIORITY_FROM_SEVERITY[severity] ?? raw.priority ?? 'Medium';
   const status     = raw.status     ?? 'Open';
   const raisedDate = raw.raised_date ?? raw.raisedDate ?? raw.created_at ?? '';
   return {
     id:           raw.id           ?? raw.query_id    ?? raw.queryId ?? '',
-    studyName:    raw.study_name   ?? raw.studyName   ?? '',
+    studyName:    raw.study_title  ?? raw.studyTitle  ?? raw.study_name ?? raw.studyName ?? '',
     siteName:     raw.site_name    ?? raw.siteName    ?? '',
     siteCode:     raw.site_number  ?? raw.siteNumber  ?? raw.site_code ?? raw.siteCode ?? '',
     siteId:       raw.site_id      ?? raw.siteId      ?? raw.site_code ?? raw.siteCode ?? '',
     subjectId:    raw.subject_id   ?? raw.subjectId   ?? '',
+    subjectNumber: raw.subject_number ?? raw.subjectNumber ?? '',
+    subjectName:   raw.subject_name   ?? raw.subjectName   ?? '',
     subjectInitials: raw.subject_initials ?? raw.subjectInitials ?? '',
+    protocolNumber: raw.protocol_number ?? raw.protocolNumber ?? '',
     formId:       raw.form_id      ?? raw.formId      ?? '',
+    blockId:      raw.block_id     ?? raw.blockId     ?? '',
+    pageId:       raw.page_id      ?? raw.pageId      ?? '',
     blockName:    raw.block_name   ?? raw.blockName   ?? '',
     pageName:     raw.page_name    ?? raw.pageName    ?? raw.form_name ?? raw.formName ?? '',
     formName:     raw.form_name    ?? raw.formName    ?? '',
@@ -81,6 +106,21 @@ function normalizeQuery(raw) {
     assignedTo:     raw.assigned_to       ?? raw.assignedTo     ?? '',
     assignedToName: raw.assigned_to_name  ?? raw.assignedToName ?? '',
     assignedToRole: raw.assigned_to_role  ?? raw.assignedToRole ?? '',
+    // Escalation target — distinct from the assignee. Present (truthy) means
+    // the query has been escalated to this person, who can view it alongside
+    // the original assignee. isEscalated drives the "Escalated" badge.
+    escalatedTo:     raw.escalated_to       ?? raw.escalatedTo     ?? '',
+    escalatedToName: raw.escalated_to_name  ?? raw.escalatedToName ?? '',
+    escalatedByName: raw.escalated_by_name  ?? raw.escalatedByName ?? '',
+    escalatedAt:     raw.escalated_at       ?? raw.escalatedAt     ?? '',
+    escalationReason: raw.escalation_reason ?? raw.escalationReason ?? '',
+    isEscalated:     Boolean(raw.escalated_to ?? raw.escalatedTo),
+    // Previous owner before the last reassignment (label only — current owner is
+    // assignedTo). isReassigned drives the "was: <name>" note.
+    previousAssignedTo:     raw.previous_assigned_to       ?? raw.previousAssignedTo     ?? '',
+    previousAssignedToName: raw.previous_assigned_to_name  ?? raw.previousAssignedToName ?? '',
+    reassignedAt:           raw.reassigned_at              ?? raw.reassignedAt           ?? '',
+    isReassigned:           Boolean(raw.previous_assigned_to ?? raw.previousAssignedTo),
     expectedValue:     raw.expected_value      ?? raw.expectedValue      ?? '',
     referenceSource:   raw.reference_source    ?? raw.referenceSource    ?? '',
     currentFieldValue: raw.current_field_value ?? raw.currentFieldValue  ?? '',
@@ -106,10 +146,32 @@ export function asReopenSystemEntry(raw, responderName) {
   };
 }
 
+// An escalation is stored as an "[Escalated] to <name> — <reason>" comment.
+// Render it as a system event line (not a reply bubble) so it reads as a
+// lifecycle event in the timeline — same treatment as [Reopened]. The badge on
+// the query already shows WHO; this keeps the reason + when in the history.
+export function asEscalateSystemEntry(raw, responderName) {
+  const text = raw.response_text ?? raw.responseText ?? raw.comment_text ?? raw.answer ?? '';
+  const m = /^\s*\[escalated\]\s*(.*)$/is.exec(text);
+  if (!m) return null;
+  const detail = (m[1] || '').trim();
+  return {
+    id:           raw.id ?? raw.comment_id ?? crypto.randomUUID(),
+    isSystem:     true,
+    statusChange: 'Escalated',
+    responderName,
+    responseText: `⬆ Escalated by ${responderName}${detail ? ` ${detail}` : ''}`,
+    timestamp:    raw.timestamp ?? raw.created_at ?? '',
+    attachments:  [],
+  };
+}
+
 function normalizeResponse(raw) {
   const responderName = raw.responder_name ?? raw.responderName ?? 'Unknown';
   const reopen = asReopenSystemEntry(raw, responderName);
   if (reopen) return reopen;
+  const escalate = asEscalateSystemEntry(raw, responderName);
+  if (escalate) return escalate;
   return {
     id:             raw.id             ?? crypto.randomUUID(),
     responderName,
@@ -206,12 +268,14 @@ export const sponsorQueryClient = {
     const severity = data.severity
       ?? SEVERITY_FROM_PRIORITY[data.priority]
       ?? data.priority
-      ?? 'Major';
+      ?? 'Medium';
     const res = await sponsorAxiosClient.post(BASE, {
       subject_id:  data.subjectId,
       form_id:     data.formId,
       field_name:  data.fieldName ?? data.fieldKey,
       field_label: data.fieldLabel ?? undefined,
+      block_id:    data.blockId   ?? undefined,
+      page_id:     data.pageId    ?? undefined,
       block_name:  data.blockName ?? undefined,
       page_name:   data.pageName ?? undefined,
       query_text:  data.queryText ?? data.question,
@@ -219,28 +283,20 @@ export const sponsorQueryClient = {
       site_id:     data.siteId      || undefined,
       assigned_to: data.assignedTo  || undefined,
       due_at:      data.dueAt       || undefined,
+      attachments: await uploadAttachments(data.attachments),
     });
     return normalizeQuery(res?.item ?? res?.query ?? res ?? {});
   },
 
-  /** POST /queries/:queryId/answer — spec §4.5 answer. */
+  /** POST /queries/:queryId/answer — spec §4.5 answer. Attachments are uploaded
+   *  to the study disk store first, then their references are sent as JSON. */
   async respond(_studyId, queryId, data) {
-    const fd = data.attachments?.length ? (() => {
-      const f = new FormData();
-      f.append('answer', data.responseText);
-      f.append('statusUpdate', data.statusUpdate ?? '');
-      if (data.updatedFieldValue) f.append('updatedFieldValue', data.updatedFieldValue);
-      data.attachments.forEach((file) => f.append('attachments', file));
-      return f;
-    })() : null;
-
-    const res = fd
-      ? await sponsorAxiosClient.post(`${BASE}/${queryId}/answer`, fd)
-      : await sponsorAxiosClient.post(`${BASE}/${queryId}/answer`, {
-          answer:            data.responseText,
-          statusUpdate:      data.statusUpdate,
-          updatedFieldValue: data.updatedFieldValue,
-        });
+    const res = await sponsorAxiosClient.post(`${BASE}/${queryId}/answer`, {
+      answer:            data.responseText,
+      statusUpdate:      data.statusUpdate,
+      updatedFieldValue: data.updatedFieldValue,
+      attachments:       await uploadAttachments(data.attachments),
+    });
     return normalizeQuery(res?.item ?? res?.query ?? res ?? {});
   },
 
@@ -264,10 +320,13 @@ export const sponsorQueryClient = {
   },
 
   async escalate(_studyId, queryId, data) {
+    // The backend escalate endpoint reads { reason, assigned_to, severity } —
+    // map the modal's field names onto those (and priority → severity, since
+    // escalation bumps the query's severity, not its priority vocabulary).
     const res = await sponsorAxiosClient.post(`${BASE}/${queryId}/escalate`, {
-      escalationReason: data.escalationReason,
-      escalateTo:       data.escalateTo,
-      newPriority:      data.newPriority,
+      reason:      data.escalationReason,
+      assigned_to: data.escalateTo,
+      severity:    SEVERITY_FROM_PRIORITY[data.newPriority] ?? data.newPriority,
     });
     return normalizeQuery(res?.item ?? res ?? {});
   },
@@ -277,13 +336,26 @@ export const sponsorQueryClient = {
       queryIds: ids,
       comments: data.comments ?? data.closureReason ?? data.resolution,
     });
-    return res?.closed ?? ids.length;
+    return res?.summary?.ok ?? res?.closed ?? ids.length;
   },
 
-  async exportCSV(_studyId, filters = {}) {
+  /** POST /queries/bulk-escalate — escalate every selected query. */
+  async bulkEscalate(_studyId, ids, data) {
+    const res = await sponsorAxiosClient.post(`${BASE}/bulk-escalate`, {
+      queryIds:    ids,
+      reason:      data.escalationReason ?? data.reason,
+      assigned_to: data.escalateTo ?? data.assignedTo,
+      severity:    SEVERITY_FROM_PRIORITY[data.newPriority] ?? data.severity,
+    });
+    return res?.summary?.ok ?? ids.length;
+  },
+
+  async exportCSV(_studyId, { ids, ...filters } = {}) {
     const params = {};
+    if (Array.isArray(ids) && ids.length) params.ids = ids.join(',');
     if (filters.status   && filters.status   !== 'All') params.status   = filters.status;
-    if (filters.priority && filters.priority !== 'All') params.priority = filters.priority;
+    if (filters.priority && filters.priority !== 'All') params.severity = SEVERITY_FROM_PRIORITY[filters.priority] ?? filters.priority;
+    if (filters.siteCode) params.site_code = filters.siteCode;
     const res  = await sponsorAxiosClient.get(`${BASE}/export`, { params, responseType: 'blob' });
     const blob = res instanceof Blob ? res : new Blob([res], { type: 'text/csv' });
     const url  = URL.createObjectURL(blob);
@@ -302,18 +374,6 @@ export const sponsorQueryClient = {
       return arr.map((s) => ({
         value: s.site_code ?? s.siteCode ?? s.id,
         label: `${s.site_name ?? s.siteName ?? ''} (${s.site_code ?? s.siteCode ?? ''})`.trim(),
-      }));
-    } catch { return []; }
-  },
-
-  /** User list for escalation dropdown — non-spec. */
-  async getUsers(_studyId) {
-    try {
-      const res = await sponsorAxiosClient.get(`${WORKSPACE}/team`);
-      const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
-      return arr.map((u) => ({
-        value: u.id ?? u.user_id,
-        label: u.full_name ?? u.fullName ?? u.name ?? '',
       }));
     } catch { return []; }
   },

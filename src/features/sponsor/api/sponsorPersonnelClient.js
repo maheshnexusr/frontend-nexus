@@ -28,6 +28,10 @@ function normalizePersonnel(raw) {
     siteIds:             raw.site_ids              ?? raw.siteIds
                           ?? [raw.site_id ?? raw.siteId, ...(raw.additional_site_ids ?? raw.additionalSiteIds ?? [])].filter(Boolean),
     siteName:            raw.site_name             ?? raw.siteName          ?? '',
+    // Names for EVERY assigned site (primary + additional) + the study's active
+    // site count — drives the "All Sites" badge vs "Site 1, Site 2, …" listing.
+    siteNames:           raw.site_names            ?? raw.siteNames         ?? [],
+    totalActiveSites:    raw.total_active_sites    ?? raw.totalActiveSites  ?? 0,
     contactNumber:       raw.contact_number        ?? raw.contactNumber     ?? '',
     status:              raw.status                ?? 'Active',
     consentStatus:       raw.consent_status        ?? raw.consentStatus     ?? 'Pending',
@@ -113,6 +117,48 @@ export const sponsorPersonnelClient = {
     );
     const arr = Array.isArray(res) ? res : (res?.items ?? res?.personnel ?? res?.data ?? []);
     return arr.map(normalizePersonnel);
+  },
+
+  /** GET /lookups/escalation-targets — the subset of study assignees who can
+   *  HANDLE a query (hold a query_manager management permission). Used by the
+   *  Escalate dialog so a PI/responder is never offered as a target. Best-effort:
+   *  returns [] on error. */
+  async escalationTargets() {
+    try {
+      const res = await sponsorAxiosClient.get(
+        '/api/v1/sponsor/workspace/lookups/escalation-targets'
+      );
+      const arr = Array.isArray(res) ? res : (res?.targets ?? res?.items ?? res?.data ?? []);
+      return arr.map((r) => ({
+        id:       r.id ?? r.personnel_id ?? r.team_member_id,
+        fullName: r.full_name ?? r.fullName ?? '',
+        email:    r.email ?? r.email_address ?? '',
+        role:     r.role ?? r.role_name ?? '',
+        siteId:   r.site_id ?? r.siteId ?? '',
+        siteIds:  r.site_ids ?? r.siteIds ?? [r.site_id ?? r.siteId].filter(Boolean),
+        siteName: r.site_name ?? r.siteName ?? '',
+        status:   r.status ?? 'Active',
+        source:   r.source ?? '',
+      })).filter((m) => m.id);
+    } catch { return []; }
+  },
+
+  /** GET /lookups/study-team — CRO team members assigned to this study, so the
+   *  Escalate "Assign to" dropdown can target CRO operators too (not just site
+   *  personnel). Best-effort: returns [] on error. */
+  async studyTeam() {
+    try {
+      const res = await sponsorAxiosClient.get(
+        '/api/v1/sponsor/workspace/lookups/study-team'
+      );
+      const arr = Array.isArray(res) ? res : (res?.team ?? res?.items ?? res?.data ?? []);
+      return arr.map((r) => ({
+        id:       r.id ?? r.team_member_id ?? r.teamMemberId,
+        fullName: r.full_name ?? r.fullName ?? '',
+        email:    r.email ?? r.email_address ?? '',
+        role:     r.role ?? r.role_name ?? 'CRO',
+      })).filter((m) => m.id);
+    } catch { return []; }
   },
 
   /** GET /site-personnel/:personnelId — details. */
@@ -202,9 +248,10 @@ export const sponsorPersonnelClient = {
     form.append('file', file);
     const res = await sponsorAxiosClient.post(`${BASE}/import`, form);
     return {
-      imported: res?.imported ?? res?.success_count ?? 0,
-      failed:   res?.failed   ?? res?.failure_count ?? 0,
-      errors:   res?.errors   ?? [],
+      imported:      res?.imported ?? res?.success_count ?? 0,
+      failed:        res?.failed   ?? res?.failure_count ?? 0,
+      errors:        res?.errors   ?? [],
+      emailFailures: res?.emailFailures ?? res?.email_failures ?? [],
     };
   },
 

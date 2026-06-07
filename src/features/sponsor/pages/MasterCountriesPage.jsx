@@ -222,7 +222,7 @@ export default function MasterCountriesPage() {
       </div>
 
       {/* Table */}
-      <DataTable
+      <DataTable flat
         columns={columns}
         data={pageData}
         loading={loading}

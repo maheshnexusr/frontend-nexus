@@ -1,10 +1,14 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 import { Trash2, Download, UploadCloud, FileText } from 'lucide-react';
 import {
-  selectFieldBucket, addAttachment, removeAttachment,
+  selectFieldBucket, addAttachment, removeAttachment, setAttachments,
 } from '@/features/cro/store/formRuntimeSlice';
 import { selectCurrentUser } from '@/features/auth/authSlice';
+import { uploadFormFile } from '@/api/formFileClient';
+import { formCollaborationClient } from '@/api/formCollaborationClient';
+import { resolveFileUrl } from '@/api/fileUrl';
 import { formatDateTime } from '@/utils/formatDate';
 import Popover from './Popover';
 import s from './runtime.module.css';
@@ -30,20 +34,65 @@ export default function AttachmentDrawer({ fieldId, fieldLabel, anchorRect, onCl
 
   const fileRef = useRef(null);
   const [dragOver, setDragOver] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleFiles = (files) => {
+  // Subject from the data-capture URL. When present we persist attachments
+  // server-side (keyed by subjectId) so the list survives reloads; in the CRO
+  // designer preview (no subjectId) we fall back to Redux-only.
+  const [params] = useSearchParams();
+  const subjectId = params.get('subjectId') || '';
+  const persistable = !!subjectId;
+
+  // Hydrate the persisted list on open / when the target field changes.
+  const reload = useCallback(async () => {
+    if (!persistable) return;
+    try {
+      const list = await formCollaborationClient.listAttachments(subjectId, fieldId);
+      dispatch(setAttachments({ fieldId, attachments: list }));
+    } catch { /* best-effort hydrate */ }
+  }, [persistable, subjectId, fieldId, dispatch]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const handleFiles = async (files) => {
     if (!files || files.length === 0) return;
-    Array.from(files).forEach((f) => {
-      const fileUrl = URL.createObjectURL(f);
-      dispatch(addAttachment({
-        fieldId,
-        fileName: f.name,
-        fileUrl,
-        fileSize: f.size,
-        fileType: f.type,
-        ...me,
-      }));
-    });
+    setError('');
+    setUploading(true);
+    try {
+      for (const f of Array.from(files)) {
+        // Upload bytes to disk (/var/www/uploads/<env>/<study_id>/) …
+        const res = await uploadFormFile(f); // { url, name, type, size }
+        if (persistable) {
+          // … then persist the reference so it survives reloads.
+          await formCollaborationClient.createAttachment(subjectId, fieldId, {
+            fileUrl: res.url, fileName: res.name, fileSize: res.size, fileType: res.type,
+          });
+        } else {
+          dispatch(addAttachment({
+            fieldId, fileName: res.name, fileUrl: res.url, fileSize: res.size, fileType: res.type, ...me,
+          }));
+        }
+      }
+      if (persistable) await reload();
+    } catch (err) {
+      setError(err?.message || 'Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleRemove = async (attachmentId) => {
+    if (persistable) {
+      try {
+        await formCollaborationClient.deleteAttachment(subjectId, fieldId, attachmentId);
+        await reload();
+      } catch (err) {
+        setError(err?.message || 'Failed to remove attachment.');
+      }
+    } else {
+      dispatch(removeAttachment({ fieldId, attachmentId, ...me }));
+    }
   };
 
   const handlePick = () => fileRef.current?.click();
@@ -74,9 +123,10 @@ export default function AttachmentDrawer({ fieldId, fieldLabel, anchorRect, onCl
         onDrop={handleDrop}
       >
         <UploadCloud size={20} className={s.attachmentIcon} />
-        <div>Click or drag files to upload</div>
+        <div>{uploading ? 'Uploading…' : 'Click or drag files to upload'}</div>
         <div className={s.attachmentSize}>PDF, images, DOCX — multiple allowed</div>
       </div>
+      {error && <div style={{ marginTop: 6, fontSize: 12, color: '#b91c1c' }}>{error}</div>}
       <input
         ref={fileRef}
         type="file"
@@ -106,7 +156,9 @@ export default function AttachmentDrawer({ fieldId, fieldLabel, anchorRect, onCl
                   </div>
                   <div className={s.itemActions}>
                     <a
-                      href={a.fileUrl}
+                      href={resolveFileUrl(a.fileUrl)}
+                      target="_blank"
+                      rel="noreferrer"
                       download={a.fileName}
                       className={s.itemActionBtn}
                       title="Download"
@@ -118,7 +170,7 @@ export default function AttachmentDrawer({ fieldId, fieldLabel, anchorRect, onCl
                       type="button"
                       className={`${s.itemActionBtn} ${s.itemActionBtnDanger}`}
                       title="Remove"
-                      onClick={() => dispatch(removeAttachment({ fieldId, attachmentId: a.id, ...me }))}
+                      onClick={() => handleRemove(a.id)}
                     >
                       <Trash2 size={13} />
                     </button>

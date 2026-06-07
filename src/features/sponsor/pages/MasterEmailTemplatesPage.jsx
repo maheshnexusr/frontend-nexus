@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  Pencil, Copy, Eye, Trash2, Plus, ToggleLeft, ToggleRight,
+  Pencil, Eye,
   X, ChevronDown, Mail,
 } from 'lucide-react';
 import ReactQuill from 'react-quill';
@@ -17,6 +17,42 @@ import { formatDate, formatDateTime } from '@/utils/formatDate';
 import styles from './MasterEmailTemplatesPage.module.css';
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
+
+// Per spec the Sponsor Email Templates page is scoped to exactly two
+// configurable templates (others stay in the master list for live sends):
+//   • SPONSOR_SITE_PERSONNEL_INVITE — "Invite User (Assign Site)"
+//   • SPONSOR_STUDY_SUBMISSION      — "Study Submission"
+const SPONSOR_TEMPLATE_CODES = 'SPONSOR_SITE_PERSONNEL_INVITE,SPONSOR_STUDY_SUBMISSION';
+
+// The list endpoint returns raw master_email_templates rows (snake_case DB
+// columns). Map them to the camelCase shape the table + modals consume.
+function normalizeRow(r) {
+  return {
+    id:          r.template_id   ?? r.id          ?? '',
+    name:        r.template_name ?? r.name        ?? '',
+    code:        r.template_code ?? r.code        ?? '',
+    category:    r.category      ?? '',
+    subject:     r.subject_line  ?? r.subject     ?? '',
+    body:        r.email_body    ?? r.body        ?? '',
+    description: r.description   ?? '',
+    status:      r.status        ?? 'Active',
+    isDefault:   r.is_system_template ?? r.isDefault ?? false,
+  };
+}
+
+// Map the modal form (camelCase) back to the snake_case payload the
+// update/create controller (normalizeTemplateBody) expects.
+function toApiPayload(form) {
+  return {
+    template_name: form.name,
+    template_code: form.code,
+    category:      form.category || null,
+    description:   form.description || null,
+    subject_line:  form.subject,
+    email_body:    form.body,
+    status:        form.status,
+  };
+}
 
 const CATEGORIES = [
   /* ── 2.1 User Account ─────────────────────────────────────────────────── */
@@ -542,32 +578,6 @@ function PreviewModal({ template, onClose, onTestSend, testSending }) {
   );
 }
 
-/* ── DeleteConfirmModal ──────────────────────────────────────────────────── */
-
-function DeleteConfirmModal({ template, onClose, onConfirm, deleting }) {
-  return (
-    <div className={styles.backdrop} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={styles.modal} style={{ maxWidth: 440 }} role="dialog" aria-modal="true">
-        <div className={styles.mHead}>
-          <h2 className={styles.mTitle}>Delete Template</h2>
-          <button className={styles.mClose} onClick={onClose} aria-label="Close"><X size={18} /></button>
-        </div>
-        <div className={styles.mBody}>
-          <p className={styles.deleteMsg}>
-            Are you sure you want to delete <strong>{template.name}</strong>? This action cannot be undone.
-          </p>
-        </div>
-        <div className={`${styles.mFoot} ${styles.deleteActions}`}>
-          <button className={styles.cancelBtn} onClick={onClose} disabled={deleting}>Cancel</button>
-          <button className={styles.deleteBtn} onClick={onConfirm} disabled={deleting}>
-            {deleting ? 'Deleting…' : 'Delete'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ── Main Page ───────────────────────────────────────────────────────────── */
 
 export default function MasterEmailTemplatesPage() {
@@ -575,9 +585,8 @@ export default function MasterEmailTemplatesPage() {
   const currentUser = useSelector(selectCurrentUser);
   const ro          = useReadOnlyView();
   const { has }     = usePermissions();
-  const canCreate   = has('email_templates', 'create');
+  // Email Templates are pre-configured — only View and Edit are managed.
   const canEdit     = has('email_templates', 'edit');
-  const canDelete   = has('email_templates', 'delete');
 
   // Table state
   const [data,      setData]      = useState([]);
@@ -597,9 +606,7 @@ export default function MasterEmailTemplatesPage() {
   const [modalMode,       setModalMode]       = useState(null);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [previewTemplate, setPreviewTemplate] = useState(null);
-  const [deleteTarget,    setDeleteTarget]    = useState(null);
   const [saving,          setSaving]          = useState(false);
-  const [deleting,        setDeleting]        = useState(false);
   const [testSending,     setTestSending]     = useState(false);
 
   /* ── Load data ─────────────────────────────────────────────────────────── */
@@ -610,13 +617,14 @@ export default function MasterEmailTemplatesPage() {
         search,
         category: catFilter,
         status:   statFilter,
+        codes:    SPONSOR_TEMPLATE_CODES,
         page,
         pageSize,
         sortBy:  sortKey,
         sortDir,
       });
-      setData(res.items ?? []);
-      setTotal(res.totalCount ?? 0);
+      setData((res.items ?? []).map(normalizeRow));
+      setTotal(res.pagination?.total ?? res.totalCount ?? (res.items?.length ?? 0));
     } catch (err) {
       dispatch(addToast({ type: 'error', message: err?.message ?? 'Failed to load email templates.' }));
     } finally {
@@ -646,12 +654,7 @@ export default function MasterEmailTemplatesPage() {
 
   const filtersActive = catFilter || statFilter;
 
-  /* ── Create / Edit ────────────────────────────────────────────────────── */
-  function openCreate() {
-    setEditingTemplate(null);
-    setModalMode('create');
-  }
-
+  /* ── Edit ─────────────────────────────────────────────────────────────── */
   function openEdit(tpl) {
     setEditingTemplate(tpl);
     setModalMode('edit');
@@ -660,13 +663,8 @@ export default function MasterEmailTemplatesPage() {
   async function handleSave(formData) {
     setSaving(true);
     try {
-      if (modalMode === 'create') {
-        await emailTemplateService.create(formData);
-        dispatch(addToast({ type: 'success', message: 'Email template created successfully.' }));
-      } else {
-        await emailTemplateService.update(editingTemplate.id, formData);
-        dispatch(addToast({ type: 'success', message: 'Email template updated successfully.' }));
-      }
+      await emailTemplateService.update(editingTemplate.id, toApiPayload(formData));
+      dispatch(addToast({ type: 'success', message: 'Email template updated successfully.' }));
       setModalMode(null);
       setEditingTemplate(null);
       setPage(1);
@@ -675,48 +673,6 @@ export default function MasterEmailTemplatesPage() {
       dispatch(addToast({ type: 'error', message: err?.message ?? 'Failed to save template.' }));
     } finally {
       setSaving(false);
-    }
-  }
-
-  /* ── Duplicate ────────────────────────────────────────────────────────── */
-  async function handleDuplicate(tpl) {
-    try {
-      await emailTemplateService.duplicate(tpl.id);
-      dispatch(addToast({ type: 'success', message: `"${tpl.name}" duplicated successfully.` }));
-      setPage(1);
-      loadData();
-    } catch (err) {
-      dispatch(addToast({ type: 'error', message: err?.message ?? 'Failed to duplicate template.' }));
-    }
-  }
-
-  /* ── Delete ───────────────────────────────────────────────────────────── */
-  function openDelete(tpl) { setDeleteTarget(tpl); }
-
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await emailTemplateService.delete(deleteTarget.id);
-      dispatch(addToast({ type: 'success', message: `"${deleteTarget.name}" deleted.` }));
-      setDeleteTarget(null);
-      loadData();
-    } catch (err) {
-      dispatch(addToast({ type: 'error', message: err?.message ?? 'Failed to delete template.' }));
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  /* ── Toggle status ────────────────────────────────────────────────────── */
-  async function handleToggleStatus(tpl) {
-    const newStatus = tpl.status === 'Active' ? 'Inactive' : 'Active';
-    try {
-      await emailTemplateService.update(tpl.id, { status: newStatus });
-      dispatch(addToast({ type: 'success', message: `"${tpl.name}" set to ${newStatus}.` }));
-      loadData();
-    } catch (err) {
-      dispatch(addToast({ type: 'error', message: err?.message ?? 'Failed to update status.' }));
     }
   }
 
@@ -774,8 +730,8 @@ export default function MasterEmailTemplatesPage() {
     },
     {
       key:    'actions',
-      label:  '',
-      width:  180,
+      label:  'Actions',
+      width:  120,
       render: (_, row) => (
         <div className={styles.actionCell}>
           {canEdit && (
@@ -788,16 +744,6 @@ export default function MasterEmailTemplatesPage() {
               <Pencil size={15} />
             </button>
           )}
-          {canCreate && (
-            <button
-              className={styles.iconBtn}
-              title={ro.isReadOnly ? ro.readOnlyMessage : 'Duplicate'}
-              onClick={() => handleDuplicate(row)}
-              {...ro.disabledProps('Duplicate template')}
-            >
-              <Copy size={15} />
-            </button>
-          )}
           <button
             className={styles.iconBtn}
             title="Preview"
@@ -805,29 +751,6 @@ export default function MasterEmailTemplatesPage() {
           >
             <Eye size={15} />
           </button>
-          {canDelete && (
-            <button
-              className={`${styles.iconBtn} ${styles.iconBtnDanger}`}
-              title={ro.isReadOnly ? ro.readOnlyMessage : 'Delete'}
-              onClick={() => openDelete(row)}
-              {...ro.disabledProps('Delete template')}
-            >
-              <Trash2 size={15} />
-            </button>
-          )}
-          {canEdit && (
-            <button
-              className={`${styles.iconBtn} ${styles.toggleBtn}`}
-              title={ro.isReadOnly ? ro.readOnlyMessage : (row.status === 'Active' ? 'Deactivate' : 'Activate')}
-              onClick={() => handleToggleStatus(row)}
-              {...ro.disabledProps('Toggle status')}
-            >
-              {row.status === 'Active'
-                ? <ToggleRight size={18} style={{ color: 'var(--color-success)' }} />
-                : <ToggleLeft  size={18} style={{ color: 'var(--text-muted)' }} />
-              }
-            </button>
-          )}
         </div>
       ),
     },
@@ -840,17 +763,29 @@ export default function MasterEmailTemplatesPage() {
       <div className={styles.pageHeader}>
         <div>
           <h1 className={styles.title}>Email Templates</h1>
-          <p className={styles.sub}>Manage system and custom email templates for study communications.</p>
+          <p className={styles.sub}>View and edit the pre-configured email templates for study communications.</p>
         </div>
-        {canCreate && (
-          <button className={styles.newBtn} onClick={openCreate} {...ro.disabledProps('New template')}>
-            <Plus size={16} /> New Template
-          </button>
-        )}
       </div>
 
       {/* Filter row */}
       <div className={styles.filterRow}>
+        {/* Status tabs — All / Active / Inactive */}
+        <div style={STATUS_TABS_WRAP}>
+          {STATUS_TABS.map((t) => {
+            const active = statFilter === t.value;
+            return (
+              <button
+                key={t.label}
+                type="button"
+                style={{ ...STATUS_TAB, ...(active ? STATUS_TAB_ACTIVE : null) }}
+                onClick={() => { setStatFilter(t.value); setPage(1); }}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+
         <select
           className={styles.fselect}
           value={catFilter}
@@ -858,16 +793,6 @@ export default function MasterEmailTemplatesPage() {
         >
           <option value="">All Categories</option>
           {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-
-        <select
-          className={styles.fselect}
-          value={statFilter}
-          onChange={(e) => { setStatFilter(e.target.value); setPage(1); }}
-        >
-          <option value="">All Statuses</option>
-          <option value="Active">Active</option>
-          <option value="Inactive">Inactive</option>
         </select>
 
         {filtersActive && (
@@ -878,7 +803,7 @@ export default function MasterEmailTemplatesPage() {
       </div>
 
       {/* Table */}
-      <DataTable
+      <DataTable flat
         columns={columns}
         data={data}
         loading={loading}
@@ -894,7 +819,7 @@ export default function MasterEmailTemplatesPage() {
       />
 
       {/* Modals */}
-      {(modalMode === 'create' || modalMode === 'edit') && (
+      {modalMode === 'edit' && (
         <TemplateFormModal
           mode={modalMode}
           template={editingTemplate}
@@ -912,15 +837,23 @@ export default function MasterEmailTemplatesPage() {
           testSending={testSending}
         />
       )}
-
-      {deleteTarget && (
-        <DeleteConfirmModal
-          template={deleteTarget}
-          onClose={() => setDeleteTarget(null)}
-          onConfirm={handleDelete}
-          deleting={deleting}
-        />
-      )}
     </div>
   );
 }
+
+/* ── Status tab styles (segmented All / Active / Inactive) ───────────────── */
+const STATUS_TABS = [
+  { label: 'All',      value: '' },
+  { label: 'Active',   value: 'Active' },
+  { label: 'Inactive', value: 'Inactive' },
+];
+const STATUS_TABS_WRAP = {
+  display: 'inline-flex', border: '1px solid #e2e8f0', borderRadius: 8,
+  overflow: 'hidden', background: '#fff',
+};
+const STATUS_TAB = {
+  padding: '7px 16px', fontSize: 13, fontWeight: 600, border: 'none',
+  background: 'transparent', color: '#475569', cursor: 'pointer',
+  borderRight: '1px solid #e2e8f0',
+};
+const STATUS_TAB_ACTIVE = { background: '#2563eb', color: '#fff' };

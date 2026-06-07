@@ -5,7 +5,7 @@ import { logoutAsync, selectCurrentUser } from "@/features/auth/authSlice";
 import {
   LayoutGrid,
   User,
-  Settings,
+  KeyRound,
   Bell,
   LogOut,
   ChevronRight,
@@ -18,7 +18,7 @@ import styles from "./Sidebar.module.css";
 const clx = (...a) => a.filter(Boolean).join(" ");
 
 // ─── WorkspaceSwitcher (top header) ──────────────────────────────────────────
-function WorkspaceSwitcher({ collapsed }) {
+function WorkspaceSwitcher({ collapsed, title, subtitle }) {
   return (
     <div className={styles.wsArea}>
       <div className={clx(styles.wsHeader, collapsed && styles.isCollapsed)}>
@@ -26,8 +26,8 @@ function WorkspaceSwitcher({ collapsed }) {
           <LayoutGrid size={16} strokeWidth={2} />
         </div>
         <div className={clx(styles.wsInfo, collapsed && styles.wsInfoHidden)}>
-          <p className={styles.wsTitle}>Clinical Trials</p>
-          <p className={styles.wsSubtitle}>Admin Dashboard</p>
+          <p className={styles.wsTitle}>{title}</p>
+          <p className={styles.wsSubtitle}>{subtitle}</p>
         </div>
       </div>
     </div>
@@ -35,7 +35,7 @@ function WorkspaceSwitcher({ collapsed }) {
 }
 
 // ─── ProfileCard ─────────────────────────────────────────────────────────────
-function ProfileCard({ collapsed, profilePath, settingsPath }) {
+function ProfileCard({ collapsed, profilePath, changePasswordPath }) {
   const [open, setOpen] = useState(false);
   const ref             = useRef(null);
   const navigate        = useNavigate();
@@ -86,12 +86,14 @@ function ProfileCard({ collapsed, profilePath, settingsPath }) {
         <div className={styles.profileDropdown}>
           <Link to={profilePath} onClick={() => setOpen(false)} className={styles.pdLink}>
             <User size={16} className={styles.pdIcon} />
-            Profile
+            My Profile
           </Link>
-          <Link to={settingsPath} onClick={() => setOpen(false)} className={styles.pdLink}>
-            <Settings size={16} className={styles.pdIcon} />
-            Settings
-          </Link>
+          {changePasswordPath && (
+            <Link to={changePasswordPath} onClick={() => setOpen(false)} className={styles.pdLink}>
+              <KeyRound size={16} className={styles.pdIcon} />
+              Change Password
+            </Link>
+          )}
           <div className={styles.pdDivider} />
           <button onClick={handleLogout} className={styles.pdBtn}>
             <LogOut size={16} className={styles.pdIcon} />
@@ -210,8 +212,10 @@ export default function Sidebar({
   mobileOpen,
   onMobileClose,
   profilePath,
-  settingsPath,
+  changePasswordPath,
   notificationsPath,
+  title = "Clinical Trials",
+  subtitle = "Admin Dashboard",
 }) {
   return (
     <aside
@@ -225,7 +229,7 @@ export default function Sidebar({
         <X size={18} />
       </button>
 
-      <WorkspaceSwitcher collapsed={collapsed} />
+      <WorkspaceSwitcher collapsed={collapsed} title={title} subtitle={subtitle} />
 
       <nav className={styles.navScroll}>
         <div className={styles.navSection}>
@@ -267,8 +271,8 @@ export default function Sidebar({
 
         <ProfileCard
           collapsed={collapsed}
-          profilePath={profilePath  ?? "#"}
-          settingsPath={settingsPath ?? "#"}
+          profilePath={profilePath ?? "#"}
+          changePasswordPath={changePasswordPath}
         />
 
         <button

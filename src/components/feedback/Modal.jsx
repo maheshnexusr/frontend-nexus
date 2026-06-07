@@ -14,28 +14,32 @@ const SIZE_CLASS = { sm: styles.cardSm, md: styles.cardMd, lg: styles.cardLg };
  *
  * On mobile (< 480 px) automatically becomes a full-screen bottom sheet.
  */
-export default function Modal({ open, onClose, title, size, children, footer }) {
+export default function Modal({ open, isOpen, onClose, title, size, children, footer }) {
   const cardRef = useRef(null);
+  // Accept BOTH `open` and `isOpen` — many call-sites pass `isOpen`. Treating
+  // them as aliases (default true so a bare `<Modal>` still shows) fixes those
+  // callers, which were silently rendering null.
+  const visible = (open ?? isOpen) ?? true;
 
   /* ── Body scroll lock ──────────────────────────────────────────────────── */
   useEffect(() => {
-    if (!open) return;
+    if (!visible) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
-  }, [open]);
+  }, [visible]);
 
   /* ── ESC key ───────────────────────────────────────────────────────────── */
   useEffect(() => {
-    if (!open) return;
+    if (!visible) return;
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [open, onClose]);
+  }, [visible, onClose]);
 
   /* ── Focus trap ────────────────────────────────────────────────────────── */
   useEffect(() => {
-    if (!open) return;
+    if (!visible) return;
     const card = cardRef.current;
     if (!card) return;
 
@@ -59,16 +63,16 @@ export default function Modal({ open, onClose, title, size, children, footer }) 
 
     document.addEventListener('keydown', trap);
     return () => document.removeEventListener('keydown', trap);
-  }, [open]);
+  }, [visible]);
 
-  if (!open) return null;
+  if (!visible) return null;
 
   return createPortal(
     <div
       className={styles.backdrop}
       onClick={onClose}
       role="presentation"
-      aria-hidden={!open}
+      aria-hidden={!visible}
     >
       <div
         ref={cardRef}
@@ -110,8 +114,10 @@ export default function Modal({ open, onClose, title, size, children, footer }) 
 }
 
 Modal.propTypes = {
-  /** Controls visibility */
-  open:    PropTypes.bool.isRequired,
+  /** Controls visibility (alias: `isOpen`). Omit both → visible. */
+  open:    PropTypes.bool,
+  /** Alias for `open` — many call-sites use this name. */
+  isOpen:  PropTypes.bool,
   /** Called when backdrop is clicked, ESC is pressed, or the ✕ button is clicked */
   onClose: PropTypes.func.isRequired,
   /** Dialog heading */
@@ -125,6 +131,8 @@ Modal.propTypes = {
 };
 
 Modal.defaultProps = {
+  open:     undefined,
+  isOpen:   undefined,
   title:    '',
   size:     'md',
   children: null,

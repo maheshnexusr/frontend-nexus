@@ -180,7 +180,7 @@ export default function RegionsPage() {
         </div>
       </div>
 
-      <DataTable
+      <DataTable flat
         columns={columns}
         data={pageData}
         loading={loading}

@@ -22,18 +22,19 @@
 
 import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, Navigate } from 'react-router-dom';
+import ConsentGate from '@/features/site/components/ConsentGate';
 import {
   LayoutDashboard,
   Database,
   Notebook,
   ClipboardList,
+  ClipboardCheck,
   FileCheck,
   ShieldCheck,
   MapPin,
   BookOpen,
   Activity,
   BarChart2,
-  UserCircle,
   User,
   LogOut,
   ArrowLeftRight,
@@ -96,6 +97,13 @@ export default function SiteLayout() {
         : { key: 'capture', label: 'Data Capture', icon: Database,     path: '/site/capture' })
     : null;
 
+  /* ── Screening Report — Inclusion/Exclusion overview for this site. HIDDEN
+        from the nav (route/page kept). Restore by reinstating the item below. ── */
+  const screeningItem = null;
+  // const screeningItem = (allowed('data_capture') && scope !== 'EPRO' && scope !== 'SURVEY')
+  //   ? { key: 'screening-report', label: 'Screening Report', icon: ClipboardCheck, path: '/site/screening-report' }
+  //   : null;
+
   const consentChildren = [
     allowed('consent_builder') && { key: 'consent-builder', label: 'Consent Builder',           path: '/site/consent/config' },
     allowed('consent_review')  && { key: 'consent-review',  label: 'Consent Review & Approval', path: '/site/consent/review' },
@@ -127,6 +135,7 @@ export default function SiteLayout() {
       path:  '/site/dashboard',
     },
     captureItem,
+    screeningItem,
     cfg.consentManager && consentChildren.length > 0 && {
       key:   'consent',
       label: 'Consent Management',
@@ -167,15 +176,8 @@ export default function SiteLayout() {
       icon:  BarChart2,
       path:  '/site/reports',
     },
-    {
-      key:   'profile',
-      label: 'Profile Settings',
-      icon:  UserCircle,
-      children: [
-        { key: 'profile-me', label: 'My Profile', icon: User,   path: '/site/profile' },
-        { key: 'logout',     label: 'Logout',     icon: LogOut, path: '/logout'       },
-      ],
-    },
+    // Profile Settings removed from the left menu (spec) — now in the footer
+    // ProfileCard (My Profile / Logout).
   ].filter(Boolean);
 
   const handleToggleSidebar = () => {
@@ -210,8 +212,8 @@ export default function SiteLayout() {
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
         profilePath="/site/profile"
-        settingsPath="/site/profile"
         notificationsPath={null}
+        subtitle="Study Workspace"
       />
 
       <div className={clx(styles.body, collapsed && styles.bodyCollapsed)}>
@@ -249,7 +251,9 @@ export default function SiteLayout() {
           }
         />
         <main className={styles.main}>
-          <Outlet />
+          <ConsentGate>
+            <Outlet />
+          </ConsentGate>
         </main>
       </div>
     </div>

@@ -18,9 +18,24 @@ import siteAxiosClient from '@/api/siteAxiosClient';
 const BASE = '/api/v1/site/workspace';
 
 export const siteWorkspaceClient = {
-  /** Site dashboard for the currently chosen study. */
-  async dashboard() {
-    return siteAxiosClient.get(`${BASE}/dashboard`);
+  /** Consent login gate — the published consent template this user still needs
+   *  to accept (or null). */
+  async pendingConsent() {
+    return siteAxiosClient.get(`${BASE}/consent/pending`);
+  },
+
+  /** Record agreement to the consent template (logs the activity). */
+  async acceptConsent(templateId) {
+    return siteAxiosClient.post(`${BASE}/consent/accept`, { template_id: templateId });
+  },
+
+  /** Site dashboard for the currently chosen study. Optional date range
+   *  ({ dateFrom, dateTo }) scopes the day-wise enrollment graph. */
+  async dashboard({ dateFrom, dateTo } = {}) {
+    const params = {};
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo)   params.date_to   = dateTo;
+    return siteAxiosClient.get(`${BASE}/dashboard`, { params });
   },
 
   /** List subjects assigned to this site (for the currently chosen study). */
@@ -32,6 +47,11 @@ export const siteWorkspaceClient = {
     return siteAxiosClient.get(`${BASE}/subjects/${subjectId}`);
   },
 
+  /** Inclusion/Exclusion screening report (auto-scoped to this site). */
+  async screeningReport() {
+    return siteAxiosClient.get(`${BASE}/screening-report`);
+  },
+
   async createSubject(payload) {
     return siteAxiosClient.post(`${BASE}/subjects`, payload);
   },
@@ -40,9 +60,30 @@ export const siteWorkspaceClient = {
     return siteAxiosClient.patch(`${BASE}/subjects/${subjectId}`, payload);
   },
 
+  /** Controlled unlock — reopen a Submitted form back to editable (gated by
+   *  data_capture.reopen, requires a reason). */
+  async reopenForm(subjectId, formId, reason) {
+    return siteAxiosClient.post(`${BASE}/subjects/${subjectId}/forms/${formId}/reopen`, { reason });
+  },
+
   /** Hard-delete a subject and all its data (gated by data_capture.subject_delete). */
   async deleteSubject(subjectId) {
     return siteAxiosClient.delete(`${BASE}/subjects/${subjectId}`);
+  },
+
+  /**
+   * Transfer subject ownership to another PI. Moves owner_id + all open
+   * queries to the new owner and writes an audit row. Gated by
+   * data_capture.subject_edit.
+   *   payload = { new_owner_id, reason }
+   */
+  async transferSubjectOwnership(subjectId, payload) {
+    return siteAxiosClient.post(`${BASE}/subjects/${subjectId}/transfer-ownership`, payload);
+  },
+
+  /** Ownership-transfer history for a subject (newest first). */
+  async listSubjectOwnershipTransfers(subjectId) {
+    return siteAxiosClient.get(`${BASE}/subjects/${subjectId}/ownership-transfers`);
   },
 
   /** Forms defined for the chosen study (latest version per form). */

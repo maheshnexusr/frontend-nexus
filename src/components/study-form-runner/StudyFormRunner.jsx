@@ -26,14 +26,16 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, CheckCircle2,
   UploadCloud, PenLine, Star, Layers,
   Search, FileText, Type as TypeIcon, CornerDownRight, PanelLeftClose, PanelLeft,
-  AlertCircle, History, Lock, Snowflake, CircleDot, X as XIcon, Save, ShieldCheck,
+  AlertCircle, Lock, Snowflake, CircleDot, X as XIcon, Save, ShieldCheck,
 } from 'lucide-react';
 import RuntimeFieldRenderer from '@/features/cro/components/study-form/runtime/RuntimeFieldRenderer';
+import { evaluateField, evaluateEligibility } from '@/features/cro/components/study-form/runtime/runtimeEngine';
 import FormStatusToolbar    from './FormStatusToolbar';
+import SignatureInput       from './SignatureInput';
+import { uploadFormFile }    from '@/api/formFileClient';
+import { resolveFileUrl }    from '@/api/fileUrl';
 import { FormQueriesProvider, useFormQueries } from './FormQueriesContext';
 import PlatformDatePicker from '@/components/form/PlatformDatePicker';
-import ActivityLogDrawer from '@/features/sponsor/components/activity/ActivityLogDrawer';
-import { usePermissions } from '@/features/auth/usePermissions';
 import { selectAllFieldData } from '@/features/cro/store/formRuntimeSlice';
 import s from '@/features/cro/components/study-form/SFBPreview.module.css';
 
@@ -50,7 +52,26 @@ function sameValue(a, b) {
 }
 
 // Non-input field types — excluded from data-entry / verification counting.
-const LAYOUT_TYPES = ['h2', 'paragraph', 'divider'];
+const LAYOUT_TYPES = ['h2', 'h3', 'paragraph', 'divider'];
+
+// Record-status workflow colours (Draft → … → Completed).
+const RECORD_STATUS_STYLE = {
+  'Draft':              { background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1' },
+  'Under Verification': { background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' },
+  'Verified':           { background: '#dcfce7', color: '#15803d', border: '1px solid #86efac' },
+  'Query Raised':       { background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' },
+  'Response Pending':   { background: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' },
+  'Query Resolved':     { background: '#f0fdfa', color: '#0f766e', border: '1px solid #99f6e4' },
+  'Completed':          { background: '#ecfdf5', color: '#047857', border: '1px solid #6ee7b7' },
+};
+
+// Inclusion/Exclusion eligibility chip colours.
+const ELIG_STYLE = {
+  'Included':       { background: '#dcfce7', color: '#15803d', border: '1px solid #86efac' },
+  'Excluded':       { background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' },
+  'Pending Review': { background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' },
+  'Screen Failed':  { background: '#fef2f2', color: '#9f1239', border: '1px solid #fecdd3' },
+};
 
 /**
  * Sidebar badge helpers. Each returns a small inline `<span>` styled to match
@@ -224,6 +245,8 @@ function StudyFormRunnerInner({
   // (pageId, pageTitle, fields[]) where fields = the page's data fields, each
   // flagged verified — the backend rolls the page status up to Verified.
   onVerifyPage,
+  // Inclusion/Exclusion criteria (form-level) → live eligibility badge.
+  eligibilityCriteria = [],
   // Pages already Marked Completed for this subject+form, as
   // { [pageId]: { completedAt, status } }. Drives the footer: a completed page
   // shows a "Page Completed" badge instead of the button — until the user edits
@@ -244,6 +267,12 @@ function StudyFormRunnerInner({
   // `clinical.viewRoles` / `clinical.editRoles` are enforced (hide / read-only).
   // When omitted, no role enforcement happens (safe no-op for existing callers).
   userRole = null,
+  // Step-3 study module toggles. When Verification Manager is OFF the whole
+  // verification workflow is hidden (record_status chip, "Page Verified" badge,
+  // Verify Page); when Query Manager is OFF the query chips/counters are hidden.
+  // Default true so existing callers keep the full workflow.
+  verificationEnabled = true,
+  queryEnabled = true,
 }) {
   // Per-block and per-page active query counts from the runner context.
   const { byBlock: queryCountByBlock, byPage: queryCountByPage } = useFormQueries();
@@ -288,21 +317,20 @@ function StudyFormRunnerInner({
   const [completing, setCompleting] = useState(false);
   const [verifying,  setVerifying]  = useState(false);
   const [verifyOpen, setVerifyOpen] = useState(false);
+  // Set true when the user tries to leave a page (Next) with mandatory fields
+  // still empty — drives the inline warning + red highlight on the missing
+  // fields. Reset on every page change (effect below).
+  const [triedNext,  setTriedNext]  = useState(false);
 
-  // Per-form activity log. Gated by data_capture.activity_log; the form's
-  // identity comes from the URL (?formId=...). Subject context is implicit —
-  // any audit row tied to this form is shown regardless of subject.
+  // Deep-link support — ?pageId=… jumps straight to a page (used below).
   const [params] = useSearchParams();
-  const formIdFromUrl = params.get('formId') ?? '';
-  const { has } = usePermissions();
-  const canViewFormActivity = has('data_capture', 'activity_log');
+
   // NOTE: verification STATUS (green field tag, "Page Verified" badge, sidebar
   // check) is shown to EVERYONE — it reflects the true state of the data, so a
   // PI/data-entry role correctly sees "Verified" once it's verified. Only the
   // verify ACTION (the field Verify icon + Verify Page button) is gated, via
   // useFieldCapabilities.canSeeVerification (data_verification) in FieldToolbar
   // / the capture page's canVerify. Do NOT gate the status display.
-  const [formActivityOpen, setFormActivityOpen] = useState(false);
 
   // Phase 1 — form status from runtime slice; blocks Submit on read-only.
   const formStatus = useSelector(selectFormStatus);
@@ -383,6 +411,62 @@ function StudyFormRunnerInner({
   const setValue = (fieldId, value) =>
     setValues((prev) => ({ ...prev, [fieldId]: value }));
 
+  // ── Conditional Visibility (Phase 2) — block & page level ────────────────
+  // Ordered [blockIndex, pageIndex] of every VISIBLE page (block/page `condition`
+  // not evaluating to hidden against the live values). Drives prev/next, the
+  // sidebar, and the "current page got hidden → move off it" effect below.
+  const visiblePositions = useMemo(() => {
+    const out = [];
+    (blocks || []).forEach((blk, b) => {
+      if (evaluateField(blk, values).hidden) return;
+      (blk.pages || []).forEach((pg, p) => {
+        if (evaluateField(pg, values).hidden) return;
+        out.push([b, p]);
+      });
+    });
+    return out;
+  }, [blocks, values]);
+
+  // If the page the user is on becomes hidden (a value change flipped a
+  // condition), jump to the nearest still-visible page.
+  useEffect(() => {
+    if (!visiblePositions.length) return;
+    const b = Math.min(blockIdx, (blocks.length || 1) - 1);
+    const curBlock = blocks[b];
+    const p = curBlock ? Math.min(pageIdx, (curBlock.pages.length || 1) - 1) : 0;
+    if (visiblePositions.some(([vb, vp]) => vb === b && vp === p)) return;
+    const next = visiblePositions.find(([vb, vp]) => vb > b || (vb === b && vp >= p))
+              ?? visiblePositions[visiblePositions.length - 1];
+    if (next && (next[0] !== blockIdx || next[1] !== pageIdx)) {
+      setBlockIdx(next[0]);
+      setPageIdx(next[1]);
+    }
+  }, [visiblePositions, blockIdx, pageIdx, blocks]);
+
+  // Clear the "fill mandatory fields" warning whenever the page changes.
+  useEffect(() => { setTriedNext(false); }, [blockIdx, pageIdx]);
+
+  // Clear-on-hide (Phase 4) at the FORM level so it works even though hidden
+  // fields are no longer rendered: a field with `clearOnHide` whose condition
+  // currently hides it gets its value wiped (default policy is retain).
+  useEffect(() => {
+    const patch = {};
+    for (const blk of blocks || []) {
+      for (const pg of blk.pages || []) {
+        for (const f of pg.fields || []) {
+          // `clear_on_hide` (snake) is what the API returns; `clearOnHide` is
+          // the in-builder camelCase — accept either.
+          if (!(f?.clearOnHide ?? f?.clear_on_hide)) continue;
+          if (!evaluateField(f, values).hidden) continue;
+          const v = values[f.id];
+          const empty = v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
+          if (!empty) patch[f.id] = '';
+        }
+      }
+    }
+    if (Object.keys(patch).length) setValues((prev) => ({ ...prev, ...patch }));
+  }, [values, blocks]);
+
   if (!blocks.length) {
     return (
       <div className={s.emptyRoot} style={{ flex: 1 }}>
@@ -412,6 +496,22 @@ function StudyFormRunnerInner({
   const pi    = Math.min(pageIdx, block.pages.length - 1);
   const page  = block.pages[pi];
 
+  // ── Conditional Visibility (Phase 2) — block & page level ────────────────
+  // A block/page carries its own `condition` (same shape as a field's). We
+  // evaluate it against the live form values: HIDDEN blocks/pages drop out of
+  // navigation + the sidebar; READ-ONLY blocks/pages force every field inside
+  // them non-editable. A page inherits its block's hidden/read-only state.
+  const blockEff = (blk) => evaluateField(blk, values);
+  const pageEff  = (blk, pg) => {
+    const b = evaluateField(blk, values);
+    const p = evaluateField(pg, values);
+    return { hidden: b.hidden || p.hidden, readOnly: b.readOnly || p.readOnly };
+  };
+  // Index of the current page within the visible list (source of truth for
+  // prev/next + first/last). `pageReadOnly` forces this page's fields read-only.
+  const curVisIdx = visiblePositions.findIndex(([b, p]) => b === bi && p === pi);
+  const pageReadOnly = pageEff(block, page).readOnly;
+
   // Phase 2 — per-field role access from the field's `clinical` block. The
   // role is the explicit `userRole` prop if given, else the signed-in user's
   // role from the auth session. With no role resolvable, OR a field with no
@@ -430,9 +530,13 @@ function StudyFormRunnerInner({
   const canViewField = (field) => roleAllows(field?.clinical?.viewRoles);
   const canEditField = (field) => roleAllows(field?.clinical?.editRoles);
   const visibleFields = (page.fields || []).filter(canViewField);
+  // Fields actually painted on this page = role-visible AND not conditionally
+  // hidden. Excluding hidden fields HERE (not just returning null inside the
+  // renderer) means they don't leave an empty grid cell / gap in the layout.
+  const renderFields = visibleFields.filter((f) => !evaluateField(f, values).hidden);
 
-  const isFirstPage = bi === 0 && pi === 0;
-  const isLastPage  = bi === blocks.length - 1 && pi === block.pages.length - 1;
+  const isFirstPage = curVisIdx <= 0;
+  const isLastPage  = curVisIdx === visiblePositions.length - 1;
 
   // Per-page completion state for the footer. A page is "dirty" when any of its
   // fields differ from the baseline (last saved/completed snapshot). The Mark
@@ -450,33 +554,115 @@ function StudyFormRunnerInner({
   // (the Verify button returns). This is how "again changes → show Verify" works.
   const fieldVerified = (f) =>
     verifiedFields[f.id]?.status === 'Verified' && sameValue(values[f.id], baseline[f.id]);
-  // Per-page verify status for the sidebar badge: all data fields verified →
-  // 'Verified', some → 'Partially Verified', none → null. Uses fieldVerified so
-  // an edited field drops the page out of Verified, consistent with the footer.
-  const pageVerifyStatus = (pg) => {
-    const df = (pg.fields || []).filter((f) => !LAYOUT_TYPES.includes(f.type));
-    if (df.length === 0) return null;
-    const n = df.filter(fieldVerified).length;
-    return n === 0 ? null : n === df.length ? 'Verified' : 'Partially Verified';
+  // Per-page verify rollup — MUST mirror the backend so the footer badge and the
+  // server agree. A field counts only if it's a visible (non-layout, non-hidden)
+  // data field; the denominator = FILLED fields + REQUIRED-but-empty fields, and
+  // the numerator = verified filled fields. Empty OPTIONAL fields are "not
+  // applicable" → excluded, so they don't keep a page from reaching Verified.
+  const fieldHasValue = (f) => {
+    const v = values[f.id];
+    if (v === undefined || v === null) return false;
+    if (typeof v === 'string') return v.trim() !== '';
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === 'object') return Object.keys(v).length > 0;
+    return true;
   };
-  const pageDataFields = (page.fields || []).filter((f) => !LAYOUT_TYPES.includes(f.type));
-  const pageFullyVerified = pageDataFields.length > 0 && pageDataFields.every(fieldVerified);
+  const isVisibleData = (f) =>
+    !LAYOUT_TYPES.includes(f.type) && !evaluateField(f, values).hidden;
+  const pageVerifyRollup = (pg) => {
+    const data = (pg.fields || []).filter(isVisibleData);
+    const filled = data.filter(fieldHasValue);
+    const requiredEmpty = data.filter((f) => f.required && !fieldHasValue(f));
+    const denom = filled.length + requiredEmpty.length;
+    const verified = filled.filter(fieldVerified).length;
+    return { denom, verified };
+  };
+  const pageVerifyStatus = (pg) => {
+    const { denom, verified } = pageVerifyRollup(pg);
+    if (denom === 0) return null;
+    return verified >= denom ? 'Verified' : verified > 0 ? 'Partially Verified' : null;
+  };
+  // Hard vs soft edit checks (clinical). hardCheck defaults ON → a required
+  // field blocks Save/Submit. A required field with hardCheck OFF + softCheck ON
+  // only WARNS (the user can continue). Both on → hard wins (blocks).
+  // hardCheck/softCheck may arrive camelCase (builder) or snake_case (some save
+  // paths) — accept either. hardCheck defaults ON when unset.
+  const hardOf = (f) => f.hardCheck ?? f.hard_check;
+  const softOf = (f) => f.softCheck ?? f.soft_check;
+  const isHardReq = (f) => f.required === true && hardOf(f) !== false;
+  const isSoftReq = (f) => f.required === true && softOf(f) === true && hardOf(f) === false;
+  const fieldName = (f) => f.label || f.key || f.name || 'this field';
+  const hardMsg   = (f) => ((f.hardMessage ?? f.hard_message)?.trim() || (f.requiredMessage ?? f.required_message)?.trim() || '{Field Name} is required.').replace(/\{Field Name\}/g, fieldName(f));
+  const softMsg   = (f) => ((f.softMessage ?? f.soft_message)?.trim() || 'Please review {Field Name} before continuing.').replace(/\{Field Name\}/g, fieldName(f));
+
+  // Mandatory-field gate for page navigation: a VISIBLE hard-required field left
+  // blank blocks Next (and is flagged inline). Mirrors the backend submit gate
+  // (requiredFields.js) — layout + conditionally-hidden fields are excluded.
+  const pageMissingRequired = (pg) =>
+    (pg.fields || []).filter(isVisibleData).filter((f) => isHardReq(f) && !fieldHasValue(f));
+  const missingRequiredNow = pageMissingRequired(page);
+  const missingRequiredIds = new Set(missingRequiredNow.map((f) => f.id));
+
+  // Empty SOFT-required fields across every visible page — collected at submit
+  // time to show a non-blocking warning the user can acknowledge.
+  const allSoftMissing = () => {
+    const out = [];
+    for (const blk of blocks) {
+      if (evaluateField(blk, values).hidden) continue;
+      for (const pg of blk.pages || []) {
+        if (pageEff(blk, pg).hidden) continue;
+        for (const f of pg.fields || []) {
+          if (LAYOUT_TYPES.includes(f.type)) continue;
+          if (evaluateField(f, values).hidden) continue;
+          if (isSoftReq(f) && !fieldHasValue(f)) out.push(f);
+        }
+      }
+    }
+    return out;
+  };
+
+  const pageDataFields = (page.fields || []).filter(isVisibleData);
+  const curRollup = pageVerifyRollup(page);
+  const pageFullyVerified = curRollup.denom > 0 && curRollup.verified >= curRollup.denom;
   // Name to show on the "Page Verified" badge (page-row verifier, else any field's).
   const pageVerifier = verifiedPages[page.id]?.verifiedByName
     || pageDataFields.map((f) => fieldVerified(f) && verifiedFields[f.id]?.verifiedByName).find(Boolean)
     || null;
+  // Record-status workflow state for THIS page (Draft → Under Verification →
+  // Verified → … → Completed). Falls back to Draft for a page that hasn't been
+  // Marked Completed yet.
+  const baseRecordStatus = verifiedPages[page.id]?.recordStatus
+    || (currentCompleted ? 'Under Verification' : 'Draft');
+  // Live override so the chip reflects query actions WITHOUT a reload: the
+  // FormQueriesProvider refreshes after every raise/answer/close, so the active
+  // query count is current. Open query on the page → Query Raised / Response
+  // Pending; queries just cleared → Query Resolved. (The exact backend value
+  // refreshes on next load.)
+  const activePageQueries = queryEnabled ? (queryCountByPage.get(page.id) ?? 0) : 0;
+  const currentRecordStatus =
+    activePageQueries > 0
+      ? (baseRecordStatus === 'Response Pending' ? 'Response Pending' : 'Query Raised')
+      : (['Query Raised', 'Response Pending'].includes(baseRecordStatus) ? 'Query Resolved' : baseRecordStatus);
 
+  // Live Inclusion/Exclusion eligibility — recomputed as the user types (spec's
+  // real-time validation). The backend persists the authoritative value on save.
+  const liveEligibility = evaluateEligibility(eligibilityCriteria, values);
+
+  // Prev/Next step over VISIBLE pages only, so conditionally-hidden pages/blocks
+  // are skipped during navigation.
   const goNext = () => {
-    if (pi < block.pages.length - 1) setPageIdx(pi + 1);
-    else if (bi < blocks.length - 1) { setBlockIdx(bi + 1); setPageIdx(0); }
+    // Block forward navigation until every visible mandatory field on this page
+    // is filled — the user must complete the page before moving on.
+    if (!readOnly && missingRequiredNow.length) {
+      setTriedNext(true);
+      return;
+    }
+    const n = visiblePositions[curVisIdx + 1];
+    if (n) { setBlockIdx(n[0]); setPageIdx(n[1]); }
   };
   const goPrev = () => {
-    if (pi > 0) setPageIdx(pi - 1);
-    else if (bi > 0) {
-      const pb = blocks[bi - 1];
-      setBlockIdx(bi - 1);
-      setPageIdx(pb.pages.length - 1);
-    }
+    const n = visiblePositions[curVisIdx - 1];
+    if (n) { setBlockIdx(n[0]); setPageIdx(n[1]); }
   };
   const goBlock = (i) => { setBlockIdx(i); setPageIdx(0); };
   const goPage  = (i) => setPageIdx(i);
@@ -546,6 +732,13 @@ function StudyFormRunnerInner({
 
   const handleSubmit = async () => {
     if (readOnly || busy) return;
+    // Soft checks — warn, but let the user continue if they acknowledge.
+    const soft = allSoftMissing();
+    if (soft.length) {
+      const lines = soft.map((f) => `• ${softMsg(f)}`).join('\n');
+      // eslint-disable-next-line no-alert
+      if (!window.confirm(`Some recommended fields are empty:\n\n${lines}\n\nSubmit anyway?`)) return;
+    }
     setBusy(true);
     try {
       await onSubmit?.(values);
@@ -556,8 +749,14 @@ function StudyFormRunnerInner({
   };
 
   // Save progress without finalising — stays on the form (no success screen).
+  // Hard checks block Save too (spec: hard = cannot save/submit until filled);
+  // soft-required fields don't block. Flag the offending fields inline.
   const handleSave = async () => {
     if (readOnly || saving) return;
+    if (missingRequiredNow.length) {
+      setTriedNext(true);
+      return;
+    }
     setSaving(true);
     try {
       await onSave?.(values);
@@ -639,6 +838,7 @@ function StudyFormRunnerInner({
     }
   };
 
+
   // Verify (or unverify) a SINGLE field via the field's Verify popover — routes
   // through the same persisted page-verify path (one field in the list), so the
   // green "Verified · <name>" tag is the single source of truth (no legacy tag).
@@ -647,7 +847,7 @@ function StudyFormRunnerInner({
   };
 
   return (
-    <div className={s.root}>
+    <div className={`${s.root} ${sidebarCollapsed ? s.rootCollapsed : ''}`}>
       {/* ── Collapsed sidebar rail (just a re-open chevron) ─────────────── */}
       {sidebarCollapsed && (
         <button
@@ -666,7 +866,7 @@ function StudyFormRunnerInner({
         <aside className={s.sidebar}>
           <div className={s.sidebarHead}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-              <span className={s.sidebarTitle}>{formTitle}</span>
+              <span className={s.sidebarTitle}>Progress Overview</span>
               <button
                 type="button"
                 className={s.btnPrev}
@@ -686,6 +886,8 @@ function StudyFormRunnerInner({
 
           <nav className={s.stepList} aria-label="Form sections">
             {blocks.map((blk, i) => {
+              // Conditionally-hidden blocks drop out of the outline entirely.
+              if (blockEff(blk).hidden) return null;
               const isPast    = i < bi;
               const isCurrent = i === bi;
               const isFuture  = i > bi;
@@ -710,7 +912,7 @@ function StudyFormRunnerInner({
                     <span className={s.stepBlockLabel}>{blk.title || `Block ${i + 1}`}</span>
                     {/* Active query count across every page in the block. Sourced
                         from the runner-level FormQueriesProvider fetch. */}
-                    {(queryCountByBlock.get(blk.id) ?? 0) > 0 && (
+                    {queryEnabled && (queryCountByBlock.get(blk.id) ?? 0) > 0 && (
                       <span
                         title={`${queryCountByBlock.get(blk.id)} active ${queryCountByBlock.get(blk.id) === 1 ? 'query' : 'queries'} in this block`}
                         style={{
@@ -739,6 +941,8 @@ function StudyFormRunnerInner({
                   {isExpanded && (
                     <ol className={s.pageList}>
                       {blk.pages.map((pg, j) => {
+                        // Skip conditionally-hidden pages.
+                        if (pageEff(blk, pg).hidden) return null;
                         const pPast    = isPast    || (isCurrent && j < pi);
                         const pCurrent = isCurrent && j === pi;
                         const clickable = !isFuture && (isPast || j <= pi);
@@ -752,7 +956,7 @@ function StudyFormRunnerInner({
                             >
                               <span className={s.pageDot} />
                               <span className={s.pageItemLabel}>{pg.title || `Page ${j + 1}`}</span>
-                              {(queryCountByPage.get(pg.id) ?? 0) > 0 && (
+                              {queryEnabled && (queryCountByPage.get(pg.id) ?? 0) > 0 && (
                                 <span
                                   title={`${queryCountByPage.get(pg.id)} active ${queryCountByPage.get(pg.id) === 1 ? 'query' : 'queries'} on this page`}
                                   style={{
@@ -773,14 +977,16 @@ function StudyFormRunnerInner({
                                   Verification) > ✕ (data entered, awaiting
                                   verification) > nothing (no data entry). */}
                               <LockBadge formStatus={formStatus} size={9} />
-                              <VerificationBadge
-                                formStatus={formStatus}
-                                dataEntered={dataEnteredByPage.get(pg.id) ?? false}
-                                completed={!!completed[pg.id]}
-                                verified={pageVerifyStatus(pg)}
-                                verifiedBy={verifiedPages[pg.id]?.verifiedByName}
-                                size={9}
-                              />
+                              {verificationEnabled && (
+                                <VerificationBadge
+                                  formStatus={formStatus}
+                                  dataEntered={dataEnteredByPage.get(pg.id) ?? false}
+                                  completed={!!completed[pg.id]}
+                                  verified={pageVerifyStatus(pg)}
+                                  verifiedBy={verifiedPages[pg.id]?.verifiedByName}
+                                  size={9}
+                                />
+                              )}
                             </button>
                           </li>
                         );
@@ -841,32 +1047,11 @@ function StudyFormRunnerInner({
             )}
           </div>
 
-          {/* Phase 1 — form-status pill + transition buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <FormStatusToolbar pageFields={visibleFields} pageTitle={page.title} />
-            {canViewFormActivity && formIdFromUrl && (
-              <button
-                type="button"
-                onClick={() => setFormActivityOpen(true)}
-                title="View activity log for this form"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '6px 10px', fontSize: 12.5, fontWeight: 600,
-                  background: '#fff', color: '#0f172a',
-                  border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer',
-                }}
-              >
-                <History size={13} /> Activity Log
-              </button>
-            )}
-          </div>
-          <ActivityLogDrawer
-            open={formActivityOpen}
-            resourceType="form"
-            resourceId={formIdFromUrl}
-            resourceLabel={formTitle}
-            onClose={() => setFormActivityOpen(false)}
-          />
+          {/* Phase 1 — form-status pill + transition buttons. The per-subject
+              activity log now lives only on the SubjectContextStrip ("Activity
+              Log") at the top of the page; the duplicate form-level launcher
+              that used to sit here was removed per spec. */}
+          <FormStatusToolbar pageFields={visibleFields} pageTitle={page.title} />
 
           <div className={s.pageHeading}>
             <div>
@@ -879,13 +1064,13 @@ function StudyFormRunnerInner({
           </div>
 
           <div className={s.fields}>
-            {visibleFields.length === 0 ? (
+            {renderFields.length === 0 ? (
               <div className={s.noFields}>
                 <p>This page has no fields.</p>
               </div>
             ) : (
-              visibleFields.map((field) => {
-                const isLayout = ['h2', 'paragraph', 'divider'].includes(field.type);
+              renderFields.map((field) => {
+                const isLayout = ['h2', 'h3', 'paragraph', 'divider'].includes(field.type);
                 if (isLayout) {
                   return (
                     <div
@@ -898,8 +1083,20 @@ function StudyFormRunnerInner({
                   );
                 }
                 const vTag = fieldVerified(field) ? verifiedFields[field.id] : null;
+                const reqMissing = triedNext && missingRequiredIds.has(field.id);
                 return (
-                  <div key={field.id} data-field-id={field.id} style={{ minWidth: 0 }}>
+                  <div
+                    key={field.id}
+                    data-field-id={field.id}
+                    style={{
+                      minWidth: 0,
+                      // Flag a mandatory field the user tried to skip past. Outline
+                      // doesn't affect layout flow, so the grid doesn't shift.
+                      ...(reqMissing
+                        ? { outline: '2px solid #fca5a5', outlineOffset: 4, borderRadius: 6 }
+                        : {}),
+                    }}
+                  >
                     {vTag && (
                       <span
                         title={`Verified${vTag.verifiedByName ? ` by ${vTag.verifiedByName}` : ''}${vTag.verifiedAt ? ` · ${new Date(vTag.verifiedAt).toLocaleString()}` : ''}`}
@@ -925,7 +1122,7 @@ function StudyFormRunnerInner({
                     >
                       {({ field: f, value: v, onChange, disabled }) => (
                         <fieldset
-                          disabled={readOnly || disabled || !canEditField(f)}
+                          disabled={readOnly || pageReadOnly || disabled || !canEditField(f)}
                           style={{ border: 0, padding: 0, margin: 0 }}
                         >
                           <FieldInput field={f} value={v} onChange={onChange} />
@@ -938,7 +1135,52 @@ function StudyFormRunnerInner({
             )}
           </div>
 
+          {triedNext && missingRequiredNow.length > 0 && (
+            <div
+              role="alert"
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                margin: '0 0 10px', padding: '10px 14px', borderRadius: 8,
+                background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c',
+                fontSize: 13, fontWeight: 600,
+              }}
+            >
+              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {missingRequiredNow.map((f) => <span key={f.id}>{hardMsg(f)}</span>)}
+              </span>
+            </div>
+          )}
+
           <div className={s.navFooter}>
+            {/* Record-status workflow chip — only when Verification Manager is
+                enabled for the study (otherwise the page has no verification
+                lifecycle, so "Under Verification" etc. is meaningless). */}
+            {verificationEnabled && (
+              <span
+                title="Workflow status of this page"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5, marginRight: 4,
+                  padding: '4px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700,
+                  ...(RECORD_STATUS_STYLE[currentRecordStatus] || RECORD_STATUS_STYLE.Draft),
+                }}
+              >
+                <CircleDot size={11} /> {currentRecordStatus}
+              </span>
+            )}
+            {/* Live Inclusion/Exclusion eligibility (subject-level, updates as you type). */}
+            {liveEligibility.status && (
+              <span
+                title={liveEligibility.reason || `Eligibility: ${liveEligibility.status}`}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5, marginRight: 4,
+                  padding: '4px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700,
+                  ...(ELIG_STYLE[liveEligibility.status] || ELIG_STYLE['Pending Review']),
+                }}
+              >
+                {liveEligibility.status}
+              </span>
+            )}
             <button className={s.btnPrev} onClick={goPrev} disabled={isFirstPage}>
               <ChevronLeft size={15} /> Previous
             </button>
@@ -1033,7 +1275,7 @@ function StudyFormRunnerInner({
                   type="button"
                   onClick={() => setVerifyOpen(true)}
                   disabled={verifying}
-                  title="Verify this page (SDV) — choose the whole page or individual fields"
+                  title="Verify this page — choose the whole page or individual fields"
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     marginRight: 8,
@@ -1071,8 +1313,9 @@ function StudyFormRunnerInner({
 
           {verifyOpen && onVerifyPage && (
             <VerifyPageDialog
-              pageFields={visibleFields}
+              pageFields={visibleFields.filter((f) => !evaluateField(f, values).hidden)}
               values={values}
+              blockTitle={block.title}
               pageTitle={page.title}
               saving={verifying}
               onCancel={() => setVerifyOpen(false)}
@@ -1091,30 +1334,48 @@ function StudyFormRunnerInner({
  * subset). Hands the full field list back with per-field verified flags so the
  * backend can derive the page status (all → Verified, some → Partially).
  */
-const VP_LAYOUT = ['h2', 'paragraph', 'divider'];
+const VP_LAYOUT = ['h2', 'h3', 'paragraph', 'divider'];
 const vpBtn  = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: 'pointer' };
 const vpLink = { border: 'none', background: 'transparent', color: '#2563eb', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 };
 
-function VerifyPageDialog({ pageFields, values, pageTitle, saving, onCancel, onConfirm }) {
+function VerifyPageDialog({ pageFields, values, blockTitle, pageTitle, saving, onCancel, onConfirm }) {
+  const crfBlockPage = [blockTitle, pageTitle].filter(Boolean).join(' / ');
   const dataFields = (pageFields || []).filter((f) => f && !VP_LAYOUT.includes(f.type));
-  const [checks, setChecks] = useState(() => Object.fromEntries(dataFields.map((f) => [f.id, true])));
+  // Only FILLED fields are verifiable. The MANDATORY flag (field.required, from
+  // the form builder) decides what an EMPTY field means: a required-but-empty
+  // field still COUNTS toward the page (mandatory data missing → can't reach
+  // 100%); an optional-empty field is excluded (not applicable). Mirrors the
+  // backend, which enforces this authoritatively.
+  const isFilled = (v) => {
+    if (v === undefined || v === null) return false;
+    if (typeof v === 'string') return v.trim() !== '';
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === 'object') return Object.keys(v).length > 0;
+    return true;
+  };
+  const fieldFilled = (f) => isFilled(values?.[f.id]);
+  const isReq = (f) => f.required === true;
+  // Counted toward the page total = filled OR required.
+  const countedFields = dataFields.filter((f) => fieldFilled(f) || isReq(f));
+  const [checks, setChecks] = useState(() =>
+    Object.fromEntries(dataFields.map((f) => [f.id, fieldFilled(f)])));
   const [comment, setComment] = useState('');
 
-  const total = dataFields.length;
-  const verifiedCount = dataFields.filter((f) => checks[f.id]).length;
+  const total = countedFields.length;
+  const verifiedCount = countedFields.filter((f) => fieldFilled(f) && checks[f.id]).length;
   const pageStatus = total > 0 && verifiedCount === total ? 'Verified'
                    : verifiedCount > 0 ? 'Partially Verified'
                    : 'Not Verified';
 
-  const toggle = (id) => setChecks((c) => ({ ...c, [id]: !c[id] }));
-  const setAll = (v)  => setChecks(Object.fromEntries(dataFields.map((f) => [f.id, v])));
+  const toggle = (id, filled) => { if (filled) setChecks((c) => ({ ...c, [id]: !c[id] })); };
+  const setAll = (v)  => setChecks(Object.fromEntries(dataFields.map((f) => [f.id, v && fieldFilled(f)])));
   const fmtVal = (v) => {
     if (v === undefined || v === null || v === '') return '(empty)';
     if (Array.isArray(v)) return v.join(', ') || '(empty)';
     return String(v);
   };
   const confirm = () => onConfirm(dataFields.map((f) => ({
-    field_name: f.id, label: f.label ?? '', verified: !!checks[f.id], comment: comment.trim() || null,
+    field_name: f.id, label: f.label ?? '', verified: fieldFilled(f) && !!checks[f.id], comment: comment.trim() || null,
   })));
 
   return (
@@ -1122,8 +1383,8 @@ function VerifyPageDialog({ pageFields, values, pageTitle, saving, onCancel, onC
       <div style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 560, maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 18px 40px rgba(15,23,42,0.25)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid #f1f5f9' }}>
           <div>
-            <strong style={{ fontSize: 14, color: '#0f172a' }}>Verify Page (SDV)</strong>
-            {pageTitle && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{pageTitle}</div>}
+            <strong style={{ fontSize: 14, color: '#0f172a' }}>Verify Page</strong>
+            {crfBlockPage && <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{crfBlockPage}</div>}
           </div>
           <button type="button" onClick={onCancel} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4 }}><XIcon size={14} /></button>
         </div>
@@ -1139,15 +1400,30 @@ function VerifyPageDialog({ pageFields, values, pageTitle, saving, onCancel, onC
         <div style={{ padding: '4px 18px', overflowY: 'auto', flex: 1 }}>
           {total === 0 ? (
             <p style={{ fontSize: 13, color: '#94a3b8' }}>No data fields on this page.</p>
-          ) : dataFields.map((f) => (
-            <label key={f.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderBottom: '1px solid #f8fafc', cursor: 'pointer' }}>
-              <input type="checkbox" checked={!!checks[f.id]} onChange={() => toggle(f.id)} style={{ marginTop: 3 }} />
-              <span style={{ flex: 1 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{f.label || f.id}</span>
-                <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>{fmtVal(values?.[f.id])}</span>
-              </span>
-            </label>
-          ))}
+          ) : dataFields.map((f) => {
+            const filled = fieldFilled(f);
+            const reqEmpty = !filled && isReq(f);
+            return (
+              <label
+                key={f.id}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', borderBottom: '1px solid #f8fafc', cursor: filled ? 'pointer' : 'not-allowed', opacity: filled ? 1 : 0.7 }}
+                title={filled ? undefined : (reqEmpty ? 'Required field is empty — page can\'t be fully verified until it\'s filled' : 'Empty field — nothing to verify')}
+              >
+                <input type="checkbox" checked={filled && !!checks[f.id]} disabled={!filled} onChange={() => toggle(f.id, filled)} style={{ marginTop: 3 }} />
+                <span style={{ flex: 1 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
+                    {f.label || f.id}
+                    {isReq(f) && <span style={{ color: '#dc2626' }}> *</span>}
+                  </span>
+                  <span style={{ display: 'block', fontSize: 12, color: '#64748b' }}>
+                    {fmtVal(values?.[f.id])}
+                    {reqEmpty && <em style={{ color: '#dc2626' }}> · required — missing data</em>}
+                    {!filled && !reqEmpty && <em style={{ color: '#94a3b8' }}> · not verifiable (empty)</em>}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
         </div>
 
         <div style={{ padding: '10px 18px', borderTop: '1px solid #f1f5f9' }}>
@@ -1162,7 +1438,7 @@ function VerifyPageDialog({ pageFields, values, pageTitle, saving, onCancel, onC
             <button type="button" onClick={onCancel} disabled={saving} style={{ ...vpBtn, background: '#fff', border: '1px solid #cbd5e1', color: '#475569' }}>Cancel</button>
             <button type="button" onClick={confirm} disabled={saving || total === 0}
               style={{ ...vpBtn, background: '#2563eb', border: '1px solid #2563eb', color: '#fff', opacity: (saving || total === 0) ? 0.6 : 1 }}>
-              <ShieldCheck size={13} /> {saving ? 'Verifying…' : 'Confirm'}
+              <ShieldCheck size={13} /> {saving ? 'Verifying…' : 'Mark Page as Verified'}
             </button>
           </span>
         </div>
@@ -1172,8 +1448,92 @@ function VerifyPageDialog({ pageFields, values, pageTitle, saving, onCancel, onC
 }
 
 /* ── Plain field renderer (no collab stack) ──────────────────────────────── */
+// Real file/attachment input — UPLOADS each chosen file to the backend (stored
+// on disk under /var/www/uploads/<env>/<study_id>/) and stores only a small
+// reference { name, type, size, url } in the form value (single file → object,
+// multi → array). Older records may carry { dataUrl } (legacy inline base64) —
+// those still render via the url ?? dataUrl fallback below.
+// Honours the field's accept (types), maxSize (MB) and maxFiles config.
+function FileFieldInput({ field, value, onChange }) {
+  const inputRef = useRef(null);
+  const multiple = field.type === 'multifile' || field.type === 'multiimage';
+  const accept = field.accept || ((field.type === 'image' || field.type === 'multiimage') ? 'image/*' : '');
+  const maxSizeMb = Number(field.maxSize) || 0;
+  const maxFiles = multiple ? (Number(field.maxFiles) || 10) : 1;
+  const files = Array.isArray(value) ? value : (value ? [value] : []);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+
+  const href = (f) => resolveFileUrl(f?.url ?? f?.dataUrl);
+  const isImage = (f) => (f?.type || '').startsWith('image/');
+
+  const onPick = async (e) => {
+    const picked = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!picked.length) return;
+    setError('');
+    const ok = [];
+    let skipped = 0;
+    setUploading(true);
+    try {
+      for (const f of picked) {
+        if (maxSizeMb && f.size > maxSizeMb * 1024 * 1024) { skipped++; continue; }
+        ok.push(await uploadFormFile(f)); // { url, name, type, size }
+      }
+      if (skipped) setError(`${skipped} file(s) exceeded the ${maxSizeMb}MB limit and were skipped.`);
+      if (ok.length) {
+        if (multiple) onChange([...files, ...ok].slice(0, maxFiles));
+        else onChange(ok[0]);
+      }
+    } catch (err) {
+      setError(err?.message || 'Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const remove = (i) => {
+    if (multiple) onChange(files.filter((_, j) => j !== i));
+    else onChange('');
+  };
+
+  return (
+    <div>
+      <button type="button" className={s.fileZone} onClick={() => inputRef.current?.click()} disabled={uploading} style={{ width: '100%', opacity: uploading ? 0.6 : 1, cursor: uploading ? 'wait' : 'pointer' }}>
+        <UploadCloud size={20} className={s.fileIcon} />
+        <span className={s.fileText}>
+          {uploading ? 'Uploading…' : `Click to upload${multiple ? ` (up to ${maxFiles})` : ''}${maxSizeMb ? ` · max ${maxSizeMb}MB` : ''}${accept ? ` · ${accept}` : ''}`}
+        </span>
+      </button>
+      <input ref={inputRef} type="file" accept={accept || undefined} multiple={multiple} style={{ display: 'none' }} onChange={onPick} />
+      {error && <div style={{ marginTop: 6, fontSize: 12, color: '#b91c1c' }}>{error}</div>}
+      {files.length > 0 && (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {files.map((f, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#f8fafc' }}>
+              {isImage(f) && href(f)
+                ? <img src={href(f)} alt={f?.name ?? 'image'} style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4, flexShrink: 0, border: '1px solid #e2e8f0' }} />
+                : <FileText size={14} style={{ color: '#64748b', flexShrink: 0 }} />}
+              {href(f)
+                ? <a href={href(f)} target="_blank" rel="noreferrer" download={f?.name} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#2563eb', textDecoration: 'none' }}>{f?.name ?? 'file'}</a>
+                : <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f?.name ?? 'file'}</span>}
+              {f?.size ? <span style={{ color: '#94a3b8' }}>{(f.size / 1024).toFixed(0)} KB</span> : null}
+              <button type="button" onClick={() => remove(i)} style={{ background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', padding: 2 }} aria-label="Remove"><XIcon size={13} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FieldInput({ field, value, onChange }) {
   const v = value ?? '';
+  // "Other" free-text mode for radio/checkbox groups (allowOther).
+  const [otherOpen, setOtherOpen] = useState(false);
+  const choiceStyle = field.orientation === 'horizontal'
+    ? { flexDirection: 'row', flexWrap: 'wrap' }
+    : undefined;
 
   switch (field.type) {
     case 'text':
@@ -1229,22 +1589,39 @@ function FieldInput({ field, value, onChange }) {
         </select>
       );
     }
-    case 'radiogroup':
+    case 'radiogroup': {
+      const opts = field.options ?? [];
+      const isOpt = opts.some((o) => o.value === v);
+      const otherSel = field.allowOther && (otherOpen || (v !== '' && v != null && !isOpt));
       return (
-        <div className={s.choiceGroup}>
-          {(field.options ?? []).map((o) => (
-            <label key={o.value} className={`${s.choiceItem} ${v === o.value ? s.choiceItemSelected : ''}`}>
-              <input type="radio" checked={v === o.value} onChange={() => onChange(o.value)} />
+        <div className={s.choiceGroup} style={choiceStyle}>
+          {opts.map((o) => (
+            <label key={o.value} className={`${s.choiceItem} ${v === o.value && !otherSel ? s.choiceItemSelected : ''}`}>
+              <input type="radio" checked={v === o.value && !otherSel} onChange={() => { setOtherOpen(false); onChange(o.value); }} />
               <span>{o.label}</span>
             </label>
           ))}
+          {field.allowOther && (
+            <label className={`${s.choiceItem} ${otherSel ? s.choiceItemSelected : ''}`}>
+              <input type="radio" checked={otherSel} onChange={() => { setOtherOpen(true); onChange(''); }} />
+              <span>{field.otherLabel || 'Other'}</span>
+            </label>
+          )}
+          {otherSel && field.otherFreeText !== false && (
+            <input className={s.input} style={{ marginTop: 6 }} placeholder="Please specify…" value={isOpt ? '' : v} onChange={(e) => onChange(e.target.value)} />
+          )}
         </div>
       );
+    }
     case 'checkboxgroup': {
+      const opts = field.options ?? [];
+      const optVals = opts.map((o) => o.value);
       const checked = Array.isArray(v) ? v : [];
+      const otherVal = checked.find((x) => !optVals.includes(x));
+      const otherChk = field.allowOther && (otherOpen || otherVal !== undefined);
       return (
-        <div className={s.choiceGroup}>
-          {(field.options ?? []).map((o) => (
+        <div className={s.choiceGroup} style={choiceStyle}>
+          {opts.map((o) => (
             <label key={o.value} className={`${s.choiceItem} ${checked.includes(o.value) ? s.choiceItemSelected : ''}`}>
               <input
                 type="checkbox"
@@ -1259,6 +1636,31 @@ function FieldInput({ field, value, onChange }) {
               <span>{o.label}</span>
             </label>
           ))}
+          {field.allowOther && (
+            <label className={`${s.choiceItem} ${otherChk ? s.choiceItemSelected : ''}`}>
+              <input
+                type="checkbox"
+                checked={otherChk}
+                onChange={() => {
+                  if (otherChk) { setOtherOpen(false); onChange(checked.filter((x) => optVals.includes(x))); }
+                  else setOtherOpen(true);
+                }}
+              />
+              <span>{field.otherLabel || 'Other'}</span>
+            </label>
+          )}
+          {otherChk && field.otherFreeText !== false && (
+            <input
+              className={s.input}
+              style={{ marginTop: 6 }}
+              placeholder="Please specify…"
+              value={otherVal ?? ''}
+              onChange={(e) => {
+                const base = checked.filter((x) => optVals.includes(x));
+                onChange(e.target.value ? [...base, e.target.value] : base);
+              }}
+            />
+          )}
         </div>
       );
     }
@@ -1272,18 +1674,12 @@ function FieldInput({ field, value, onChange }) {
         </div>
       );
     case 'file':
-      return (
-        <div className={s.fileZone}>
-          <UploadCloud size={20} className={s.fileIcon} />
-          <span className={s.fileText}>Click or drag to upload</span>
-        </div>
-      );
+    case 'image':
+    case 'multifile':
+    case 'multiimage':
+      return <FileFieldInput field={field} value={value} onChange={onChange} />;
     case 'signature':
-      return (
-        <div className={s.signaturePad}>
-          <PenLine size={18} className={s.signatureIcon} /><span>Sign here</span>
-        </div>
-      );
+      return <SignatureInput value={typeof v === 'string' ? v : ''} onChange={onChange} />;
     case 'rating': {
       const rating = Number(v) || 0;
       return (
@@ -1326,6 +1722,8 @@ function FieldInput({ field, value, onChange }) {
     }
     case 'h2':
       return <h2 className={s.h2}>{field.label || 'Section Title'}</h2>;
+    case 'h3':
+      return <h3 className={s.h3}>{field.label || 'Sub-heading'}</h3>;
     case 'paragraph':
       return <p className={s.paragraph}>{field.content || field.label || 'Paragraph text.'}</p>;
     case 'divider':

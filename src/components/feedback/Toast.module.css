@@ -13,8 +13,14 @@
   background: var(--bg-surface);
   border: 1px solid var(--border-medium);
   box-shadow: var(--shadow-popup);
-  animation: edc-slide-in-right var(--t-normal);
+  animation: edc-toast-slide-up var(--t-normal);
   pointer-events: all;
+}
+
+/* Slide up from the bottom — matches the bottom-middle container. */
+@keyframes edc-toast-slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Variant borders ─────────────────────────────────────────────────────── */

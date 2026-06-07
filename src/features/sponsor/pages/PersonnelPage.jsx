@@ -1,15 +1,16 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
-  UserPlus, Search, X, RefreshCw, Download, Upload,
+  UserPlus, Search, X, RefreshCw, Upload,
   Filter, Eye, Pencil, Trash2, Send, ChevronUp, ChevronDown,
-  ChevronsUpDown, AlertTriangle, CheckCircle, Clock, XCircle,
+  ChevronsUpDown, AlertTriangle,
 } from 'lucide-react';
 
 import { addToast }                  from '@/app/notificationSlice';
 import { sponsorPersonnelClient }    from '../api/sponsorPersonnelClient';
 import PersonnelDetailsModal         from '../components/personnel/PersonnelDetailsModal';
+import PersonnelImportModal          from '../components/personnel/PersonnelImportModal';
 import ConfirmDialog                 from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }           from '@/features/workspace/hooks/useReadOnlyView';
 import { usePermissions }            from '@/features/auth/usePermissions';
@@ -17,17 +18,7 @@ import css from './PersonnelPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const ROLES_FILTER   = ['All', 'Principal Investigator', 'Site Coordinator', 'Study Nurse', 'Subject/Patient', 'Pharmacist', 'Lab Technician', 'Other'];
 const STATUS_OPTIONS = ['All', 'Active', 'Inactive'];
-const CONSENT_STATUS = ['All', 'Pending', 'Submitted', 'Approved', 'Rejected', 'Expired'];
-
-const CONSENT_META = {
-  Pending:   { color: '#d97706', bg: '#fffbeb', border: '#fde68a', icon: Clock },
-  Submitted: { color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', icon: Clock },
-  Approved:  { color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', icon: CheckCircle },
-  Rejected:  { color: '#dc2626', bg: '#fef2f2', border: '#fecaca', icon: XCircle },
-  Expired:   { color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', icon: AlertTriangle },
-};
 
 const COMP_COLORS = {
   None:            { color: '#94a3b8' },
@@ -41,9 +32,8 @@ const COLS = [
   { key: 'fullName',      label: 'Full Name',        sortable: true  },
   { key: 'email',         label: 'Email',            sortable: false },
   { key: 'role',          label: 'Role',             sortable: true  },
-  { key: 'siteName',      label: 'Site',             sortable: true  },
+  { key: 'siteName',      label: 'Sites',            sortable: false },
   { key: 'status',        label: 'Status',           sortable: true  },
-  { key: 'consentStatus', label: 'Consent',          sortable: true  },
   { key: 'compType',      label: 'Compensation',     sortable: false },
 ];
 
@@ -62,13 +52,12 @@ export default function PersonnelPage() {
   const { studyId } = useParams();
   const navigate    = useNavigate();
   const dispatch    = useDispatch();
-  const importRef   = useRef(null);
   const ro          = useReadOnlyView();
   const { has }     = usePermissions();
   const canCreate   = has('site_personnel', 'create');
   const canEdit     = has('site_personnel', 'edit');
   const canDelete   = has('site_personnel', 'delete');
-  const canExport   = has('site_personnel', 'export');
+  const canImport   = has('site_personnel', 'import');
 
   // Data
   const [personnel,  setPersonnel]  = useState([]);
@@ -76,11 +65,10 @@ export default function PersonnelPage() {
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Filters
+  // Filters (All/Active/Inactive + Site are applied CLIENT-SIDE — the backend
+  // list ignores these params, so filtering here keeps them honest.)
   const [statusFilter,  setStatusFilter]  = useState('All');
-  const [roleFilter,    setRoleFilter]    = useState('All');
   const [siteFilter,    setSiteFilter]    = useState('All');
-  const [consentFilter, setConsentFilter] = useState('All');
   const [search,        setSearch]        = useState('');
 
   // Sort / Pagination
@@ -95,7 +83,7 @@ export default function PersonnelPage() {
   const [detailTarget,   setDetailTarget]   = useState(null);
   const [deleteTarget,   setDeleteTarget]   = useState(null);
   const [resendTarget,   setResendTarget]   = useState(null);      // { id, fullName, email }
-  const [importResult,   setImportResult]   = useState(null);
+  const [importOpen,     setImportOpen]     = useState(false);
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -103,14 +91,8 @@ export default function PersonnelPage() {
     if (!quiet) setLoading(true);
     else        setRefreshing(true);
     try {
-      const filters = {
-        ...(statusFilter  !== 'All' ? { status:        statusFilter }  : {}),
-        ...(roleFilter    !== 'All' ? { role:           roleFilter }    : {}),
-        ...(siteFilter    !== 'All' ? { siteId:         siteFilter }    : {}),
-        ...(consentFilter !== 'All' ? { consentStatus:  consentFilter } : {}),
-      };
       const [list, siteList] = await Promise.all([
-        sponsorPersonnelClient.list(studyId, filters),
+        sponsorPersonnelClient.list(studyId),
         sites.length ? Promise.resolve(sites) : sponsorPersonnelClient.getSites(studyId),
       ]);
       setPersonnel(list);
@@ -123,7 +105,7 @@ export default function PersonnelPage() {
       setRefreshing(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studyId, statusFilter, roleFilter, siteFilter, consentFilter]);
+  }, [studyId]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -131,13 +113,20 @@ export default function PersonnelPage() {
 
   const filtered = useMemo(() => {
     let list = personnel;
+    if (statusFilter !== 'All') {
+      list = list.filter((p) => (p.status ?? 'Active') === statusFilter);
+    }
+    if (siteFilter !== 'All') {
+      list = list.filter((p) => (p.siteIds ?? []).includes(siteFilter));
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
         (p) =>
           p.fullName.toLowerCase().includes(q) ||
           p.email.toLowerCase().includes(q) ||
-          (p.siteName ?? '').toLowerCase().includes(q),
+          (p.siteName ?? '').toLowerCase().includes(q) ||
+          (p.siteNames ?? []).some((n) => (n ?? '').toLowerCase().includes(q)),
       );
     }
     return [...list].sort((a, b) => {
@@ -147,7 +136,7 @@ export default function PersonnelPage() {
       bv = String(bv).toLowerCase();
       return sort.dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
     });
-  }, [personnel, search, sort]);
+  }, [personnel, search, sort, statusFilter, siteFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage   = Math.min(page, totalPages);
@@ -223,32 +212,6 @@ export default function PersonnelPage() {
     }
   }
 
-  async function handleExport() {
-    try {
-      await sponsorPersonnelClient.export(studyId, 'csv');
-      dispatch(addToast({ type: 'success', message: 'Personnel exported successfully.' }));
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Export failed.' }));
-    }
-  }
-
-  async function handleImport(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
-    try {
-      const result = await sponsorPersonnelClient.import(studyId, file);
-      setImportResult(result);
-      dispatch(addToast({
-        type: result.failed > 0 ? 'warning' : 'success',
-        message: `Import complete. ${result.imported} invited, ${result.failed} failed.`,
-      }));
-      loadData(true);
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to import. Check file format and try again.' }));
-    }
-  }
-
   // ── Pagination helpers ────────────────────────────────────────────────────
 
   function pageRange(cur, total) {
@@ -271,21 +234,13 @@ export default function PersonnelPage() {
           <p  className={css.sub}>Manage site teams, investigators, coordinators, and enrolled subjects.</p>
         </div>
         <div className={css.headerActions}>
-          {canCreate && (
+          {canImport && (
             <button
               className={css.btnSecondary}
-              onClick={() => importRef.current?.click()}
-              {...ro.disabledProps('Bulk Import')}
+              onClick={() => setImportOpen(true)}
+              {...ro.disabledProps('Import Personnel')}
             >
-              <Upload size={14} /> Bulk Import
-            </button>
-          )}
-          {canCreate && (
-            <input ref={importRef} type="file" accept=".csv,.xlsx,.xls" style={{ display: 'none' }} onChange={handleImport} />
-          )}
-          {canExport && (
-            <button className={css.btnSecondary} onClick={handleExport}>
-              <Download size={14} /> Export
+              <Upload size={14} /> Import Personnel
             </button>
           )}
           <button
@@ -325,15 +280,6 @@ export default function PersonnelPage() {
             ))}
           </div>
 
-          {/* Role */}
-          <select
-            className={css.selectFilter}
-            value={roleFilter}
-            onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
-          >
-            {ROLES_FILTER.map((r) => <option key={r} value={r}>{r === 'All' ? 'All Roles' : r}</option>)}
-          </select>
-
           {/* Site */}
           {sites.length > 0 && (
             <select
@@ -345,15 +291,6 @@ export default function PersonnelPage() {
               {sites.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
             </select>
           )}
-
-          {/* Consent Status */}
-          <select
-            className={css.selectFilter}
-            value={consentFilter}
-            onChange={(e) => { setConsentFilter(e.target.value); setPage(1); }}
-          >
-            {CONSENT_STATUS.map((c) => <option key={c} value={c}>{c === 'All' ? 'All Consent' : c}</option>)}
-          </select>
         </div>
 
         {/* Search */}
@@ -450,10 +387,13 @@ export default function PersonnelPage() {
               </tr>
             ) : (
               pageData.map((p) => {
-                const cMeta = CONSENT_META[p.consentStatus] ?? CONSENT_META.Pending;
-                const CIcon = cMeta.icon;
                 const compColor = COMP_COLORS[p.compensation?.type] ?? COMP_COLORS.None;
                 const isSel = selected.has(p.id);
+                // Site cell: "All Sites" badge when the person covers every
+                // active study site (and there's more than one); otherwise list
+                // each assigned site name. Falls back to the primary site_name.
+                const names = (p.siteNames?.length ? p.siteNames : (p.siteName ? [p.siteName] : []));
+                const isAllSites = p.totalActiveSites > 1 && (p.siteIds?.length ?? 0) >= p.totalActiveSites;
                 return (
                   <tr key={p.id} className={`${css.row} ${isSel ? css.rowSelected : ''}`}>
                     <td className={css.tdCheck}>
@@ -473,7 +413,18 @@ export default function PersonnelPage() {
                     </td>
                     <td className={css.td}><span className={css.email}>{p.email}</span></td>
                     <td className={css.td}><span className={css.roleBadge}>{p.role}</span></td>
-                    <td className={css.td}>{p.siteName || '—'}</td>
+                    <td className={css.td}>
+                      {isAllSites ? (
+                        <span
+                          className={css.statusBadge}
+                          style={{ color: '#1d4ed8', background: '#eff6ff', borderColor: '#bfdbfe' }}
+                        >
+                          All Sites
+                        </span>
+                      ) : names.length ? (
+                        <span title={names.join(', ')}>{names.join(', ')}</span>
+                      ) : '—'}
+                    </td>
                     <td className={css.td}>
                       <span
                         className={css.statusBadge}
@@ -485,24 +436,12 @@ export default function PersonnelPage() {
                       </span>
                     </td>
                     <td className={css.td}>
-                      {p.consentRequired ? (
-                        <span
-                          className={css.consentBadge}
-                          style={{ color: cMeta.color, background: cMeta.bg, borderColor: cMeta.border }}
-                        >
-                          <CIcon size={10} /> {p.consentStatus}
-                        </span>
-                      ) : (
-                        <span className={css.consentNone}>—</span>
-                      )}
-                    </td>
-                    <td className={css.td}>
                       <span className={css.compType} style={{ color: compColor.color }}>
                         {p.compensation?.type || 'None'}
                       </span>
                     </td>
                     <td className={css.tdActions}>
-                      <button className={css.actionBtn} title="View Details" onClick={() => setDetailTarget(p)}>
+                      <button className={css.actionBtn} title="View Details" onClick={() => navigate(`/sponsor/${studyId}/personnel/${p.id}/view`)}>
                         <Eye size={13} />
                       </button>
                       {canEdit && (
@@ -579,21 +518,13 @@ export default function PersonnelPage() {
         </div>
       )}
 
-      {/* Import Result */}
-      {importResult && (
-        <div className={css.importResult}>
-          <div className={css.importSummary}>
-            <span className={css.importSuccess}>{importResult.imported} invited</span>
-            {importResult.failed > 0 && <span className={css.importFail}>{importResult.failed} failed</span>}
-            <button className={css.importClose} onClick={() => setImportResult(null)}><X size={12} /></button>
-          </div>
-          {importResult.errors?.length > 0 && (
-            <ul className={css.importErrors}>
-              {importResult.errors.slice(0, 10).map((e, i) => <li key={i}>{e}</li>)}
-              {importResult.errors.length > 10 && <li>…and {importResult.errors.length - 10} more.</li>}
-            </ul>
-          )}
-        </div>
+      {/* Import Personnel Modal */}
+      {importOpen && (
+        <PersonnelImportModal
+          studyId={studyId}
+          onClose={() => setImportOpen(false)}
+          onImported={() => loadData(true)}
+        />
       )}
 
       {/* Details Modal */}

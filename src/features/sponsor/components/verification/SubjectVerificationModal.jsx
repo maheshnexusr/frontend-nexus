@@ -5,13 +5,20 @@ import { sponsorVerificationClient } from '@/features/sponsor/api/sponsorVerific
 import { formatDateTime } from '@/utils/formatDate';
 import styles from './SubjectVerificationModal.module.css';
 
-const LAYOUT_TYPES = ['h2', 'paragraph', 'divider'];
+const LAYOUT_TYPES = ['h2', 'h3', 'paragraph', 'divider'];
 
 const PAGE_STATUS_META = {
   'Verified':           { color: '#15803d', bg: '#dcfce7' },
   'Partially Verified': { color: '#1d4ed8', bg: '#dbeafe' },
   'Not Verified':       { color: '#475569', bg: '#f1f5f9' },
 };
+
+// Same thresholds the VM table's "Verified %" bar uses, so the modal matches.
+function progressColor(pct) {
+  if (pct >= 80) return '#10b981';
+  if (pct >= 50) return '#f59e0b';
+  return '#ef4444';
+}
 
 /**
  * SubjectVerificationModal — read-only verification detail for a subject's form.
@@ -62,9 +69,12 @@ export default function SubjectVerificationModal({ subject, onClose }) {
 
         // Prefer the schema's page order; fall back to whatever pages the
         // verification rows reference (in case the schema couldn't be loaded).
-        const pageIds = pageOrder.length
+        let pageIds = pageOrder.length
           ? pageOrder.map((p) => p.id)
           : [...new Set(rows.map((r) => r.page_id).filter(Boolean))];
+        // "View & Verify" shows ONLY the page this VM row represents, not every
+        // page of the form.
+        if (subject?.pageId) pageIds = pageIds.filter((pid) => pid === subject.pageId);
 
         const built = pageIds.map((pid) => {
           const meta  = pageOrder.find((p) => p.id === pid);
@@ -102,7 +112,9 @@ export default function SubjectVerificationModal({ subject, onClose }) {
 
   const totalFields    = pages.reduce((n, p) => n + p.fields.length, 0);
   const verifiedFields = pages.reduce((n, p) => n + p.fields.filter((f) => f.status === 'Verified').length, 0);
-  const pct = totalFields ? Math.round((verifiedFields / totalFields) * 100) : 0;
+  const computedPct = totalFields ? Math.round((verifiedFields / totalFields) * 100) : 0;
+  // Prefer the table row's verified % so the modal bar matches the list exactly.
+  const pct = Number.isFinite(subject?.completeness) ? subject.completeness : computedPct;
 
   return (
     <Modal
@@ -118,23 +130,37 @@ export default function SubjectVerificationModal({ subject, onClose }) {
           <div className={styles.subjectInfo}>
             <div className={styles.subjectInfoRow}>
               <User size={14} className={styles.subjectIcon} />
+              {/* Subject ID + Subject name / initials */}
               <span className={styles.subjectId}>{subject?.subjectNumber || subject?.id}</span>
-              {subject?.initials && <span className={styles.subjectMeta}>{subject.initials}</span>}
-              <span className={styles.subjectSite}>{subject?.siteName || subject?.siteCode}</span>
+              {(subject?.subjectName || subject?.initials) && (
+                <span className={styles.subjectMeta}>
+                  {[subject?.subjectName, subject?.initials].filter(Boolean).join(' · ')}
+                </span>
+              )}
             </div>
             <div className={styles.subjectMetrics}>
-              {subject?.blockPage && (
-                <span className={styles.metricChip}><FileText size={12} /> {subject.blockPage}</span>
+              {/* Site Code + Site Name */}
+              <span className={styles.metricChip}>
+                {[subject?.siteCode, subject?.siteName].filter(Boolean).join(' — ') || '—'}
+              </span>
+              {/* CRF Block / Page */}
+              {(subject?.blockName || subject?.pageName || subject?.blockPage) && (
+                <span className={styles.metricChip}>
+                  <FileText size={12} />{' '}
+                  {[subject?.blockName, subject?.pageName].filter(Boolean).join(' / ') || subject?.blockPage}
+                </span>
               )}
-              <span className={styles.metricChip} style={{ color: pct < 100 ? '#1d4ed8' : '#15803d' }}>
-                Verified: <strong>{verifiedFields}/{totalFields}</strong> ({pct}%)
+              {/* Verified % — matches the table's value + colour */}
+              <span className={styles.metricChip} style={{ color: progressColor(pct) }}>
+                Verified: <strong>{pct}%</strong>
               </span>
             </div>
           </div>
+          {/* Progress bar — same thresholds/colour as the table's Verified % */}
           <div className={styles.progressBar}>
             <div
               className={styles.progressFill}
-              style={{ width: `${pct}%`, background: pct < 50 ? '#dc2626' : pct < 100 ? '#1d4ed8' : '#10b981' }}
+              style={{ width: `${pct}%`, background: progressColor(pct) }}
             />
           </div>
         </div>

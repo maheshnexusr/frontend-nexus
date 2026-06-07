@@ -79,6 +79,10 @@ function normalize(raw) {
       : null,
     startDate:           raw.start_date         ?? raw.startDate ?? '',
     expectedEndDate:     raw.expected_end_date  ?? raw.expectedEndDate ?? '',
+    // Real enrolment progress (summed from the study's tenant DB); null when
+    // the study has no tenant/data yet.
+    enrolledSubjects:    raw.enrolled_subjects  ?? raw.enrolledSubjects ?? null,
+    enrollmentTarget:    raw.enrollment_target  ?? raw.enrollmentTarget ?? null,
     maxSites:            raw.max_sites          ?? raw.maxSites ?? null,
     maxEnrollments:      raw.max_enrollments    ?? raw.maxEnrollments ?? null,
     regionCovered:       raw.region_covered     ?? raw.regionCovered ?? '',
