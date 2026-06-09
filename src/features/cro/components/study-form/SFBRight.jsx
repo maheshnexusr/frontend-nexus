@@ -5,7 +5,7 @@
  */
 import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { X, Trash2, Copy, Plus, ChevronDown, ChevronUp, Minus, Settings, LayoutGrid, Eye, EyeOff, Lock, FilePen, Check, MessageSquare, StickyNote, HelpCircle, Paperclip, BadgeCheck, Eraser } from 'lucide-react';
+import { X, Trash2, Copy, Plus, ChevronDown, ChevronUp, Minus, Settings, LayoutGrid, Eye, EyeOff, Lock, FilePen, Check, MessageSquare, StickyNote, HelpCircle, Paperclip, BadgeCheck, Eraser, Type, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import {
   selectActiveBlock, selectActivePage, selectActiveField, selectAllFields,
   selectBlocks,
@@ -14,6 +14,10 @@ import {
 } from '@/features/cro/store/studyFormSlice';
 import { selectStep3 } from '@/features/cro/store/studyWizardSlice';
 import { REGEX_PRESETS } from '@/features/form-builder/lib/fieldSchema';
+import {
+  HEADING_FONT_SIZES, HEADING_FONT_WEIGHTS, HEADING_ALIGNMENTS,
+  HEADING_THEME_COLORS, headingStyleToCss,
+} from './headingStyle';
 import ConfirmDialog from '@/components/feedback/ConfirmDialog';
 import { activityLogService } from '@/services/activityLogService';
 import { usePermissions } from '@/features/auth/usePermissions';
@@ -161,8 +165,10 @@ function FieldPropsPanel({ block, page, field }) {
   const upV      = (k, v) => up('validation',   { ...field.validation,   [k]: v });
   const upC      = (k, v) => up('condition',    { ...field.condition,    [k]: v });
   const upCollab = (k, v) => up('collaboration', { ...field.collaboration, [k]: v });
+  const upH      = (k, v) => up('headingStyle', { ...field.headingStyle, [k]: v });
 
   const isLayout   = ['h2', 'h3', 'paragraph', 'divider'].includes(field.type);
+  const isHeading  = field.type === 'h2' || field.type === 'h3';
   const hasOptions = ['select','multiselect','radiogroup','checkboxgroup'].includes(field.type);
   const isText     = ['text','textarea','email','phone','url','password'].includes(field.type);
   const isNum      = field.type === 'number' || field.type === 'slider';
@@ -199,6 +205,12 @@ function FieldPropsPanel({ block, page, field }) {
         <Accordion title="Field Configuration" icon={<Settings size={13} />} defaultOpen>
           <GeneralTab field={field} up={up} hasOptions={hasOptions} isLayout={isLayout} />
         </Accordion>
+
+        {isHeading && (
+          <Accordion title="Heading Style" icon={<Type size={13} />} defaultOpen>
+            <HeadingStyleTab field={field} upH={upH} />
+          </Accordion>
+        )}
 
         {!isLayout && (
           <Accordion title="Appearance & Layout" icon={<LayoutGrid size={13} />}>
@@ -1283,6 +1295,140 @@ function CommentsTab({ field, upCollab, queryManagerEnabled, verificationManager
 /* ── Shared primitives ────────────────────────────────────────────────────*/
 
 /** Top-level accordion matching the screenshot style */
+/* ── Heading Style Tab ───────────────────────────────────────────────────*/
+// Visual styling for h2/h3 headings: theme presets, text + highlight colors,
+// font size/weight, alignment — with a live preview. Persisted on
+// `field.headingStyle` and rendered identically by the canvas, preview and
+// runtime via headingStyleToCss().
+function HeadingStyleTab({ field, upH }) {
+  const hs = field.headingStyle ?? {};
+
+  const segBtn = (active) => ({
+    flex: 1, padding: '6px 8px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+    border: '1px solid ' + (active ? '#2563eb' : '#cbd5e1'),
+    background: active ? '#eff6ff' : '#fff',
+    color: active ? '#1d4ed8' : '#475569',
+    borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+  });
+
+  const previewStyle = headingStyleToCss(field) ?? {};
+  const PreviewTag = field.type === 'h3' ? 'h3' : 'h2';
+
+  return (
+    <div className={s.accordionBodyInner}>
+      {/* Theme presets — set text + highlight together for consistency. */}
+      <SField label="Theme Color">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {HEADING_THEME_COLORS.map((t) => {
+            const active = (hs.textColor ?? '') === t.text && (hs.bgColor ?? '') === t.bg;
+            return (
+              <button
+                key={t.name}
+                type="button"
+                title={t.name}
+                onClick={() => { upH('textColor', t.text); upH('bgColor', t.bg); }}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px',
+                  borderRadius: 6, cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
+                  border: '1px solid ' + (active ? '#2563eb' : '#e2e8f0'),
+                  background: active ? '#eff6ff' : '#fff', color: '#475569',
+                }}
+              >
+                <span style={{
+                  width: 14, height: 14, borderRadius: 4, border: '1px solid #cbd5e1',
+                  background: t.bg || '#fff',
+                  color: t.text || '#0f172a', fontSize: 10, lineHeight: '12px', textAlign: 'center',
+                }}>A</span>
+                {t.name}
+              </button>
+            );
+          })}
+        </div>
+      </SField>
+
+      <SField label="Text Color">
+        <ColorControl value={hs.textColor ?? ''} onChange={(v) => upH('textColor', v)} fallback="#0f172a" />
+      </SField>
+
+      <SField label="Background Highlight">
+        <ColorControl value={hs.bgColor ?? ''} onChange={(v) => upH('bgColor', v)} fallback="#f1f5f9" />
+      </SField>
+
+      <SField label="Font Size">
+        <div style={{ display: 'flex', gap: 6 }}>
+          {HEADING_FONT_SIZES.map((o) => (
+            <button key={o.value} type="button" style={segBtn(hs.fontSize === o.value)}
+              onClick={() => upH('fontSize', hs.fontSize === o.value ? '' : o.value)}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </SField>
+
+      <SField label="Font Weight">
+        <div style={{ display: 'flex', gap: 6 }}>
+          {HEADING_FONT_WEIGHTS.map((o) => (
+            <button key={o.value} type="button" style={segBtn(hs.fontWeight === o.value)}
+              onClick={() => upH('fontWeight', hs.fontWeight === o.value ? '' : o.value)}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </SField>
+
+      <SField label="Text Alignment">
+        <div style={{ display: 'flex', gap: 6 }}>
+          {HEADING_ALIGNMENTS.map((o) => {
+            const Icon = o.value === 'left' ? AlignLeft : o.value === 'center' ? AlignCenter : AlignRight;
+            return (
+              <button key={o.value} type="button" title={o.label} style={segBtn(hs.align === o.value)}
+                onClick={() => upH('align', hs.align === o.value ? '' : o.value)}>
+                <Icon size={14} /> {o.label}
+              </button>
+            );
+          })}
+        </div>
+      </SField>
+
+      {/* Live preview */}
+      <SField label="Preview">
+        <div style={{ border: '1px dashed #cbd5e1', borderRadius: 8, padding: 12, background: '#fff' }}>
+          <PreviewTag style={{ margin: 0, ...previewStyle }}>
+            {field.label || (field.type === 'h3' ? 'Sub-heading' : 'Section Title')}
+          </PreviewTag>
+        </div>
+      </SField>
+    </div>
+  );
+}
+
+/** Color picker + hex input + clear, for an optional color value. */
+function ColorControl({ value, onChange, fallback }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <input
+        type="color"
+        value={value || fallback}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ width: 36, height: 30, padding: 0, border: '1px solid #cbd5e1', borderRadius: 6, cursor: 'pointer', background: '#fff' }}
+      />
+      <input
+        className={s.sinput}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Default"
+        style={{ flex: 1 }}
+      />
+      {value && (
+        <button type="button" title="Clear" onClick={() => onChange('')}
+          style={{ border: '1px solid #cbd5e1', background: '#fff', borderRadius: 6, padding: '6px 8px', cursor: 'pointer', color: '#64748b', display: 'inline-flex' }}>
+          <Eraser size={13} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Accordion({ title, icon, defaultOpen = false, children }) {
   const [open, setOpen] = useState(defaultOpen);
   return (

@@ -27,7 +27,10 @@ import css from '@/features/sponsor/pages/CapturePage.module.css';
 import pageCss from './SiteCapturePage.module.css';
 
 const STATUS_META = {
-  Screening:    { label: 'Screening',    cls: css.sScreening,  icon: <Clock size={11} /> },
+  Pending:      { label: 'Pending',      cls: css.sScreening,  icon: <Clock size={11} /> },
+  // Legacy alias: pre-rename rows may still arrive as 'Screening' until the
+  // tenant lifecycle migration runs — render them as Pending too.
+  Screening:    { label: 'Pending',      cls: css.sScreening,  icon: <Clock size={11} /> },
   Enrolled:     { label: 'Enrolled',     cls: css.sEnrolled,   icon: <UserCheck size={11} /> },
   Completed:    { label: 'Completed',    cls: css.sCompleted,  icon: <CheckCircle2 size={11} /> },
   Withdrawn:    { label: 'Withdrawn',    cls: css.sWithdrawn,  icon: <XCircle size={11} /> },
@@ -42,7 +45,11 @@ function normalize(raw) {
     subjectCode:     raw.subject_number    ?? raw.subjectNumber ?? raw.subject_code ?? raw.id,
     subjectName:     raw.subject_name      ?? raw.subjectName    ?? '',
     subjectInitials: raw.subject_initials  ?? raw.subjectInitials ?? '',
-    status:          raw.enrollment_status ?? raw.enrollmentStatus ?? raw.status ?? 'Screening',
+    // Lifecycle 'Screening' was renamed to 'Pending'; canonicalize any legacy
+    // value so display + filtering are consistent before the tenant migration.
+    status:          ((raw.enrollment_status ?? raw.enrollmentStatus ?? raw.status) === 'Screening'
+                       ? 'Pending'
+                       : (raw.enrollment_status ?? raw.enrollmentStatus ?? raw.status ?? 'Pending')),
     enrolledAt:      raw.enrolled_at       ?? raw.enrolledAt,
     visitsTotal:     raw.visits_total      ?? raw.visitsTotal     ?? 0,
     visitsCompleted: raw.visits_completed  ?? raw.visitsCompleted ?? 0,
@@ -292,7 +299,7 @@ export default function SiteCapturePage() {
 
           <div className={css.filterRow}>
             <Filter size={13} className={css.filterIcon} />
-            {['All', 'Enrolled', 'Screening', 'Completed', 'Withdrawn', 'Discontinued'].map((s) => (
+            {['All', 'Enrolled', 'Pending', 'Completed', 'Withdrawn', 'Discontinued'].map((s) => (
               <button
                 key={s}
                 className={`${css.filterBtn} ${statusFilter === s ? css.filterBtnActive : ''}`}
@@ -339,7 +346,7 @@ export default function SiteCapturePage() {
               </tr>
             ) : (
               pageData.map((subject) => {
-                const meta = STATUS_META[subject.status] ?? STATUS_META.Screening;
+                const meta = STATUS_META[subject.status] ?? STATUS_META.Pending;
                 return (
                   <tr key={subject.id} className={css.row}>
                     <td className={css.td}>

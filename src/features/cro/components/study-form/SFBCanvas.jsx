@@ -25,6 +25,7 @@ import AttachmentDrawer    from './runtime/AttachmentDrawer';
 import VerificationPanel   from './runtime/VerificationPanel';
 import ConfirmDialog       from '@/components/feedback/ConfirmDialog';
 import { activityLogService } from '@/services/activityLogService';
+import { headingStyleToCss } from './headingStyle';
 import s from './SFBCanvas.module.css';
 
 const COLLAB_ICONS = [
@@ -376,9 +377,9 @@ function FieldPreviewRow({ fld }) {
       );
     }
     case 'h2':
-      return <div className={s.previewH2}>{fld.label || 'Section Title'}</div>;
+      return <div className={s.previewH2} style={headingStyleToCss(fld)}>{fld.label || 'Section Title'}</div>;
     case 'h3':
-      return <div className={s.previewH3}>{fld.label || 'Sub-heading'}</div>;
+      return <div className={s.previewH3} style={headingStyleToCss(fld)}>{fld.label || 'Sub-heading'}</div>;
     case 'paragraph':
       return <div className={s.previewParagraph}>{fld.content || fld.label || 'Paragraph text…'}</div>;
     case 'divider':

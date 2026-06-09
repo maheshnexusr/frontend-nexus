@@ -23,7 +23,7 @@ const CARDS = [
   { key: 'totalSubjects',    label: 'Total Subjects',    accent: '#2563eb' },
   { key: 'totalSites',       label: 'Total Sites',       accent: '#059669' },
   { key: 'enrolledSubjects', label: 'Enrolled Subjects', accent: '#7c3aed' },
-  { key: 'excludedSubjects', label: 'Excluded Subjects', accent: '#d97706' },
+  { key: 'completedSubjects', label: 'Completed Subjects', accent: '#059669' },
 ];
 
 export default function SiteWorkspaceDashboardPage() {

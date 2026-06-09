@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import RuntimeFieldRenderer from '@/features/cro/components/study-form/runtime/RuntimeFieldRenderer';
 import { evaluateField, evaluateEligibility } from '@/features/cro/components/study-form/runtime/runtimeEngine';
+import { headingStyleToCss } from '@/features/cro/components/study-form/headingStyle';
 import FormStatusToolbar    from './FormStatusToolbar';
 import SignatureInput       from './SignatureInput';
 import { uploadFormFile }    from '@/api/formFileClient';
@@ -234,7 +235,7 @@ function StudyFormRunnerInner({
   onSubmit,
   // Optional secondary action. When provided, a "Save" button appears in the
   // footer that persists progress without finalising the form (the subject
-  // stays in Screening). Submit remains the finalising action.
+  // stays in Pending). Submit remains the finalising action.
   onSave,
   // Optional per-page action. When provided, a "Mark Page Completed" button
   // appears that flags the current page as done → it becomes a Verification
@@ -1204,7 +1205,7 @@ function StudyFormRunnerInner({
                 disabled={saving || busy || statusReadOnly}
                 title={statusReadOnly
                   ? `Form is ${formStatus} — saving is disabled.`
-                  : 'Save progress — the subject stays in Screening'}
+                  : 'Save progress — the subject stays in Pending'}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   marginLeft: 'auto', marginRight: 8,
@@ -1721,9 +1722,9 @@ function FieldInput({ field, value, onChange }) {
       );
     }
     case 'h2':
-      return <h2 className={s.h2}>{field.label || 'Section Title'}</h2>;
+      return <h2 className={s.h2} style={headingStyleToCss(field)}>{field.label || 'Section Title'}</h2>;
     case 'h3':
-      return <h3 className={s.h3}>{field.label || 'Sub-heading'}</h3>;
+      return <h3 className={s.h3} style={headingStyleToCss(field)}>{field.label || 'Sub-heading'}</h3>;
     case 'paragraph':
       return <p className={s.paragraph}>{field.content || field.label || 'Paragraph text.'}</p>;
     case 'divider':

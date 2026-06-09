@@ -259,26 +259,28 @@ export default function CaptureFormPage() {
           </button>
           <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{studyName || 'Data Capture'}</span>
         </div>
-        <div className={s.successCard}>
-          <CheckCircle2 size={44} className={s.successIcon} />
-          <h2 className={s.successTitle}>Form submitted</h2>
-          <p className={s.successSub}>
-            <strong>{formTitle || 'eCRF'}</strong> has been saved for subject{' '}
-            <code className={s.successCode}>{subjectId}</code>.
-          </p>
-          <div className={s.successActions}>
-            <button
-              className={s.successPrimary}
-              onClick={() => navigate(`/sponsor/${studyId}/capture`)}
-            >
-              Back to subjects
-            </button>
-            <button
-              className={s.successSecondary}
-              onClick={() => setSubmitted(false)}
-            >
-              Edit this form
-            </button>
+        <div className={s.successWrap}>
+          <div className={s.successCard}>
+            <CheckCircle2 size={44} className={s.successIcon} />
+            <h2 className={s.successTitle}>Form submitted</h2>
+            <p className={s.successSub}>
+              <strong>{formTitle || 'eCRF'}</strong> has been saved for subject{' '}
+              <code className={s.successCode}>{subjectId}</code>.
+            </p>
+            <div className={s.successActions}>
+              <button
+                className={s.successPrimary}
+                onClick={() => navigate(`/sponsor/${studyId}/capture`)}
+              >
+                Back to subjects
+              </button>
+              <button
+                className={s.successSecondary}
+                onClick={() => setSubmitted(false)}
+              >
+                Edit this form
+              </button>
+            </div>
           </div>
         </div>
       </div>
