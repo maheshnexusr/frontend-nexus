@@ -89,6 +89,20 @@ export default function ConsentGate({ children }) {
             </span>
           </div>
 
+          {(ctx?.studyTitle || ctx?.protocolNumber || ctx?.siteName) && (
+            <div style={metaBar}>
+              {ctx?.studyTitle && (
+                <div style={metaItem}><span style={metaLabel}>Study</span><span style={metaVal}>{ctx.studyTitle}</span></div>
+              )}
+              {ctx?.protocolNumber && (
+                <div style={metaItem}><span style={metaLabel}>Protocol No.</span><span style={metaVal}>{ctx.protocolNumber}</span></div>
+              )}
+              {ctx?.siteName && (
+                <div style={metaItem}><span style={metaLabel}>Site</span><span style={metaVal}>{ctx.siteName}</span></div>
+              )}
+            </div>
+          )}
+
           <div style={body}>
             <p style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', margin: '0 0 14px' }}>
               <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
@@ -119,6 +133,10 @@ const center  = { display: 'flex', flexDirection: 'column', alignItems: 'center'
 const overlay = { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: 16 };
 const card    = { width: 'min(720px, 96vw)', maxHeight: '90vh', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 14, boxShadow: '0 24px 70px rgba(0,0,0,0.3)' };
 const head    = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid #e2e8f0' };
+const metaBar = { display: 'flex', flexWrap: 'wrap', gap: '8px 28px', padding: '12px 20px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' };
+const metaItem  = { display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 };
+const metaLabel = { fontSize: 10.5, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase', color: '#94a3b8' };
+const metaVal   = { fontSize: 13, fontWeight: 600, color: '#0f172a' };
 const body    = { padding: 20, overflow: 'auto' };
 const foot    = { display: 'flex', justifyContent: 'flex-end', padding: '14px 20px', borderTop: '1px solid #e2e8f0' };
 const agreeBtn = { display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px', borderRadius: 9, fontWeight: 700, fontSize: 14, border: '1px solid #2563eb', background: '#2563eb', color: '#fff', cursor: 'pointer' };
