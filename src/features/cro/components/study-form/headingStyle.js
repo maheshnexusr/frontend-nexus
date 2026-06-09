@@ -51,21 +51,37 @@ export const HEADING_THEME_COLORS = [
 const SIZE_MAP   = Object.fromEntries(HEADING_FONT_SIZES.map((o) => [o.value, o.css]));
 const WEIGHT_MAP = Object.fromEntries(HEADING_FONT_WEIGHTS.map((o) => [o.value, o.css]));
 
+// The style object is authored camelCase in the builder, but persisted (and
+// served back to the data-capture runtime) snake_case — the CRO designer
+// deep-camel-cases on load, the site/sponsor workspace does not. Read both so a
+// styled heading renders identically in the builder, preview, AND data capture.
+const readHeadingStyle = (field) => {
+  const hs = field?.headingStyle ?? field?.heading_style;
+  if (!hs || typeof hs !== 'object') return null;
+  return {
+    textColor:  hs.textColor  ?? hs.text_color,
+    bgColor:    hs.bgColor    ?? hs.bg_color,
+    fontSize:   hs.fontSize   ?? hs.font_size,
+    fontWeight: hs.fontWeight ?? hs.font_weight,
+    align:      hs.align,
+  };
+};
+
 /** True when a heading has any custom style configured. */
 export function hasHeadingStyle(field) {
-  const hs = field?.headingStyle;
-  return !!hs && typeof hs === 'object'
-    && Object.values(hs).some((v) => v != null && v !== '');
+  const hs = readHeadingStyle(field);
+  return !!hs && Object.values(hs).some((v) => v != null && v !== '');
 }
 
 /**
- * Build a React inline-style object from a heading's `headingStyle`. Only the
- * properties that are actually set are emitted, so unset ones fall through to
- * the default heading CSS. Returns `undefined` when nothing is configured.
+ * Build a React inline-style object from a heading's style (camel- or
+ * snake-case). Only the properties that are actually set are emitted, so unset
+ * ones fall through to the default heading CSS. Returns `undefined` when nothing
+ * is configured.
  */
 export function headingStyleToCss(field) {
-  const hs = field?.headingStyle;
-  if (!hs || typeof hs !== 'object') return undefined;
+  const hs = readHeadingStyle(field);
+  if (!hs) return undefined;
 
   const style = {};
   if (hs.textColor) style.color = hs.textColor;
