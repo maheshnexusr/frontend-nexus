@@ -23,6 +23,7 @@ import { selectBlocks, selectFormMeta } from '@/features/cro/store/studyFormSlic
 import { formResponsesClient } from '@/features/cro/api/formResponsesClient';
 import { addToast } from '@/app/notificationSlice';
 import { validateField, evaluateField } from './runtime/runtimeEngine';
+import { headingStyleToCss } from './headingStyle';
 import RuntimeFieldRenderer from './runtime/RuntimeFieldRenderer';
 import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import s from './SFBPreview.module.css';
@@ -642,9 +643,9 @@ function FieldInput({ field, value, onChange }) {
       );
     }
     case 'h2':
-      return <h2 className={s.h2}>{field.label || 'Section Title'}</h2>;
+      return <h2 className={s.h2} style={headingStyleToCss(field)}>{field.label || 'Section Title'}</h2>;
     case 'h3':
-      return <h3 className={s.h3}>{field.label || 'Sub-heading'}</h3>;
+      return <h3 className={s.h3} style={headingStyleToCss(field)}>{field.label || 'Sub-heading'}</h3>;
     case 'paragraph':
       return <p className={s.paragraph}>{field.content || field.label || 'Paragraph text.'}</p>;
     case 'divider':

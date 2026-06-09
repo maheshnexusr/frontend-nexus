@@ -77,8 +77,19 @@
 }
 
 /* ── Submit-success state ─────────────────────────────────────────────── */
+/* Centering wrapper: as the .page's last child it takes the remaining height
+   (flex: 1 1 auto), so the card must be centered inside it — otherwise the
+   card itself stretches full-height and its content sticks to the top. */
+.successWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+}
 .successCard {
-  margin: 32px auto;
+  margin: 0 auto;
+  width: 100%;
   max-width: 480px;
   padding: 32px 28px;
   background: #fff;

@@ -12,6 +12,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { Loader2, AlertCircle, ArrowLeft, FileText, CheckCircle2 } from 'lucide-react';
 import StudyFormRunner from '@/components/study-form-runner/StudyFormRunner';
+import Modal from '@/components/feedback/Modal';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
 import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
 import { selectCurrentUser } from '@/features/auth/authSlice';
@@ -60,6 +61,10 @@ export default function SiteCaptureFormPage() {
   const [error,       setError]       = useState(null);
   const [noFormsHere, setNoFormsHere] = useState(false);
   const [submitted,   setSubmitted]   = useState(false);
+  // Reopen-reason dialog (replaces the native window.prompt).
+  const [reopenOpen,   setReopenOpen]   = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
+  const [reopening,    setReopening]    = useState(false);
   // Whether the signed-in site user is the subject's RESPONSIBLE owner. Set from
   // the backend `is_owner` flag on load. Only the owner may fill/submit the form
   // (and regain edit access after a sponsor/CRO reopen) — everyone else is
@@ -264,22 +269,31 @@ export default function SiteCaptureFormPage() {
   }, [subjectId, formId, canVerify, myName, dispatch]);
 
   // Controlled unlock — reopen a submitted form so the owner can correct it.
-  const handleReopen = useCallback(async () => {
+  // Opens a reason dialog (popup) instead of the native window.prompt.
+  const handleReopen = useCallback(() => {
     if (!canReopen || !subjectId) return;
-    // eslint-disable-next-line no-alert
-    const reason = window.prompt('Reason for reopening this submitted form:');
-    if (reason == null || !reason.trim()) return;
+    setReopenReason('');
+    setReopenOpen(true);
+  }, [canReopen, subjectId]);
+
+  const submitReopen = useCallback(async () => {
+    const reason = reopenReason.trim();
+    if (!reason) return;
+    setReopening(true);
     try {
-      await siteWorkspaceClient.reopenForm(subjectId, formId, reason.trim());
+      await siteWorkspaceClient.reopenForm(subjectId, formId, reason);
       setFormStatus('In Progress');
+      setReopenOpen(false);
       dispatch(addToast({ type: 'success', message: 'Form reopened — it is editable again.' }));
     } catch (e) {
       dispatch(addToast({ type: 'error', message: e?.response?.data?.message || e?.message || 'Failed to reopen form.' }));
+    } finally {
+      setReopening(false);
     }
-  }, [subjectId, formId, canReopen, dispatch]);
+  }, [subjectId, formId, reopenReason, dispatch]);
 
   // Save progress without finalising. Backend keeps the form "In Progress" and
-  // moves the subject Enrolled → Screening (data capture has begun). Stays on
+  // moves the subject Enrolled → Pending (data capture has begun). Stays on
   // the form so the user can keep editing.
   const handleSave = useCallback(async (formData) => {
     if (!canEnterData) {
@@ -295,7 +309,7 @@ export default function SiteCaptureFormPage() {
         form_data: formData,
         status: 'In Progress',
       });
-      dispatch(addToast({ type: 'success', message: 'Progress saved — subject is in Screening.' }));
+      dispatch(addToast({ type: 'success', message: 'Progress saved — subject is in Pending.' }));
     } catch (e) {
       dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to save form.' }));
       throw e;
@@ -347,27 +361,29 @@ export default function SiteCaptureFormPage() {
           </button>
           <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{studyName || 'Data Capture'}</span>
         </div>
-        <div className={s.successCard}>
-          <CheckCircle2 size={44} className={s.successIcon} />
-          <h2 className={s.successTitle}>Form submitted</h2>
-          <p className={s.successSub}>
-            <strong>{formTitle || 'eCRF'}</strong> has been saved for subject{' '}
-            <code className={s.successCode}>{subjectId}</code>. The Query Manager and Data
-            Manager can now review it.
-          </p>
-          <div className={s.successActions}>
-            <button
-              className={s.successPrimary}
-              onClick={() => navigate('/site/capture')}
-            >
-              Back to subjects
-            </button>
-            <button
-              className={s.successSecondary}
-              onClick={() => setSubmitted(false)}
-            >
-              Edit this form
-            </button>
+        <div className={s.successWrap}>
+          <div className={s.successCard}>
+            <CheckCircle2 size={44} className={s.successIcon} />
+            <h2 className={s.successTitle}>Form submitted</h2>
+            <p className={s.successSub}>
+              <strong>{formTitle || 'eCRF'}</strong> has been saved for subject{' '}
+              <code className={s.successCode}>{subjectId}</code>. The Query Manager and Data
+              Manager can now review it.
+            </p>
+            <div className={s.successActions}>
+              <button
+                className={s.successPrimary}
+                onClick={() => navigate('/site/capture')}
+              >
+                Back to subjects
+              </button>
+              <button
+                className={s.successSecondary}
+                onClick={() => setSubmitted(false)}
+              >
+                Edit this form
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -440,6 +456,60 @@ export default function SiteCaptureFormPage() {
         submitLabel={canEnterData ? 'Submit eCRF' : 'Read-only view'}
         readOnly={!canEnterData || isSubmitted}
       />
+
+      <Modal
+        open={reopenOpen}
+        onClose={() => { if (!reopening) setReopenOpen(false); }}
+        title="Reopen submitted form"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setReopenOpen(false)}
+              disabled={reopening}
+              style={{
+                padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={submitReopen}
+              disabled={reopening || !reopenReason.trim()}
+              style={{
+                padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none',
+                background: reopenReason.trim() ? '#b45309' : '#fcd9a8', color: '#fff',
+                cursor: reopenReason.trim() && !reopening ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {reopening ? 'Reopening…' : 'Reopen form'}
+            </button>
+          </>
+        }
+      >
+        <p style={{ margin: '0 0 10px', fontSize: 13, color: '#475569', lineHeight: 1.5 }}>
+          Reopening makes this submitted form editable again for the subject&apos;s owner.
+          Please give a reason — it is recorded in the audit trail.
+        </p>
+        <textarea
+          autoFocus
+          value={reopenReason}
+          onChange={(e) => setReopenReason(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitReopen();
+          }}
+          placeholder="Reason for reopening this submitted form…"
+          rows={4}
+          style={{
+            width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '10px 12px',
+            borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, fontFamily: 'inherit',
+            color: '#0f172a', outline: 'none',
+          }}
+        />
+      </Modal>
     </div>
   );
 }

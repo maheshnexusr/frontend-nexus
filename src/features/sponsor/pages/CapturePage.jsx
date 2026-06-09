@@ -46,7 +46,7 @@ const STATUS_META = {
   Discontinued:    { label: 'Discontinued',    cls: css.sWithdrawn,  icon: <XCircle size={11} /> },
   'On Hold':       { label: 'On Hold',         cls: css.sOnHold,     icon: <PauseCircle size={11} /> },
   // Screening pipeline
-  Screening:       { label: 'Screening',       cls: css.sScreening,  icon: <Clock size={11} /> },
+  Screening:       { label: 'Pending',         cls: css.sScreening,  icon: <Clock size={11} /> },
   Eligible:        { label: 'Eligible',        cls: css.sActive,     icon: <CheckCircle2 size={11} /> },
   Ineligible:      { label: 'Ineligible',      cls: css.sIneligible, icon: <AlertCircle size={11} /> },
   'Screen Failed': { label: 'Screen Failed',   cls: css.sIneligible, icon: <XCircle size={11} /> },
@@ -83,7 +83,10 @@ function normalize(raw) {
     // Completed), the single source of truth shown identically on the site +
     // sponsor portals. (Was previously split: sponsor showed screening_status,
     // site showed enrollment_status — they drifted. Option A: one field.)
-    status:            raw.enrollment_status ?? raw.enrollmentStatus ?? raw.status ?? 'Enrolled',
+    // Lifecycle 'Screening' was renamed to 'Pending'; canonicalize legacy rows.
+    status:            ((raw.enrollment_status ?? raw.enrollmentStatus ?? raw.status) === 'Screening'
+                         ? 'Pending'
+                         : (raw.enrollment_status ?? raw.enrollmentStatus ?? raw.status ?? 'Enrolled')),
     enrolledAt:        raw.enrolled_at       ?? raw.enrolledAt       ?? '',
     formId:            raw.form_id           ?? raw.formId,
     hasData:           raw.has_data          ?? raw.hasData ?? false,
@@ -407,7 +410,7 @@ export default function CapturePage() {
           <div className={css.filterRow}>
             <Filter size={13} className={css.filterIcon} />
             {/* Pills filter by the enrollment lifecycle (the unified status). */}
-            {['All', 'Enrolled', 'Screening', 'Completed'].map((s) => (
+            {['All', 'Enrolled', 'Pending', 'Completed'].map((s) => (
               <button
                 key={s}
                 className={`${css.filterBtn} ${statusFilter === s ? css.filterBtnActive : ''}`}
@@ -436,7 +439,7 @@ export default function CapturePage() {
               <th className={css.th}>Subject</th>
               <th className={css.th}>Site</th>
               <th className={css.th}>Responsible PI</th>
-              <th className={css.th}>Screening Status</th>
+              <th className={css.th}>Status</th>
               <th className={css.th}>Enrollment Date</th>
               <th className={css.thActions}>Actions</th>
             </tr>
