@@ -189,3 +189,10 @@ button, [role="button"], a { touch-action: manipulation; }
   0%, 100% { opacity: 1;   }
   50%       { opacity: 0.4; }
 }
+
+/* Continuous rotation — used by inline-styled loading spinners (lucide icons)
+   that can't reach a CSS-module-scoped keyframe. */
+@keyframes spin {
+  from { transform: rotate(0deg);   }
+  to   { transform: rotate(360deg); }
+}

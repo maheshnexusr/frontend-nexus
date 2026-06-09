@@ -76,41 +76,68 @@ export default function SubjectContextStrip({ studyId, subjectId }) {
        study?.protocolNumber  ?? study?.protocol_number
     ?? subject?.protocolNumber ?? subject?.protocol_number
     ?? '—';
+  const studyTitle =
+       study?.studyTitle ?? study?.study_title ?? study?.title
+    ?? subject?.studyTitle ?? subject?.study_title
+    ?? '';
   const siteCode =
        subject?.siteCode   ?? subject?.site_code
     ?? subject?.siteNumber ?? subject?.site_number
     ?? '—';
+  const siteName =
+       subject?.siteName ?? subject?.site_name ?? '';
   const subjectNumber =
        subject?.subjectNumber ?? subject?.subject_number
     ?? subject?.subjectCode  ?? subject?.subject_code
-    ?? '—';
+    ?? '';
   const initials =
        subject?.subjectInitials ?? subject?.subject_initials
     ?? '—';
 
+  // Each cell stacks a PRIMARY identifier over a SECONDARY descriptor:
+  //   Protocol Number → Study Title · Site Code → Site Name · Initials → Subject No.
+  const cells = [
+    { label: 'Protocol Number', primary: protocolNumber, secondary: studyTitle },
+    { label: 'Site',            primary: siteCode,        secondary: siteName },
+    { label: 'Subject',         primary: initials,        secondary: subjectNumber },
+  ];
+
   return (
-    <div className={s.strip} data-snapshot-ignore="true">
-      <table className={s.table}>
-        <thead>
-          <tr>
-            <th>Protocol Number</th>
-            <th>Site Code</th>
-            <th>Subject Number</th>
-            <th>Subject Initials</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>{protocolNumber}</td>
-            <td>{siteCode}</td>
-            <td>{subjectNumber}</td>
-            <td>{initials}</td>
-          </tr>
-        </tbody>
-      </table>
+    <div className={s.strip} data-snapshot-ignore="true" style={STRIP}>
+      {cells.map((c, i) => (
+        <div key={c.label} style={i === 0 ? CELL_FIRST : CELL}>
+          <span style={CELL_LABEL}>{c.label}</span>
+          <span style={CELL_PRIMARY}>{c.primary}</span>
+          {c.secondary && <span style={CELL_SECONDARY}>{c.secondary}</span>}
+        </div>
+      ))}
     </div>
   );
 }
+
+const STRIP = {
+  display: 'flex', alignItems: 'stretch', gap: 20,
+  padding: '10px 18px', borderRadius: 10, border: '1px solid #e2e8f0',
+  background: '#fff',
+};
+// Each cell grows to share the strip width equally so there is no empty space
+// left over on the right; a divider sits between adjacent cells.
+const CELL = {
+  display: 'flex', flexDirection: 'column', gap: 1,
+  flex: '1 1 0', minWidth: 0, paddingLeft: 18, borderLeft: '1px solid #eef2f7',
+};
+const CELL_FIRST = { ...CELL, paddingLeft: 0, borderLeft: 'none' };
+const CELL_LABEL = {
+  fontSize: 10, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: '#94a3b8',
+};
+const CELL_PRIMARY = {
+  fontSize: 14, fontWeight: 700, color: '#1d4ed8', lineHeight: 1.25,
+  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+};
+const CELL_SECONDARY = {
+  fontSize: 12, color: '#475569', lineHeight: 1.3,
+  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%',
+};
 
 SubjectContextStrip.propTypes = {
   studyId:   PropTypes.string,

@@ -75,7 +75,7 @@ export const sponsorConsentClient = {
    *  (/var/www/uploads/<env>/<study_id>/). The returned reference is persisted
    *  as part of the consent config (documents array) via saveConfig. */
   async uploadDocument(_studyId, _roleId, file) {
-    const r = await uploadFormFile(file); // { url, name, size, type }
+    const r = await uploadFormFile(file, 'consent_forms'); // { url, name, size, type }
     return {
       id:   crypto.randomUUID(),
       name: r.name ?? file.name,

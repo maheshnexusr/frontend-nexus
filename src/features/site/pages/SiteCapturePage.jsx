@@ -397,7 +397,7 @@ export default function SiteCapturePage() {
                           <FileText size={14} />
                         </button>
                       )}
-                      {canTransferOwnership && (
+                      {/* {canTransferOwnership && (
                         <button
                           className={pageCss.iconBtn}
                           onClick={() => setTransferSubject(subject)}
@@ -406,7 +406,7 @@ export default function SiteCapturePage() {
                         >
                           <ArrowRightLeft size={14} />
                         </button>
-                      )}
+                      )} */}
                       {canDeleteSubject && (
                         <button
                           className={pageCss.iconBtn}
