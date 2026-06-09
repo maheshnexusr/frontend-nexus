@@ -21,6 +21,7 @@ import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermiss
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import { addToast } from '@/app/notificationSlice';
 import SubjectContextStrip from '@/features/sponsor/components/capture/SubjectContextStrip';
+import PrescriptionUpload from '@/components/capture/PrescriptionUpload';
 import s from './CaptureFormPage.module.css';
 
 export default function CaptureFormPage() {
@@ -45,6 +46,9 @@ export default function CaptureFormPage() {
     : (typeof dc?.[action] === 'boolean' ? dc[action] === true : dc?.edit === true);
   const canEdit    = !perms || dc?.edit === true;
   const canSubmit  = dcAllows('submit');
+  // Prescription uploads ride the same gate as opening/filling the form
+  // (data_capture.subject_data_capture), with edit as the pre-split fallback.
+  const canUploadRx = !perms || dc?.subject_data_capture === true || dc?.edit === true;
   const canVerify  = !perms || perms?.data_verification?.verify === true || perms?.data_verification?.edit === true;
   // Reopen a submitted form needs its own permission (data_capture.reopen).
   const canReopen  = !perms || perms?.data_capture?.reopen === true;
@@ -287,15 +291,18 @@ export default function CaptureFormPage() {
     );
   }
 
-  return (
-    <div className={s.page}>
-      <div className={s.topBar}>
-        <button className={s.backBtn} onClick={() => navigate(-1)} style={{ marginBottom: 0 }}>
-          <ArrowLeft size={14} /> Back
-        </button>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{studyName || 'Data Capture'}</span>
+  // Header that rides at the top of the runner's content column (above the
+  // search) instead of a separate top bar: subject identity strip on the left,
+  // Prescriptions + read-only/reopen controls on the right.
+  const topContent = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+        <SubjectContextStrip studyId={studyId} subjectId={subjectId} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <PrescriptionUpload subjectId={subjectId} canUpload={canUploadRx} />
         {isSubmitted && (
-          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px',
               borderRadius: 999, fontSize: 11.5, fontWeight: 700,
@@ -318,9 +325,11 @@ export default function CaptureFormPage() {
           </span>
         )}
       </div>
+    </div>
+  );
 
-      <SubjectContextStrip studyId={studyId} subjectId={subjectId} />
-
+  return (
+    <div className={s.page}>
       <StudyFormRunner
         blocks={blocks}
         formTitle={formTitle}
@@ -335,6 +344,8 @@ export default function CaptureFormPage() {
         canSubmit={canSubmit}
         submitLabel={isReadOnly ? 'Read-only view' : 'Submit eCRF'}
         readOnly={isReadOnly}
+        onBack={() => navigate(-1)}
+        topContent={topContent}
       />
     </div>
   );

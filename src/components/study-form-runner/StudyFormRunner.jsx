@@ -26,7 +26,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, CheckCircle2,
   UploadCloud, PenLine, Star, Layers,
   Search, FileText, Type as TypeIcon, CornerDownRight, PanelLeftClose, PanelLeft,
-  AlertCircle, Lock, Snowflake, CircleDot, X as XIcon, Save, ShieldCheck,
+  AlertCircle, Lock, Snowflake, CircleDot, X as XIcon, Save, ShieldCheck, ArrowLeft,
 } from 'lucide-react';
 import RuntimeFieldRenderer from '@/features/cro/components/study-form/runtime/RuntimeFieldRenderer';
 import { evaluateField, evaluateEligibility } from '@/features/cro/components/study-form/runtime/runtimeEngine';
@@ -274,6 +274,14 @@ function StudyFormRunnerInner({
   // Default true so existing callers keep the full workflow.
   verificationEnabled = true,
   queryEnabled = true,
+  // Optional "Back" handler. When provided, a compact Back button is rendered
+  // in the sidebar header (next to "Progress Overview") and in the collapsed
+  // rail — so the page no longer needs its own top bar.
+  onBack,
+  // Optional node rendered at the very top of the main content column, above
+  // the search bar (e.g. the subject identity strip + header actions). Lets the
+  // capture pages drop their separate top bar and let the form fill the height.
+  topContent = null,
 }) {
   // Per-block and per-page active query counts from the runner context.
   const { byBlock: queryCountByBlock, byPage: queryCountByPage } = useFormQueries();
@@ -351,6 +359,20 @@ function StudyFormRunnerInner({
   const [hi,         setHi]         = useState(0);
   const searchRef = useRef(null);
   const popRef    = useRef(null);
+
+  // Sticky subject header — measure its height so the (also-sticky) search bar
+  // can pin directly beneath it instead of overlapping at top:0.
+  const topRef = useRef(null);
+  const [headerH, setHeaderH] = useState(0);
+  useLayoutEffect(() => {
+    const el = topRef.current;
+    if (!el) { setHeaderH(0); return undefined; }
+    const update = () => setHeaderH(el.offsetHeight);
+    update();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [topContent]);
 
   useEffect(() => {
     setValues(defaultValues || {});
@@ -849,23 +871,50 @@ function StudyFormRunnerInner({
 
   return (
     <div className={`${s.root} ${sidebarCollapsed ? s.rootCollapsed : ''}`}>
-      {/* ── Collapsed sidebar rail (just a re-open chevron) ─────────────── */}
+      {/* ── Collapsed sidebar rail (Back + re-open chevron) ─────────────── */}
       {sidebarCollapsed && (
-        <button
-          type="button"
-          className={s.btnPrev}
-          style={{ position: 'absolute', top: 16, left: 12, zIndex: 5 }}
-          onClick={() => setSidebarCollapsed(false)}
-          title="Show outline"
-          aria-label="Show outline"
-        >
-          <PanelLeft size={14} /> Outline
-        </button>
+        <div style={{ position: 'absolute', top: 16, left: 12, zIndex: 5, display: 'flex', gap: 6 }}>
+          {onBack && (
+            <button
+              type="button"
+              className={s.btnPrev}
+              onClick={onBack}
+              title="Back"
+              aria-label="Back"
+            >
+              <ArrowLeft size={14} /> Back
+            </button>
+          )}
+          <button
+            type="button"
+            className={s.btnPrev}
+            onClick={() => setSidebarCollapsed(false)}
+            title="Show outline"
+            aria-label="Show outline"
+          >
+            <PanelLeft size={14} /> Outline
+          </button>
+        </div>
       )}
 
       {!sidebarCollapsed && (
         <aside className={s.sidebar}>
           <div className={s.sidebarHead}>
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                title="Back"
+                aria-label="Back"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 10,
+                  padding: '5px 10px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+                  border: '1px solid #e2e8f0', background: '#fff', color: '#334155', cursor: 'pointer',
+                }}
+              >
+                <ArrowLeft size={14} /> Back
+              </button>
+            )}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
               <span className={s.sidebarTitle}>Progress Overview</span>
               <button
@@ -1004,8 +1053,20 @@ function StudyFormRunnerInner({
       <div className={s.mainCol} style={MAIN_COL_STYLE}>
         <div className={s.contentShell} style={CONTENT_SHELL_STYLE}>
 
+          {/* Page-supplied header (subject identity strip + actions like the
+              Prescriptions button). Sticky so it stays pinned while the form
+              scrolls; the search bar below pins directly beneath it. */}
+          {topContent && (
+            <div
+              ref={topRef}
+              style={{ position: 'sticky', top: 0, zIndex: 21, background: '#f8fafc', paddingBottom: 10 }}
+            >
+              {topContent}
+            </div>
+          )}
+
           {/* ── Sticky search bar — Ctrl/⌘+F to focus ─────────────────── */}
-          <div className={s.searchBar}>
+          <div className={s.searchBar} style={topContent ? { top: headerH } : undefined}>
             <Search size={14} className={s.searchIcon} aria-hidden="true" />
             <input
               ref={searchRef}
@@ -1479,7 +1540,9 @@ function FileFieldInput({ field, value, onChange }) {
     try {
       for (const f of picked) {
         if (maxSizeMb && f.size > maxSizeMb * 1024 * 1024) { skipped++; continue; }
-        ok.push(await uploadFormFile(f)); // { url, name, type, size }
+        // image fields → studies/study_<id>/images/, other files → .../files/
+        const category = (field.type === 'image' || field.type === 'multiimage') ? 'images' : 'files';
+        ok.push(await uploadFormFile(f, category)); // { url, name, type, size }
       }
       if (skipped) setError(`${skipped} file(s) exceeded the ${maxSizeMb}MB limit and were skipped.`);
       if (ok.length) {

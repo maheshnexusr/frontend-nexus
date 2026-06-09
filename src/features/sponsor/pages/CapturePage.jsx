@@ -532,7 +532,7 @@ export default function CapturePage() {
                           <FileText size={16} />
                         </button>
                       )}
-                      {canTransferOwnership && (
+                      {/* {canTransferOwnership && (
                         <button
                           type="button"
                           className={css.iconBtn}
@@ -542,7 +542,7 @@ export default function CapturePage() {
                         >
                           <ArrowRightLeft size={16} />
                         </button>
-                      )}
+                      )} */}
                       {canDeleteSubject && (
                         <button
                           type="button"

@@ -53,20 +53,25 @@ function activeStudyContext() {
 /**
  * Upload a single File. Resolves to { url, name, type, size }.
  * Throws if no active study context (study_id + environment) is available.
+ *
+ * `category` chooses the studies/study_<id>/<category>/ subfolder on disk
+ * (e.g. images, reports, consent_forms, protocol). Omit it to fall to "files".
  */
-export async function uploadFormFile(file) {
+export async function uploadFormFile(file, category) {
   const ctx = activeStudyContext();
   if (!ctx) {
     throw new Error('No active study context — cannot upload file.');
   }
   const token = pickToken();
 
-  // study_id + environment MUST precede the file: the backend computes the
+  // study_id + category MUST precede the file: the backend computes the
   // destination folder inside multer's file handler, which only sees fields
-  // parsed earlier in the multipart stream.
+  // parsed earlier in the multipart stream. (environment is sent for
+  // back-compat; the backend now derives the tier from its own UPLOAD_ROOT.)
   const fd = new FormData();
   fd.append('study_id', ctx.studyId);
   fd.append('environment', ctx.environment);
+  if (category) fd.append('category', category);
   fd.append('file', file);
 
   const res = await axios.post(`${API_BASE}/api/v1/form-files`, fd, {

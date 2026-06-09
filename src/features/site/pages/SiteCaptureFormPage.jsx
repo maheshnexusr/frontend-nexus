@@ -18,6 +18,7 @@ import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermiss
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import { addToast } from '@/app/notificationSlice';
 import SubjectContextStrip from '@/features/sponsor/components/capture/SubjectContextStrip';
+import PrescriptionUpload from '@/components/capture/PrescriptionUpload';
 import s from '@/features/sponsor/pages/CaptureFormPage.module.css';
 import picker from './SiteCaptureFormPage.module.css';
 
@@ -393,15 +394,21 @@ export default function SiteCaptureFormPage() {
   // ── Form fill ──────────────────────────────────────────────────────────
   // A Submitted/Completed form is read-only (data entry locked) until reopened.
   const isSubmitted = ['Submitted', 'Completed'].includes(formStatus);
-  return (
-    <div className={s.page}>
-      <div className={s.topBar}>
-        <button className={s.backBtn} onClick={() => navigate(-1)} style={{ marginBottom: 0 }}>
-          <ArrowLeft size={14} /> Back
-        </button>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{studyName || 'Data Capture'}</span>
+
+  // Header at the top of the runner's content column (above the search): subject
+  // identity strip on the left, Prescriptions + read-only/view-only status on
+  // the right. Replaces the old separate top bar so the form fills the height.
+  const topContent = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+        <SubjectContextStrip studyId="site" subjectId={subjectId} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        {/* Prescriptions — only the subject's owner (treating doctor/PI) can
+            upload; everyone else sees the read-only list in the dialog. */}
+        <PrescriptionUpload subjectId={subjectId} canUpload={canEnterData} />
         {isSubmitted && (
-          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px',
               borderRadius: 999, fontSize: 11.5, fontWeight: 700,
@@ -425,20 +432,19 @@ export default function SiteCaptureFormPage() {
         )}
         {!isSubmitted && !isOwner && (
           <span style={{
-            marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 5,
+            display: 'inline-flex', alignItems: 'center', gap: 5,
             padding: '3px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700,
             background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
           }}>
-            👁 View-only — only the subject's owner can edit
+            👁 View-only — only the subject&apos;s owner can edit
           </span>
         )}
       </div>
+    </div>
+  );
 
-      {/* Identity strip — Protocol Number / Site Code / Screening Number /
-          Subject Initials / Audit Log. Site session has its studyId pinned in
-          the JWT, so the prop just needs to be truthy to trigger the fetch. */}
-      <SubjectContextStrip studyId="site" subjectId={subjectId} />
-
+  return (
+    <div className={s.page}>
       <StudyFormRunner
         blocks={blocks}
         formTitle={formTitle}
@@ -455,6 +461,8 @@ export default function SiteCaptureFormPage() {
         canSubmit={canEnterData}
         submitLabel={canEnterData ? 'Submit eCRF' : 'Read-only view'}
         readOnly={!canEnterData || isSubmitted}
+        onBack={() => navigate(-1)}
+        topContent={topContent}
       />
 
       <Modal
