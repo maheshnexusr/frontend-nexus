@@ -448,7 +448,7 @@ export default function CapturePage() {
             <tr>
               <th className={css.th}>Subject</th>
               <th className={css.th}>Site</th>
-              <th className={css.th}>Responsible PI</th>
+              <th className={css.th}>Responsible By</th>
               <th className={css.th}>Status</th>
               <th className={css.th}>Enrollment Date</th>
               <th className={css.thActions}>Actions</th>

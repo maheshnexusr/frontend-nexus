@@ -329,7 +329,7 @@ export default function SiteCapturePage() {
             <tr>
               <th className={css.th}>Subject ID</th>
               <th className={css.th}>Initials</th>
-              <th className={css.th}>Responsible PI</th>
+              <th className={css.th}>Responsible By</th>
               <th className={css.th}>Status</th>
               <th className={css.th}>Enrolled</th>
               <th className={css.thActions}>Actions</th>

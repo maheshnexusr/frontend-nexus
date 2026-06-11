@@ -106,7 +106,7 @@ export default function ReportsPage() {
           {canDownload ? (
             <button className={css.btnGenerate} onClick={handleDownload} disabled={downloading}>
               {downloading ? <Loader2 size={14} className={css.spin} /> : <Download size={14} />}
-              {downloading ? 'Preparing…' : 'Download Excel'}
+              {downloading ? 'Preparing…' : 'Data Extraction Report'}
             </button>
           ) : (
             <span style={{ fontSize: 12, color: '#94a3b8' }}>No download permission</span>
