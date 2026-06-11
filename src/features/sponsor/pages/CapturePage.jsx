@@ -24,10 +24,11 @@ import {
 import BarWidget from '@/features/sponsor/pages/dashboard/widgets/BarWidget';
 import axiosClient  from '@/api/sponsorAxiosClient';
 import { addToast } from '@/app/notificationSlice';
-import { formatDate } from '@/utils/formatDate';
+import { formatDateTime } from '@/utils/formatDate';
 import SnapshotButton from '@/components/feedback/SnapshotButton';
 import ActivityLogDrawer from '@/features/sponsor/components/activity/ActivityLogDrawer';
 import TransferOwnershipModal from '@/components/subject/TransferOwnershipModal';
+import ConfirmDialog from '@/components/feedback/ConfirmDialog';
 import { usePermissions } from '@/features/auth/usePermissions';
 import css from './CapturePage.module.css';
 
@@ -63,7 +64,6 @@ function StatusBadge({ value }) {
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
-const fmtDate = (ts) => formatDate(ts) || '—';
 
 function normalize(raw) {
   return {
@@ -151,6 +151,7 @@ export default function CapturePage() {
   const canTransferOwnership   = has('data_capture', 'subject_edit');
   const [activitySubject, setActivitySubject] = useState(null);
   const [transferSubject, setTransferSubject] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
   const [subjects,     setSubjects]     = useState([]);
@@ -202,11 +203,10 @@ export default function CapturePage() {
   }, [studyId]);
 
   /* ── Delete subject (hard delete + all its data) ── */
-  const handleDelete = useCallback(async (subject) => {
+  const confirmDelete = useCallback(async () => {
+    const subject = deleteTarget;
+    if (!subject) return;
     const label = subject.subjectCode || subject.subjectInitials || 'this subject';
-    if (!window.confirm(
-      `Delete ${label} and ALL of its data (forms, queries, verifications)?\n\nThis cannot be undone.`
-    )) return;
     setDeletingId(subject.id);
     try {
       await axiosClient.delete(`/api/v1/sponsor/workspace/subjects/${subject.id}`);
@@ -220,7 +220,7 @@ export default function CapturePage() {
     } finally {
       setDeletingId(null);
     }
-  }, [dispatch]);
+  }, [dispatch, deleteTarget]);
 
   /* ── Transfer subject ownership (moves owner + open queries to a new PI) ── */
   const handleTransfer = useCallback(async ({ newOwnerId, reason }) => {
@@ -287,19 +287,26 @@ export default function CapturePage() {
   /* ── Filter + search ── */
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
-    return subjects.filter((s) => {
-      // Match against every human-readable identifier so a study coordinator
-      // can search by initials, the formatted code, the site code, or the
-      // site name interchangeably.
-      const matchQ    = !q || [s.subjectInitials, s.subjectCode, s.siteCode, s.siteName]
-        .some((v) => (v ?? '').toLowerCase().includes(q));
-      // Status quick-filter matches the screening pipeline (the column the
-      // table renders). Falls back to the legacy single status field for
-      // older subject rows that don't carry a screening_status yet.
-      const matchStat = statusFilter === 'All' || s.status === statusFilter;
-      const matchSite = !siteFilter  || s.siteId === siteFilter;
-      return matchQ && matchStat && matchSite;
-    });
+    return subjects
+      .filter((s) => {
+        // Match against every human-readable identifier so a study coordinator
+        // can search by initials, the formatted code, the site code, or the
+        // site name interchangeably.
+        const matchQ    = !q || [s.subjectInitials, s.subjectCode, s.siteCode, s.siteName]
+          .some((v) => (v ?? '').toLowerCase().includes(q));
+        // Status quick-filter matches the screening pipeline (the column the
+        // table renders). Falls back to the legacy single status field for
+        // older subject rows that don't carry a screening_status yet.
+        const matchStat = statusFilter === 'All' || s.status === statusFilter;
+        const matchSite = !siteFilter  || s.siteId === siteFilter;
+        return matchQ && matchStat && matchSite;
+      })
+      // Most-recently enrolled first (descending by enrolled timestamp).
+      .sort((a, b) => {
+        const ta = a.enrolledAt ? new Date(a.enrolledAt).getTime() : 0;
+        const tb = b.enrolledAt ? new Date(b.enrolledAt).getTime() : 0;
+        return tb - ta;
+      });
   }, [subjects, query, statusFilter, siteFilter]);
 
   const pageData = useMemo(
@@ -507,7 +514,7 @@ export default function CapturePage() {
                       <StatusBadge value={subject.status} />
                     </td>
                     <td className={css.td}>
-                      <span className={css.dateCell}>{fmtDate(subject.enrolledAt)}</span>
+                      <span className={css.dateCell}>{formatDateTime(subject.enrolledAt) || '—'}</span>
                     </td>
                     <td className={css.tdActions}>
                       {canViewSubjectActivity && (
@@ -547,7 +554,7 @@ export default function CapturePage() {
                         <button
                           type="button"
                           className={css.iconBtn}
-                          onClick={() => handleDelete(subject)}
+                          onClick={() => setDeleteTarget(subject)}
                           disabled={deletingId === subject.id}
                           title="Delete subject and all its data"
                           aria-label="Delete subject"
@@ -600,6 +607,19 @@ export default function CapturePage() {
           onClose={() => setTransferSubject(null)}
         />
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        variant="danger"
+        title="Delete subject"
+        message={deleteTarget
+          ? `Delete ${deleteTarget.subjectCode || deleteTarget.subjectInitials || 'this subject'} and ALL of its data (forms, queries, verifications)? This cannot be undone.`
+          : ''}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+      />
     </div>
   );
 }

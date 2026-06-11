@@ -37,6 +37,7 @@ import { uploadFormFile }    from '@/api/formFileClient';
 import { resolveFileUrl }    from '@/api/fileUrl';
 import { FormQueriesProvider, useFormQueries } from './FormQueriesContext';
 import PlatformDatePicker from '@/components/form/PlatformDatePicker';
+import ConfirmDialog from '@/components/feedback/ConfirmDialog';
 import { selectAllFieldData } from '@/features/cro/store/formRuntimeSlice';
 import s from '@/features/cro/components/study-form/SFBPreview.module.css';
 
@@ -330,6 +331,11 @@ function StudyFormRunnerInner({
   // still empty — drives the inline warning + red highlight on the missing
   // fields. Reset on every page change (effect below).
   const [triedNext,  setTriedNext]  = useState(false);
+  // Holds the empty SOFT-required fields when a Submit is blocked because of
+  // them — drives the inline warning. Soft check blocks Submit (but NOT Save).
+  const [softBlocked, setSoftBlocked] = useState([]);
+  // Open the app-styled "confirm before submit" dialog once checks pass.
+  const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
 
   // Deep-link support — ?pageId=… jumps straight to a page (used below).
   const [params] = useSearchParams();
@@ -466,7 +472,10 @@ function StudyFormRunnerInner({
     }
   }, [visiblePositions, blockIdx, pageIdx, blocks]);
 
-  // Clear the "fill mandatory fields" warning whenever the page changes.
+  // Clear the per-page hard "fill mandatory fields" warning on page change. The
+  // soft-block list is NOT cleared here — submit blocking navigates the user to
+  // the missing field, so the list must survive that page change; it's cleared
+  // on a successful submit (or refreshed on the next submit attempt).
   useEffect(() => { setTriedNext(false); }, [blockIdx, pageIdx]);
 
   // Clear-on-hide (Phase 4) at the FORM level so it works even though hidden
@@ -616,7 +625,7 @@ function StudyFormRunnerInner({
   const isSoftReq = (f) => f.required === true && softOf(f) === true && hardOf(f) === false;
   const fieldName = (f) => f.label || f.key || f.name || 'this field';
   const hardMsg   = (f) => ((f.hardMessage ?? f.hard_message)?.trim() || (f.requiredMessage ?? f.required_message)?.trim() || '{Field Name} is required.').replace(/\{Field Name\}/g, fieldName(f));
-  const softMsg   = (f) => ((f.softMessage ?? f.soft_message)?.trim() || 'Please review {Field Name} before continuing.').replace(/\{Field Name\}/g, fieldName(f));
+  const softMsg   = (f) => ((f.softMessage ?? f.soft_message)?.trim() || 'Please fill {Field Name}.').replace(/\{Field Name\}/g, fieldName(f));
 
   // Mandatory-field gate for page navigation: a VISIBLE hard-required field left
   // blank blocks Next (and is flagged inline). Mirrors the backend submit gate
@@ -626,10 +635,17 @@ function StudyFormRunnerInner({
   const missingRequiredNow = pageMissingRequired(page);
   const missingRequiredIds = new Set(missingRequiredNow.map((f) => f.id));
 
+  // Fields flagged by a blocked submit (soft-required + empty) → drives the
+  // inline amber message shown right under each offending field and the summary
+  // list. A field drops out as soon as it's filled, so messages clear live.
+  const softStillMissing = softBlocked.filter((e) => !fieldHasValue(e.field));
+  const softBlockedIds = new Set(softStillMissing.map((e) => e.field.id));
+
   // Empty SOFT-required fields across every visible page — collected at submit
-  // time to show a non-blocking warning the user can acknowledge.
+  // time so we can BLOCK submit and jump the user to the first one. Each entry
+  // carries its block/page id so we can navigate straight to it.
   const allSoftMissing = () => {
-    const out = [];
+    const out = []; // [{ field, blockId, pageId }]
     for (const blk of blocks) {
       if (evaluateField(blk, values).hidden) continue;
       for (const pg of blk.pages || []) {
@@ -637,7 +653,7 @@ function StudyFormRunnerInner({
         for (const f of pg.fields || []) {
           if (LAYOUT_TYPES.includes(f.type)) continue;
           if (evaluateField(f, values).hidden) continue;
-          if (isSoftReq(f) && !fieldHasValue(f)) out.push(f);
+          if (isSoftReq(f) && !fieldHasValue(f)) out.push({ field: f, blockId: blk.id, pageId: pg.id });
         }
       }
     }
@@ -755,13 +771,24 @@ function StudyFormRunnerInner({
 
   const handleSubmit = async () => {
     if (readOnly || busy) return;
-    // Soft checks — warn, but let the user continue if they acknowledge.
+    // Soft checks BLOCK Submit (but never Save): an empty soft-required field
+    // stops the submit, jumps the user to the FIRST missing field, and lists
+    // them inline — there is no "submit anyway".
     const soft = allSoftMissing();
     if (soft.length) {
-      const lines = soft.map((f) => `• ${softMsg(f)}`).join('\n');
-      // eslint-disable-next-line no-alert
-      if (!window.confirm(`Some recommended fields are empty:\n\n${lines}\n\nSubmit anyway?`)) return;
+      setSoftBlocked(soft);
+      jumpToField(soft[0].blockId, soft[0].pageId, soft[0].field.id);
+      return;
     }
+    setSoftBlocked([]);
+    // Checks passed — ask for confirmation via the app's own dialog (no native
+    // browser popup) before finalising.
+    setSubmitConfirmOpen(true);
+  };
+
+  // Actual submit, run after the user confirms in the dialog.
+  const doSubmit = async () => {
+    if (readOnly || busy) return;
     setBusy(true);
     try {
       await onSubmit?.(values);
@@ -769,6 +796,15 @@ function StudyFormRunnerInner({
     } finally {
       setBusy(false);
     }
+  };
+
+  // Navigate to a field's block/page and scroll it into view + focus highlight.
+  const jumpToField = (blockId, pageId, fieldId) => {
+    goToBlockPage(blockId, pageId);
+    requestAnimationFrame(() => {
+      const node = document.querySelector(`[data-field-id="${fieldId}"]`);
+      if (node?.scrollIntoView) node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
   };
 
   // Save progress without finalising — stays on the form (no success screen).
@@ -1146,6 +1182,7 @@ function StudyFormRunnerInner({
                 }
                 const vTag = fieldVerified(field) ? verifiedFields[field.id] : null;
                 const reqMissing = triedNext && missingRequiredIds.has(field.id);
+                const softMissing = softBlockedIds.has(field.id);
                 return (
                   <div
                     key={field.id}
@@ -1154,9 +1191,12 @@ function StudyFormRunnerInner({
                       minWidth: 0,
                       // Flag a mandatory field the user tried to skip past. Outline
                       // doesn't affect layout flow, so the grid doesn't shift.
+                      // Hard (red) takes precedence over soft (amber).
                       ...(reqMissing
                         ? { outline: '2px solid #fca5a5', outlineOffset: 4, borderRadius: 6 }
-                        : {}),
+                        : softMissing
+                          ? { outline: '2px solid #fcd34d', outlineOffset: 4, borderRadius: 6 }
+                          : {}),
                     }}
                   >
                     {vTag && (
@@ -1191,6 +1231,18 @@ function StudyFormRunnerInner({
                         </fieldset>
                       )}
                     </RuntimeFieldRenderer>
+                    {softMissing && (
+                      <div
+                        role="alert"
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 6,
+                          marginTop: 4, fontSize: 12, fontWeight: 600, color: '#b45309',
+                        }}
+                      >
+                        <AlertCircle size={13} style={{ flexShrink: 0 }} />
+                        {softMsg(field)}
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -1384,6 +1436,17 @@ function StudyFormRunnerInner({
               onConfirm={handleVerifyPage}
             />
           )}
+
+          <ConfirmDialog
+            open={submitConfirmOpen}
+            onClose={() => setSubmitConfirmOpen(false)}
+            onConfirm={doSubmit}
+            variant="info"
+            title="Submit form"
+            message="Submit this form? Once submitted it becomes read-only — further changes go through the Reopen flow."
+            confirmLabel="Submit"
+            cancelLabel="Cancel"
+          />
         </div>
       </div>
     </div>

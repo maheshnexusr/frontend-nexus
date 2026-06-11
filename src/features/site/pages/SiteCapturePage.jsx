@@ -20,9 +20,10 @@ import {
 } from 'lucide-react';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
 import { addToast } from '@/app/notificationSlice';
-import { formatDate } from '@/utils/formatDate';
+import { formatDateTime } from '@/utils/formatDate';
 import { usePermissions } from '@/features/auth/usePermissions';
 import TransferOwnershipModal from '@/components/subject/TransferOwnershipModal';
+import ConfirmDialog from '@/components/feedback/ConfirmDialog';
 import css from '@/features/sponsor/pages/CapturePage.module.css';
 import pageCss from './SiteCapturePage.module.css';
 
@@ -36,8 +37,6 @@ const STATUS_META = {
   Withdrawn:    { label: 'Withdrawn',    cls: css.sWithdrawn,  icon: <XCircle size={11} /> },
   Discontinued: { label: 'Discontinued', cls: css.sWithdrawn,  icon: <AlertCircle size={11} /> },
 };
-
-const fmtDate = (ts) => formatDate(ts) || '—';
 
 function normalize(raw) {
   return {
@@ -127,6 +126,7 @@ export default function SiteCapturePage() {
   const canTransferOwnership = canEditSubject;
 
   const [transferSubject, setTransferSubject] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [deletingId,   setDeletingId]   = useState(null);
   const [subjects,     setSubjects]     = useState([]);
   const [loading,      setLoading]      = useState(true);
@@ -156,14 +156,21 @@ export default function SiteCapturePage() {
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
-    return subjects.filter((s) => {
-      const matchQ = !q
-        || String(s.subjectCode).toLowerCase().includes(q)
-        || s.subjectName.toLowerCase().includes(q)
-        || s.subjectInitials.toLowerCase().includes(q);
-      const matchStat = statusFilter === 'All' || s.status === statusFilter;
-      return matchQ && matchStat;
-    });
+    return subjects
+      .filter((s) => {
+        const matchQ = !q
+          || String(s.subjectCode).toLowerCase().includes(q)
+          || s.subjectName.toLowerCase().includes(q)
+          || s.subjectInitials.toLowerCase().includes(q);
+        const matchStat = statusFilter === 'All' || s.status === statusFilter;
+        return matchQ && matchStat;
+      })
+      // Most-recently enrolled first (descending by enrolled timestamp).
+      .sort((a, b) => {
+        const ta = a.enrolledAt ? new Date(a.enrolledAt).getTime() : 0;
+        const tb = b.enrolledAt ? new Date(b.enrolledAt).getTime() : 0;
+        return tb - ta;
+      });
   }, [subjects, query, statusFilter]);
 
   const pageData = useMemo(
@@ -184,11 +191,10 @@ export default function SiteCapturePage() {
   const openCreate = () => navigate('/site/capture/subjects/new');
   const openEdit   = (subject) => navigate(`/site/capture/subjects/${subject.id}/edit`);
 
-  const handleDelete = useCallback(async (subject) => {
+  const confirmDelete = useCallback(async () => {
+    const subject = deleteTarget;
+    if (!subject) return;
     const label = subject.subjectCode || subject.subjectInitials || 'this subject';
-    if (!window.confirm(
-      `Delete ${label} and ALL of its data (forms, queries, verifications)?\n\nThis cannot be undone.`
-    )) return;
     setDeletingId(subject.id);
     try {
       await siteWorkspaceClient.deleteSubject(subject.id);
@@ -202,7 +208,7 @@ export default function SiteCapturePage() {
     } finally {
       setDeletingId(null);
     }
-  }, [dispatch]);
+  }, [dispatch, deleteTarget]);
 
   /* ── Transfer ownership (moves owner + open queries to a new PI) ── */
   const handleTransfer = useCallback(async ({ newOwnerId, reason }) => {
@@ -374,7 +380,7 @@ export default function SiteCapturePage() {
                       </span>
                     </td>
                     <td className={css.td}>
-                      <span className={css.dateCell}>{fmtDate(subject.enrolledAt)}</span>
+                      <span className={css.dateCell}>{formatDateTime(subject.enrolledAt) || '—'}</span>
                     </td>
                     <td className={css.tdActions}>
                       {canEditSubject && (
@@ -410,7 +416,7 @@ export default function SiteCapturePage() {
                       {canDeleteSubject && (
                         <button
                           className={pageCss.iconBtn}
-                          onClick={() => handleDelete(subject)}
+                          onClick={() => setDeleteTarget(subject)}
                           disabled={deletingId === subject.id}
                           title="Delete subject and all its data"
                           aria-label="Delete subject"
@@ -454,6 +460,19 @@ export default function SiteCapturePage() {
           onClose={() => setTransferSubject(null)}
         />
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        variant="danger"
+        title="Delete subject"
+        message={deleteTarget
+          ? `Delete ${deleteTarget.subjectCode || deleteTarget.subjectInitials || 'this subject'} and ALL of its data (forms, queries, verifications)? This cannot be undone.`
+          : ''}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+      />
 
     </div>
   );
