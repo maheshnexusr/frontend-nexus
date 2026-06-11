@@ -25,13 +25,12 @@ import { selectCurrentUser } from '@/features/auth/authSlice';
 import {
   ChevronLeft, ChevronRight, ChevronDown, CheckCircle2,
   UploadCloud, PenLine, Star, Layers,
-  Search, FileText, Type as TypeIcon, CornerDownRight, PanelLeftClose, PanelLeft,
+  Search, FileText, Type as TypeIcon, CornerDownRight, PanelLeft,
   AlertCircle, Lock, Snowflake, CircleDot, X as XIcon, Save, ShieldCheck, ArrowLeft,
 } from 'lucide-react';
 import RuntimeFieldRenderer from '@/features/cro/components/study-form/runtime/RuntimeFieldRenderer';
 import { evaluateField, evaluateEligibility } from '@/features/cro/components/study-form/runtime/runtimeEngine';
 import { headingStyleToCss } from '@/features/cro/components/study-form/headingStyle';
-import FormStatusToolbar    from './FormStatusToolbar';
 import SignatureInput       from './SignatureInput';
 import { uploadFormFile }    from '@/api/formFileClient';
 import { resolveFileUrl }    from '@/api/fileUrl';
@@ -943,26 +942,17 @@ function StudyFormRunnerInner({
                 title="Back"
                 aria-label="Back"
                 style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5, marginBottom: 10,
-                  padding: '5px 10px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+                  display: 'inline-flex', alignItems: 'center', alignSelf: 'flex-start',
+                  gap: 3, marginBottom: 10,
+                  padding: '3px 8px', borderRadius: 6, fontSize: 11.5, fontWeight: 600,
                   border: '1px solid #e2e8f0', background: '#fff', color: '#334155', cursor: 'pointer',
                 }}
               >
-                <ArrowLeft size={14} /> Back
+                <ArrowLeft size={12} /> Back
               </button>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span className={s.sidebarTitle}>Progress Overview</span>
-              <button
-                type="button"
-                className={s.btnPrev}
-                style={{ padding: '2px 6px', fontSize: 11 }}
-                onClick={() => setSidebarCollapsed(true)}
-                title="Hide outline"
-                aria-label="Hide outline"
-              >
-                <PanelLeftClose size={13} />
-              </button>
             </div>
             <span className={s.sidebarSub}>{pct}% complete</span>
             <div className={s.progressWrap}>
@@ -1144,12 +1134,6 @@ function StudyFormRunnerInner({
               </div>
             )}
           </div>
-
-          {/* Phase 1 — form-status pill + transition buttons. The per-subject
-              activity log now lives only on the SubjectContextStrip ("Activity
-              Log") at the top of the page; the duplicate form-level launcher
-              that used to sit here was removed per spec. */}
-          <FormStatusToolbar pageFields={visibleFields} pageTitle={page.title} />
 
           <div className={s.pageHeading}>
             <div>

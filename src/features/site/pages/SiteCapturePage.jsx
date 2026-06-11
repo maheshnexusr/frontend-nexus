@@ -50,6 +50,10 @@ function normalize(raw) {
                        ? 'Pending'
                        : (raw.enrollment_status ?? raw.enrollmentStatus ?? raw.status ?? 'Pending')),
     enrolledAt:      raw.enrolled_at       ?? raw.enrolledAt,
+    // Real creation timestamp (true wall-clock). enrolled_at often holds a
+    // date-only enrollment date stored at UTC midnight, so it has no meaningful
+    // time — the Enrolled column shows createdAt for an accurate timestamp.
+    createdAt:       raw.created_at        ?? raw.createdAt,
     visitsTotal:     raw.visits_total      ?? raw.visitsTotal     ?? 0,
     visitsCompleted: raw.visits_completed  ?? raw.visitsCompleted ?? 0,
     lastEntryAt:     raw.last_activity_at  ?? raw.last_entry_at   ?? raw.lastEntryAt,
@@ -165,10 +169,10 @@ export default function SiteCapturePage() {
         const matchStat = statusFilter === 'All' || s.status === statusFilter;
         return matchQ && matchStat;
       })
-      // Most-recently enrolled first (descending by enrolled timestamp).
+      // Most-recently created first (descending by real creation timestamp).
       .sort((a, b) => {
-        const ta = a.enrolledAt ? new Date(a.enrolledAt).getTime() : 0;
-        const tb = b.enrolledAt ? new Date(b.enrolledAt).getTime() : 0;
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
         return tb - ta;
       });
   }, [subjects, query, statusFilter]);
@@ -380,7 +384,7 @@ export default function SiteCapturePage() {
                       </span>
                     </td>
                     <td className={css.td}>
-                      <span className={css.dateCell}>{formatDateTime(subject.enrolledAt) || '—'}</span>
+                      <span className={css.dateCell}>{formatDateTime(subject.createdAt || subject.enrolledAt) || '—'}</span>
                     </td>
                     <td className={css.tdActions}>
                       {canEditSubject && (
