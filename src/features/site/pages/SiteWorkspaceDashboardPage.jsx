@@ -20,9 +20,9 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 const fmtPct = (v) => (v != null ? `${Math.round(v)}%` : '—');
 
 const CARDS = [
-  { key: 'totalSubjects',    label: 'Total Subjects',    accent: '#2563eb' },
-  { key: 'totalSites',       label: 'Total Sites',       accent: '#059669' },
-  { key: 'enrolledSubjects', label: 'Enrolled Subjects', accent: '#7c3aed' },
+  { key: 'totalSubjects',     label: 'Total Subjects',     accent: '#2563eb' },
+  { key: 'enrolledSubjects',  label: 'Enrolled Subjects',  accent: '#7c3aed' },
+  { key: 'pendingSubjects',   label: 'Pending Subjects',   accent: '#d97706' },
   { key: 'completedSubjects', label: 'Completed Subjects', accent: '#059669' },
 ];
 

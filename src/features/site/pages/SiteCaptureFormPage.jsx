@@ -10,7 +10,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { Loader2, AlertCircle, ArrowLeft, FileText, CheckCircle2 } from 'lucide-react';
+import { Loader2, AlertCircle, ArrowLeft, FileText, CheckCircle2, Info } from 'lucide-react';
 import StudyFormRunner from '@/components/study-form-runner/StudyFormRunner';
 import Modal from '@/components/feedback/Modal';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
@@ -62,6 +62,8 @@ export default function SiteCaptureFormPage() {
   const [error,       setError]       = useState(null);
   const [noFormsHere, setNoFormsHere] = useState(false);
   const [submitted,   setSubmitted]   = useState(false);
+  // Subject initials — shown in the post-submit confirmation message.
+  const [subjectInitials, setSubjectInitials] = useState('');
   // Reopen-reason dialog (replaces the native window.prompt).
   const [reopenOpen,   setReopenOpen]   = useState(false);
   const [reopenReason, setReopenReason] = useState('');
@@ -166,6 +168,20 @@ export default function SiteCaptureFormPage() {
     })();
     return () => { cancelled = true; };
   }, [formId, subjectId]);
+
+  // Subject initials for the submit-confirmation message. Non-fatal on error.
+  useEffect(() => {
+    if (!subjectId) return undefined;
+    let cancelled = false;
+    siteWorkspaceClient.getSubject(subjectId)
+      .then((res) => {
+        if (cancelled) return;
+        const sub = res?.subject ?? res?.item ?? res ?? {};
+        setSubjectInitials(sub.subject_initials ?? sub.subjectInitials ?? '');
+      })
+      .catch(() => { /* message falls back to the subject code */ });
+    return () => { cancelled = true; };
+  }, [subjectId]);
 
   // A Submitted form is read-only here, and the site owner has no Reopen button
   // of their own — only a sponsor/CRO can reopen it (from a different session).
@@ -364,25 +380,25 @@ export default function SiteCaptureFormPage() {
         </div>
         <div className={s.successWrap}>
           <div className={s.successCard}>
-            <CheckCircle2 size={44} className={s.successIcon} />
+            <div className={s.successBadge}>
+              <CheckCircle2 size={36} strokeWidth={2.25} />
+            </div>
             <h2 className={s.successTitle}>Form submitted</h2>
             <p className={s.successSub}>
-              <strong>{formTitle || 'eCRF'}</strong> has been saved for subject{' '}
-              <code className={s.successCode}>{subjectId}</code>. The Query Manager and Data
-              Manager can now review it.
+              The Case Report Form for subject{' '}
+              <span className={s.successCode}>{subjectInitials || subjectId}</span> has been
+              successfully submitted and saved.
             </p>
+            <div className={s.successNote}>
+              <Info size={15} className={s.successNoteIcon} />
+              <span>To modify the submitted subject details, please contact the Administrator.</span>
+            </div>
             <div className={s.successActions}>
               <button
                 className={s.successPrimary}
                 onClick={() => navigate('/site/capture')}
               >
-                Back to subjects
-              </button>
-              <button
-                className={s.successSecondary}
-                onClick={() => setSubmitted(false)}
-              >
-                Edit this form
+                <ArrowLeft size={15} /> Back to subjects
               </button>
             </div>
           </div>

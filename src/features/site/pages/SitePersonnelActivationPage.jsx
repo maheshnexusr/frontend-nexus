@@ -191,8 +191,11 @@ export default function SitePersonnelActivationPage() {
           {Array.isArray(meta?.studies) && meta.studies.length > 0 && (
             <SummaryRow
               icon={<FileText size={14} />}
-              label="Studies"
-              value={`Assigned to ${meta.studies.length} ${meta.studies.length === 1 ? 'study' : 'studies'}`}
+              label={meta.studies.length === 1 ? 'Study' : 'Studies'}
+              value={meta.studies
+                .map((s) => s.studyTitle || s.study_title || s.protocolNumber || s.studyId)
+                .filter(Boolean)
+                .join(', ')}
             />
           )}
         </div>

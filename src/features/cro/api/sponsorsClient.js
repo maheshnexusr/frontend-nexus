@@ -10,6 +10,7 @@ function normalize(raw) {
   return {
     id:                 raw.sponsor_id          ?? raw.id,
     photograph:         raw.photograph_url       ?? raw.photograph_path ?? raw.photograph ?? null,
+    organizationLogo:   raw.organization_logo_url ?? raw.organization_logo_path ?? raw.organizationLogo ?? null,
     fullName:           raw.full_name            ?? raw.fullName   ?? '',
     contactNumber:      raw.contact_number       ?? raw.contactNumber ?? '',
     email:              raw.email_address        ?? raw.email ?? '',
@@ -65,20 +66,29 @@ function toFormData(form) {
   // Always sent (even when false) so an edit can clear the flag.
   fd.append('is_read_only',  form.isReadOnly ? 'true' : 'false');
 
-  if (form.photograph) {
-    if (form.photograph instanceof File || form.photograph instanceof Blob) {
-      fd.append('photograph', form.photograph);
-    } else if (typeof form.photograph === 'string' && form.photograph.startsWith('data:')) {
-      const [meta, b64] = form.photograph.split(',');
-      const mime = meta.match(/:(.*?);/)[1];
-      const bin  = atob(b64);
-      const buf  = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-      fd.append('photograph', new Blob([buf], { type: mime }), 'photo.jpg');
-    }
-  }
+  // Only send an image when the user picked a NEW one (a File/Blob, or a data:
+  // URL from ImageUpload). An existing "/uploads/…" URL is left untouched so the
+  // backend keeps the current image.
+  appendImage(fd, 'photograph', form.photograph, 'photo.jpg');
+  appendImage(fd, 'organization_logo', form.organizationLogo, 'logo.jpg');
 
   return fd;
+}
+
+function appendImage(fd, key, value, fallbackName) {
+  if (!value) return;
+  if (value instanceof File || value instanceof Blob) {
+    fd.append(key, value);
+    return;
+  }
+  if (typeof value === 'string' && value.startsWith('data:')) {
+    const [meta, b64] = value.split(',');
+    const mime = meta.match(/:(.*?);/)[1];
+    const bin  = atob(b64);
+    const buf  = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    fd.append(key, new Blob([buf], { type: mime }), fallbackName);
+  }
 }
 
 function triggerDownload(blob, filename) {

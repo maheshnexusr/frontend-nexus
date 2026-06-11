@@ -1516,15 +1516,34 @@ function VerifyPageDialog({ pageFields, values, blockTitle, pageTitle, saving, o
 // multi → array). Older records may carry { dataUrl } (legacy inline base64) —
 // those still render via the url ?? dataUrl fallback below.
 // Honours the field's accept (types), maxSize (MB) and maxFiles config.
+// True if `file` satisfies the accept string (".jpg,.png", "image/*", "application/pdf").
+// The native accept attr is only a picker hint — this enforces it on selection.
+function fileMatchesAccept(file, accept) {
+  const tokens = (accept || '').split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
+  if (!tokens.length) return true;
+  const name = (file.name || '').toLowerCase();
+  const mime = (file.type || '').toLowerCase();
+  return tokens.some((tok) => {
+    if (tok.startsWith('.')) return name.endsWith(tok);          // extension
+    if (tok.endsWith('/*')) return mime.startsWith(tok.slice(0, -1)); // image/*
+    return mime === tok;                                          // exact mime
+  });
+}
+
 function FileFieldInput({ field, value, onChange }) {
   const inputRef = useRef(null);
-  const multiple = field.type === 'multifile' || field.type === 'multiimage';
+  // field.multiple (set via the builder's "Allow multiple files" toggle) is
+  // authoritative; legacy fields fall back to their multi-variant type.
+  const multiple = field.multiple != null
+    ? !!field.multiple
+    : (field.type === 'multifile' || field.type === 'multiimage');
   const accept = field.accept || ((field.type === 'image' || field.type === 'multiimage') ? 'image/*' : '');
   const maxSizeMb = Number(field.maxSize) || 0;
   const maxFiles = multiple ? (Number(field.maxFiles) || 10) : 1;
   const files = Array.isArray(value) ? value : (value ? [value] : []);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [expanded, setExpanded] = useState(false);
 
   const href = (f) => resolveFileUrl(f?.url ?? f?.dataUrl);
   const isImage = (f) => (f?.type || '').startsWith('image/');
@@ -1535,16 +1554,21 @@ function FileFieldInput({ field, value, onChange }) {
     if (!picked.length) return;
     setError('');
     const ok = [];
-    let skipped = 0;
+    let tooBig = 0;
+    let wrongType = 0;
     setUploading(true);
     try {
       for (const f of picked) {
-        if (maxSizeMb && f.size > maxSizeMb * 1024 * 1024) { skipped++; continue; }
+        if (!fileMatchesAccept(f, accept)) { wrongType++; continue; }
+        if (maxSizeMb && f.size > maxSizeMb * 1024 * 1024) { tooBig++; continue; }
         // image fields → studies/study_<id>/images/, other files → .../files/
         const category = (field.type === 'image' || field.type === 'multiimage') ? 'images' : 'files';
         ok.push(await uploadFormFile(f, category)); // { url, name, type, size }
       }
-      if (skipped) setError(`${skipped} file(s) exceeded the ${maxSizeMb}MB limit and were skipped.`);
+      const msgs = [];
+      if (wrongType) msgs.push(`${wrongType} file(s) were not an accepted type (${accept}) and were skipped.`);
+      if (tooBig) msgs.push(`${tooBig} file(s) exceeded the ${maxSizeMb}MB limit and were skipped.`);
+      if (msgs.length) setError(msgs.join(' '));
       if (ok.length) {
         if (multiple) onChange([...files, ...ok].slice(0, maxFiles));
         else onChange(ok[0]);
@@ -1564,29 +1588,87 @@ function FileFieldInput({ field, value, onChange }) {
   return (
     <div>
       <button type="button" className={s.fileZone} onClick={() => inputRef.current?.click()} disabled={uploading} style={{ width: '100%', opacity: uploading ? 0.6 : 1, cursor: uploading ? 'wait' : 'pointer' }}>
-        <UploadCloud size={20} className={s.fileIcon} />
+        <UploadCloud size={26} className={s.fileIcon} />
         <span className={s.fileText}>
-          {uploading ? 'Uploading…' : `Click to upload${multiple ? ` (up to ${maxFiles})` : ''}${maxSizeMb ? ` · max ${maxSizeMb}MB` : ''}${accept ? ` · ${accept}` : ''}`}
+          {uploading ? 'Uploading…' : (multiple ? 'Click to upload files' : 'Click to upload a file')}
         </span>
+        {!uploading && (
+          <span className={s.fileHint}>
+            {[
+              multiple ? `Up to ${maxFiles} files` : 'Single file',
+              maxSizeMb ? `max ${maxSizeMb}MB each` : null,
+              accept ? accept.replace(/,/g, ', ') : 'Any file type',
+            ].filter(Boolean).join(' · ')}
+          </span>
+        )}
       </button>
       <input ref={inputRef} type="file" accept={accept || undefined} multiple={multiple} style={{ display: 'none' }} onChange={onPick} />
       {error && <div style={{ marginTop: 6, fontSize: 12, color: '#b91c1c' }}>{error}</div>}
-      {files.length > 0 && (
-        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {files.map((f, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 6, background: '#f8fafc' }}>
-              {isImage(f) && href(f)
-                ? <img src={href(f)} alt={f?.name ?? 'image'} style={{ width: 28, height: 28, objectFit: 'cover', borderRadius: 4, flexShrink: 0, border: '1px solid #e2e8f0' }} />
-                : <FileText size={14} style={{ color: '#64748b', flexShrink: 0 }} />}
-              {href(f)
-                ? <a href={href(f)} target="_blank" rel="noreferrer" download={f?.name} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#2563eb', textDecoration: 'none' }}>{f?.name ?? 'file'}</a>
-                : <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f?.name ?? 'file'}</span>}
-              {f?.size ? <span style={{ color: '#94a3b8' }}>{(f.size / 1024).toFixed(0)} KB</span> : null}
-              <button type="button" onClick={() => remove(i)} style={{ background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', padding: 2 }} aria-label="Remove"><XIcon size={13} /></button>
-            </div>
-          ))}
-        </div>
-      )}
+      {files.length > 0 && (() => {
+        const totalKb = files.reduce((sum, f) => sum + (f?.size || 0), 0) / 1024;
+        const sizeLabel = totalKb >= 1024 ? `${(totalKb / 1024).toFixed(1)} MB` : `${Math.round(totalKb)} KB`;
+        return (
+          <div style={{ marginTop: 8, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden' }}>
+            {/* Compact summary — one fixed-height row. Collapsed by default so the
+                file count never grows the form. Expand to manage on demand. */}
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 10px', background: '#f8fafc', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+            >
+              <div style={{ display: 'flex', flexShrink: 0 }}>
+                {files.slice(0, 4).map((f, i) => (
+                  isImage(f) && href(f)
+                    ? <img key={i} src={href(f)} alt="" style={{ width: 26, height: 26, borderRadius: 5, objectFit: 'cover', border: '1.5px solid #fff', marginLeft: i ? -9 : 0, boxShadow: '0 0 0 1px #e2e8f0' }} />
+                    : <span key={i} style={{ width: 26, height: 26, borderRadius: 5, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #fff', marginLeft: i ? -9 : 0 }}><FileText size={12} style={{ color: '#64748b' }} /></span>
+                ))}
+              </div>
+              <span style={{ flex: 1, fontSize: 12.5, color: '#334155', fontWeight: 600 }}>
+                {files.length} {files.length === 1 ? 'file' : 'files'}
+                <span style={{ color: '#94a3b8', fontWeight: 400 }}> · {sizeLabel}</span>
+              </span>
+              <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                {expanded ? 'Hide' : 'Manage'}
+                <ChevronDown size={14} style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+              </span>
+            </button>
+            {/* Expanded gallery — capped height with internal scroll, so even open
+                it can't push the rest of the form down past ~2 rows. */}
+            {expanded && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(92px, 1fr))', gap: 8, padding: 10, maxHeight: 196, overflowY: 'auto', borderTop: '1px solid #e2e8f0' }}>
+                {files.map((f, i) => {
+                  const img = isImage(f) && href(f);
+                  return (
+                    <div key={i} title={f?.name} style={{ position: 'relative', border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', background: '#f8fafc' }}>
+                      <button
+                        type="button"
+                        onClick={() => remove(i)}
+                        aria-label="Remove"
+                        style={{ position: 'absolute', top: 3, right: 3, zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: '50%', border: 'none', background: 'rgba(15,23,42,0.6)', color: '#fff', cursor: 'pointer', padding: 0 }}
+                      >
+                        <XIcon size={11} />
+                      </button>
+                      {img ? (
+                        <a href={href(f)} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
+                          <img src={href(f)} alt={f?.name ?? 'image'} style={{ width: '100%', height: 70, objectFit: 'cover', display: 'block' }} />
+                        </a>
+                      ) : (
+                        <a href={href(f) || undefined} target="_blank" rel="noreferrer" download={f?.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 70, textDecoration: 'none' }}>
+                          <FileText size={22} style={{ color: '#94a3b8' }} />
+                        </a>
+                      )}
+                      <div style={{ padding: '4px 6px' }}>
+                        <div style={{ fontSize: 10.5, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f?.name ?? 'file'}</div>
+                        {f?.size ? <div style={{ fontSize: 9.5, color: '#94a3b8' }}>{(f.size / 1024).toFixed(0)} KB</div> : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

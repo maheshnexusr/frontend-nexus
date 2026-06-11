@@ -24,6 +24,16 @@ import FormField from '@/components/form/FormField';
 import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
 import { addToast } from '@/app/notificationSlice';
+import { toIsoDate } from '@/utils/formatDate';
+
+// Enrollment Date window: today is the latest allowed date (no future dates),
+// and the picker reaches back at most 30 days.
+const todayIso     = () => toIsoDate(new Date());
+const thirtyAgoIso = () => {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  return toIsoDate(d);
+};
 
 import styles from '@/features/sponsor/pages/PersonnelFormPage.module.css';
 
@@ -44,10 +54,25 @@ const EMPTY = {
 
 function ic(s, err) { return err ? `${s.input} ${s.inputError}` : s.input; }
 
+// Subject initials: exactly 3 characters, capital letters only, dashes allowed
+// (e.g. ABC, A-B, --C).
+const INITIALS_RE = /^[A-Z-]{3}$/;
+// Strip anything that isn't a letter or dash, force uppercase, cap at 3 chars.
+const sanitizeInitials = (raw) =>
+  (raw ?? '').toUpperCase().replace(/[^A-Z-]/g, '').slice(0, 3);
+
 function validate(form) {
   const e = {};
-  if (form.subjectInitials && form.subjectInitials.length > 10) {
-    e.subjectInitials = 'Initials must be 10 characters or fewer.';
+  if (form.subjectInitials && !INITIALS_RE.test(form.subjectInitials)) {
+    e.subjectInitials = 'Initials must be exactly 3 characters — capital letters or dashes (e.g. ABC, A-B, --C).';
+  }
+  if (form.enrollmentDate) {
+    const picked = form.enrollmentDate.slice(0, 10);
+    if (picked > todayIso()) {
+      e.enrollmentDate = 'Enrollment Date cannot be in the future.';
+    } else if (picked < thirtyAgoIso()) {
+      e.enrollmentDate = 'Enrollment Date cannot be more than 30 days ago.';
+    }
   }
   return e;
 }
@@ -69,7 +94,10 @@ export default function SiteSubjectFormPage() {
   const dispatch      = useDispatch();
   const isEdit        = !!subjectId;
 
-  const [form,     setForm]     = useState(EMPTY);
+  // On create, default the Enrollment Date to today; edit mode overwrites it
+  // from the loaded record.
+  const [form,     setForm]     = useState(() =>
+    isEdit ? EMPTY : { ...EMPTY, enrollmentDate: todayIso() });
   const [errors,   setErrors]   = useState({});
   const [loading,  setLoading]  = useState(isEdit);
   const [saving,   setSaving]   = useState(false);
@@ -169,28 +197,50 @@ export default function SiteSubjectFormPage() {
             label="Subject Initials"
             name="subjectInitials"
             error={errors.subjectInitials}
-            helpText="Up to 10 characters."
+            helpText="Exactly 3 characters — capital letters or dashes (e.g. ABC, A-B, --C)."
           >
             <input
               id="subjectInitials"
               type="text"
               className={ic(styles, errors.subjectInitials)}
               value={form.subjectInitials}
-              onChange={setField('subjectInitials')}
-              maxLength={10}
-              placeholder="e.g. JD"
+              onChange={(e) => {
+                const value = sanitizeInitials(e.target.value);
+                setForm((f) => ({ ...f, subjectInitials: value }));
+                if (errors.subjectInitials) {
+                  setErrors((er) => ({ ...er, subjectInitials: undefined }));
+                }
+              }}
+              maxLength={3}
+              placeholder="ABC"
+              style={{ textTransform: 'uppercase' }}
               autoFocus
             />
           </FormField>
         </div>
 
         <div className={styles.row2}>
-          <FormField label="Enrollment Date" name="enrollmentDate">
+          <FormField
+            label="Enrollment Date"
+            name="enrollmentDate"
+            error={errors.enrollmentDate}
+            helpText="Today or within the last 30 days — future dates are not allowed."
+          >
             <PlatformDatePicker
               id="enrollmentDate"
               className={styles.input}
               value={form.enrollmentDate}
-              onChange={setField('enrollmentDate')}
+              onChange={(v) => {
+                // PlatformDatePicker emits a bare ISO string (not an event).
+                const value = typeof v === 'string' ? v : (v?.target?.value ?? '');
+                setForm((f) => ({ ...f, enrollmentDate: value }));
+                if (errors.enrollmentDate) {
+                  setErrors((er) => ({ ...er, enrollmentDate: undefined }));
+                }
+              }}
+              min={thirtyAgoIso()}
+              max={todayIso()}
+              error={!!errors.enrollmentDate}
             />
           </FormField>
 
