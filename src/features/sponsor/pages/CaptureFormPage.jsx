@@ -15,6 +15,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { Loader2, AlertCircle, ArrowLeft, CheckCircle2, Info } from 'lucide-react';
 import StudyFormRunner from '@/components/study-form-runner/StudyFormRunner';
+import Modal from '@/components/feedback/Modal';
 import sponsorAxiosClient from '@/api/sponsorAxiosClient';
 import { useReadOnlyView } from '@/features/workspace/hooks/useReadOnlyView';
 import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
@@ -69,6 +70,10 @@ export default function CaptureFormPage() {
   // workflow / query chips when the study doesn't enable those managers.
   const [verificationEnabled, setVerificationEnabled] = useState(true);
   const [queryEnabled,        setQueryEnabled]        = useState(true);
+  // Reopen-reason dialog (replaces the native window.prompt).
+  const [reopenOpen,   setReopenOpen]   = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
+  const [reopening,    setReopening]    = useState(false);
   // { [pageId]: { completedAt, status } } — pages already Marked Completed.
   const [completedPages, setCompletedPages] = useState({});
   // Persisted verification: { fields: { [fieldId]: {...} }, pages: { [pageId]: {...} } }
@@ -228,19 +233,28 @@ export default function CaptureFormPage() {
 
 
   // Controlled unlock — reopen a submitted form so it can be corrected.
-  const handleReopen = useCallback(async () => {
+  // Opens a reason dialog (popup) instead of the native window.prompt.
+  const handleReopen = useCallback(() => {
     if (!canReopen || !subjectId) return;
-    // eslint-disable-next-line no-alert
-    const reason = window.prompt('Reason for reopening this submitted form:');
-    if (reason == null || !reason.trim()) return;
+    setReopenReason('');
+    setReopenOpen(true);
+  }, [canReopen, subjectId]);
+
+  const submitReopen = useCallback(async () => {
+    const reason = reopenReason.trim();
+    if (!reason) return;
+    setReopening(true);
     try {
-      await sponsorAxiosClient.post(`/api/v1/sponsor/workspace/subjects/${subjectId}/forms/${formId}/reopen`, { reason: reason.trim() });
+      await sponsorAxiosClient.post(`/api/v1/sponsor/workspace/subjects/${subjectId}/forms/${formId}/reopen`, { reason });
       setFormStatus('In Progress');
+      setReopenOpen(false);
       dispatch(addToast({ type: 'success', message: 'Form reopened — it is editable again.' }));
     } catch (e) {
       dispatch(addToast({ type: 'error', message: e?.response?.data?.message || e?.message || 'Failed to reopen form.' }));
+    } finally {
+      setReopening(false);
     }
-  }, [subjectId, formId, canReopen, dispatch]);
+  }, [subjectId, formId, reopenReason, dispatch]);
 
   const isSubmitted = ['Submitted', 'Completed'].includes(formStatus);
   const isReadOnly  = ro.isReadOnly || !canEdit || isSubmitted;
@@ -364,6 +378,60 @@ export default function CaptureFormPage() {
         onBack={() => navigate(-1)}
         topContent={topContent}
       />
+
+      <Modal
+        open={reopenOpen}
+        onClose={() => { if (!reopening) setReopenOpen(false); }}
+        title="Reopen submitted form"
+        size="sm"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setReopenOpen(false)}
+              disabled={reopening}
+              style={{
+                padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={submitReopen}
+              disabled={reopening || !reopenReason.trim()}
+              style={{
+                padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none',
+                background: reopenReason.trim() ? '#b45309' : '#fcd9a8', color: '#fff',
+                cursor: reopenReason.trim() && !reopening ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {reopening ? 'Reopening…' : 'Reopen form'}
+            </button>
+          </>
+        }
+      >
+        <p style={{ margin: '0 0 10px', fontSize: 13, color: '#475569', lineHeight: 1.5 }}>
+          Reopening makes this submitted form editable again. Please give a reason — it is
+          recorded in the audit trail.
+        </p>
+        <textarea
+          autoFocus
+          value={reopenReason}
+          onChange={(e) => setReopenReason(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitReopen();
+          }}
+          placeholder="Reason for reopening this submitted form…"
+          rows={4}
+          style={{
+            width: '100%', boxSizing: 'border-box', resize: 'vertical', padding: '10px 12px',
+            borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13, fontFamily: 'inherit',
+            color: '#0f172a', outline: 'none',
+          }}
+        />
+      </Modal>
     </div>
   );
 }
