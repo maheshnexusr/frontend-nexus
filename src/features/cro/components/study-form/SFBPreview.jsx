@@ -589,13 +589,23 @@ function FieldInput({ field, value, onChange }) {
           <span className={s.toggleLabel}>{v ? 'On' : 'Off'}</span>
         </div>
       );
-    case 'file':
+    case 'file': {
+      const isMulti = field.multiple != null
+        ? !!field.multiple
+        : ['multifile', 'multiimage'].includes(field.type);
+      const acceptHint = field.accept ? field.accept.replace(/,/g, ', ') : 'Any file type';
       return (
         <div className={s.fileZone}>
-          <UploadCloud size={20} className={s.fileIcon} />
-          <span className={s.fileText}>Click or drag to upload</span>
+          <UploadCloud size={26} className={s.fileIcon} />
+          <span className={s.fileText}>{isMulti ? 'Click to upload files' : 'Click to upload a file'}</span>
+          <span className={s.fileHint}>
+            {[isMulti ? `Up to ${field.maxFiles ?? 10} files` : 'Single file',
+              field.maxSize ? `max ${field.maxSize}MB each` : null,
+              acceptHint].filter(Boolean).join(' · ')}
+          </span>
         </div>
       );
+    }
     case 'signature':
       return (
         <div className={s.signaturePad}>

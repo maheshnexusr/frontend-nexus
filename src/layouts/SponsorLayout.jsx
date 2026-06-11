@@ -209,7 +209,7 @@ export default function SponsorLayout() {
     },
     allowed('reports') && {
       key:   'reports',
-      label: 'Reports',
+      label: 'Reports Studio',
       icon:  BarChart2,
       path:  `${base}/reports`,
     },
@@ -264,7 +264,7 @@ export default function SponsorLayout() {
           showEnvironmentBadge
           showStudySwitcher={studyCount === null || studyCount > 1}
           showGlobalSearch
-          onSwitchStudy={() => navigate('/sponsor/select-study')}
+          onSwitchStudy={() => navigate('/sponsor/select-study?switch=1')}
         />
         <main className={styles.main}>
           <Outlet />

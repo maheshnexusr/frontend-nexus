@@ -23,6 +23,21 @@ import { activityLogService } from '@/services/activityLogService';
 import { usePermissions } from '@/features/auth/usePermissions';
 import s from './SFBRight.module.css';
 
+/* Accepted-file presets for file/image fields. The picker is multi-select;
+   the chosen presets compose into field.accept (the native input accept attr)
+   so the runtime + preview keep reading a single string. */
+const FILE_TYPE_PRESETS = [
+  { key: 'images',    label: 'Images (JPG, PNG)',                       exts: ['.jpg', '.jpeg', '.png'] },
+  { key: 'documents', label: 'Documents (PDF, XLSX, DOCX, PPT, CSV)',   exts: ['.pdf', '.xlsx', '.docx', '.ppt', '.pptx', '.csv'] },
+];
+const acceptFromPresets = (keys = []) =>
+  FILE_TYPE_PRESETS.filter((p) => keys.includes(p.key)).flatMap((p) => p.exts).join(',');
+const presetsFromAccept = (accept) => {
+  if (!accept) return [];
+  const lower = accept.toLowerCase();
+  return FILE_TYPE_PRESETS.filter((p) => p.exts.some((e) => lower.includes(e))).map((p) => p.key);
+};
+
 export default function SFBRight() {
   const block    = useSelector(selectActiveBlock);
   const page     = useSelector(selectActivePage);
@@ -411,17 +426,29 @@ function GeneralTab({ field, up, hasOptions, isLayout }) {
       )}
 
       {/* File / Attachment control properties */}
-      {['file','image','multifile','multiimage'].includes(field.type) && (
+      {['file','image','multifile','multiimage'].includes(field.type) && (() => {
+        // field.multiple is authoritative when set; legacy fields fall back to
+        // their multi-variant type. Single vs multi is now a toggle, not the type.
+        const fileMulti = field.multiple != null
+          ? !!field.multiple
+          : ['multifile','multiimage'].includes(field.type);
+        const presets = field.acceptPresets ?? presetsFromAccept(field.accept);
+        return (
         <>
           <div className={s.subSectionLabel}>Attachment</div>
           <SField label="Accepted Types">
-            <input
-              className={s.sinput}
-              value={field.accept ?? ''}
-              onChange={(e) => up('accept', e.target.value)}
-              placeholder="e.g. image/*, .pdf, .docx"
+            <AcceptTypePicker
+              value={presets}
+              onChange={(keys) => {
+                up('acceptPresets', keys);
+                up('accept', acceptFromPresets(keys));
+              }}
             />
           </SField>
+          <div className={s.toggleRow}>
+            <span className={s.toggleRowLabel}>Allow multiple files</span>
+            <Toggle value={fileMulti} onChange={(v) => up('multiple', v)} />
+          </div>
           <SField label="Max Size (MB)">
             <input
               className={s.sinput}
@@ -432,7 +459,7 @@ function GeneralTab({ field, up, hasOptions, isLayout }) {
               placeholder="5"
             />
           </SField>
-          {['multifile','multiimage'].includes(field.type) && (
+          {fileMulti && (
             <SField label="Max Files">
               <input
                 className={s.sinput}
@@ -445,7 +472,8 @@ function GeneralTab({ field, up, hasOptions, isLayout }) {
             </SField>
           )}
         </>
-      )}
+        );
+      })()}
 
       {/* Radio / checkbox group — default selection + "Other" option */}
       {['radiogroup','checkboxgroup'].includes(field.type) && (
@@ -1488,6 +1516,42 @@ function Toggle({ value, onChange }) {
     >
       <span className={s.toggleThumb} style={{ transform: value ? 'translateX(16px)' : 'translateX(0)' }} />
     </button>
+  );
+}
+
+/** Multi-select dropdown for accepted file types (file/image fields). */
+function AcceptTypePicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const selected = value ?? [];
+  const toggle = (key) =>
+    onChange(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
+  const summary = selected.length
+    ? FILE_TYPE_PRESETS.filter((p) => selected.includes(p.key)).map((p) => p.label).join(', ')
+    : 'Any file type';
+  return (
+    <div className={s.msWrap}>
+      <button type="button" className={s.msTrigger} onClick={() => setOpen((o) => !o)}>
+        <span className={selected.length ? s.msValue : s.msPlaceholder}>{summary}</span>
+        <ChevronDown size={14} style={{ flexShrink: 0, color: '#94a3b8' }} />
+      </button>
+      {open && (
+        <>
+          <div className={s.msBackdrop} onClick={() => setOpen(false)} />
+          <div className={s.msMenu}>
+            {FILE_TYPE_PRESETS.map((p) => (
+              <label key={p.key} className={s.msOption}>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(p.key)}
+                  onChange={() => toggle(p.key)}
+                />
+                <span>{p.label}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

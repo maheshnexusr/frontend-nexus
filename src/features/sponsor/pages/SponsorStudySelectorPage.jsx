@@ -15,7 +15,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, FlaskConical, ChevronRight, Loader2, AlertTriangle } from 'lucide-react';
 
 const REMEMBER_KEY = 'sponsor.rememberedStudyId';
@@ -91,6 +91,11 @@ function StudyCard({ study, onSelect, busy }) {
 export default function SponsorStudySelectorPage() {
   const dispatch    = useAppDispatch();
   const navigate    = useNavigate();
+  const [searchParams] = useSearchParams();
+  // When the user lands here via "Switch Study" (?switch=1) we must NOT
+  // auto-redirect to the remembered study — otherwise they could never reach
+  // this page to pick a different one or untick "Remember my choice".
+  const forceChoose = searchParams.get('switch') === '1';
   const currentUser = useAppSelector(selectCurrentUser);
   const [query,    setQuery]    = useState('');
   const [studies,  setStudies]  = useState([]);
@@ -127,6 +132,9 @@ export default function SponsorStudySelectorPage() {
    * values without the pipe are discarded so the user re-picks. */
   useEffect(() => {
     if (loading || studies.length === 0) return;
+    // Explicit "Switch Study" → always show the picker (let the user re-choose
+    // or untick "Remember my choice").
+    if (forceChoose) return;
     let rememberedKey = null;
     try { rememberedKey = localStorage.getItem(REMEMBER_KEY); } catch { /* ignore */ }
     if (!rememberedKey || !rememberedKey.includes('|')) {

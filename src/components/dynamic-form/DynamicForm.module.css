@@ -341,17 +341,21 @@
   font-weight: 500;
 }
 
-/* ── File upload ───────────────────────────────────────────────────────────── */
+/* ── File upload — tall, vertical drop zone ──────────────────────────────────── */
 .fileZone {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
+  justify-content: center;
+  gap: 6px;
+  min-height: 120px;
+  padding: 24px 16px;
   border: 2px dashed #cbd5e1;
-  border-radius: 10px;
+  border-radius: 12px;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
   background: #fafbfc;
+  text-align: center;
 }
 
 .fileZone:hover {
@@ -364,12 +368,27 @@
 }
 
 .fileIcon {
-  font-size: 1.3rem;
+  font-size: 1.9rem;
+  line-height: 1;
 }
 
 .fileText {
   font-size: 0.875rem;
-  color: #64748b;
+  font-weight: 600;
+  color: #334155;
+}
+
+.fileHint {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.fileError {
+  font-size: 0.75rem;
+  color: #dc2626;
+  line-height: 1.4;
+  text-align: center;
 }
 
 /* ── Rating (stars) ────────────────────────────────────────────────────────── */

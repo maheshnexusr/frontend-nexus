@@ -13,6 +13,7 @@
  *   rating
  *   h2 | paragraph | divider   (layout-only, no input)
  */
+import { useState } from 'react';
 import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import s from './DynamicForm.module.css';
 
@@ -23,8 +24,23 @@ function normaliseOptions(options = []) {
   );
 }
 
+// True if `file` satisfies the accept string (".jpg,.png", "image/*", "application/pdf").
+// The native accept attr is only a picker hint — this enforces it on selection.
+function fileMatchesAccept(file, accept) {
+  const tokens = (accept || '').split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
+  if (!tokens.length) return true;
+  const name = (file.name || '').toLowerCase();
+  const mime = (file.type || '').toLowerCase();
+  return tokens.some((tok) => {
+    if (tok.startsWith('.')) return name.endsWith(tok);
+    if (tok.endsWith('/*')) return mime.startsWith(tok.slice(0, -1));
+    return mime === tok;
+  });
+}
+
 export default function FieldRenderer({ field, value, error, onChange, readOnly }) {
   const { type, label, placeholder, helpText, required, options = [], rows, validation = {} } = field;
+  const [fileError, setFileError] = useState('');
 
   /* ── layout-only elements ─────────────────────────────────────────────── */
   if (type === 'h2')       return <h2  className={s.layoutH2}>{label || 'Section'}</h2>;
@@ -232,21 +248,51 @@ export default function FieldRenderer({ field, value, error, onChange, readOnly 
 
       /* ─ file upload ─ */
       case 'file':
+      case 'multifile':
+      case 'image':
+      case 'multiimage': {
+        const isMulti = field.multiple != null
+          ? !!field.multiple
+          : ['multifile', 'multiimage'].includes(field.type);
+        const acceptHint = field.accept ? field.accept.replace(/,/g, ', ') : 'Any file type';
+        const picked = Array.isArray(v) ? v : (v ? [v] : []);
         return (
           <label className={s.fileZone}>
             <input
               id={field.id}
               type="file"
               className={s.fileInput}
+              accept={field.accept || undefined}
+              multiple={isMulti}
               disabled={readOnly}
-              onChange={(e) => set(e.target.files?.[0] ?? null)}
+              onChange={(e) => {
+                const all = Array.from(e.target.files || []);
+                e.target.value = '';
+                const allowed = all.filter((f) => fileMatchesAccept(f, field.accept));
+                const rejected = all.length - allowed.length;
+                setFileError(rejected
+                  ? `${rejected} file(s) were not an accepted type (${acceptHint}) and were skipped.`
+                  : '');
+                if (!allowed.length) return;
+                const capped = isMulti ? allowed.slice(0, field.maxFiles ?? 10) : [allowed[0]];
+                set(isMulti ? capped : capped[0]);
+              }}
             />
             <span className={s.fileIcon}>📎</span>
             <span className={s.fileText}>
-              {v?.name ? v.name : 'Click to upload or drag & drop'}
+              {picked.length
+                ? picked.map((f) => f?.name).filter(Boolean).join(', ')
+                : (isMulti ? 'Click to upload files' : 'Click to upload a file')}
             </span>
+            <span className={s.fileHint}>
+              {[isMulti ? `Up to ${field.maxFiles ?? 10} files` : 'Single file',
+                field.maxSize ? `max ${field.maxSize}MB each` : null,
+                acceptHint].filter(Boolean).join(' · ')}
+            </span>
+            {fileError && <span className={s.fileError}>{fileError}</span>}
           </label>
         );
+      }
 
       /* ─ rating (stars) ─ */
       case 'rating': {

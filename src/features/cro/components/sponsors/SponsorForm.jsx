@@ -8,12 +8,14 @@ import { useNavigate }         from 'react-router-dom';
 import { useDispatch }         from 'react-redux';
 import { ArrowLeft }           from 'lucide-react';
 import { sponsorsClient }      from '@/features/cro/api/sponsorsClient';
-import { countriesClient }     from '@/features/cro/api/countriesClient';
+import { locationsClient }     from '@/features/cro/api/locationsClient';
 import { addToast }            from '@/app/notificationSlice';
 import FormField               from '@/components/form/FormField';
 import TextArea                from '@/components/form/TextArea';
 import SearchableDropdown      from '@/components/form/SearchableDropdown';
 import ImageUpload             from '@/components/form/ImageUpload';
+import PostalCodeSelect        from '@/features/sponsor/components/sites/PostalCodeSelect';
+import { resolveFileUrl }      from '@/api/fileUrl';
 import styles from './SponsorForm.module.css';
 
 const STATUS_OPTIONS = [
@@ -30,6 +32,7 @@ const ACCESS_OPTIONS = [
 
 const EMPTY = {
   photograph:         null,
+  organizationLogo:   null,
   fullName:           '',
   contactNumber:      '',
   email:              '',
@@ -38,6 +41,7 @@ const EMPTY = {
   registrationNumber: '',
   addressLine1:       '',
   addressLine2:       '',
+  locationId:         '',
   city:               '',
   district:           '',
   state:              '',
@@ -57,19 +61,32 @@ export default function SponsorForm({ mode, sponsorId }) {
   const [errors,         setErrors]  = useState({});
   const [saving,         setSaving]  = useState(false);
   const [loadingData,    setLoading] = useState(isEdit);
-  const [countryOptions, setCountryOptions] = useState([]);
+  // Active locations master — drives the Postal Code autofill (city / district /
+  // state / country are looked up from the chosen postal code).
+  const [locations, setLocations] = useState([]);
 
-  // Load active countries
+  // Load active locations (postal-code lookup table).
   useEffect(() => {
-    countriesClient.list().then((all) =>
-      setCountryOptions(
-        all
-          .filter((c) => c.status === 'Active')
-          .sort((a, b) => a.countryName.localeCompare(b.countryName))
-          .map((c) => ({ value: c.id, label: c.countryName })),
-      ),
-    );
+    locationsClient.list()
+      .then((all) => setLocations(all.filter((l) => l.status === 'Active')))
+      .catch(() => { /* postal autofill just won't have options */ });
   }, []);
+
+  // Pick a postal code → auto-fill country / city / state / district + keep the
+  // location_id (that's what the sponsor row actually persists).
+  const handlePostalSelect = (loc) => {
+    setForm((prev) => ({
+      ...prev,
+      locationId:  loc.id,
+      zipcode:     loc.postalCode ?? '',
+      city:        loc.city ?? '',
+      district:    loc.district ?? '',
+      state:       loc.state ?? '',
+      countryId:   loc.countryId ?? '',
+      countryName: loc.countryName ?? '',
+    }));
+    setErrors((prev) => ({ ...prev, city: undefined, district: undefined, zipcode: undefined }));
+  };
 
   // Load existing sponsor when editing
   useEffect(() => {
@@ -87,12 +104,6 @@ export default function SponsorForm({ mode, sponsorId }) {
     setErrors((prev) => ({ ...prev, [field]: undefined }));
   };
 
-  const handleCountryChange = (id) => {
-    const opt = countryOptions.find((o) => o.value === id);
-    setForm((prev) => ({ ...prev, countryId: id, countryName: opt?.label ?? '' }));
-    setErrors((prev) => ({ ...prev, countryId: undefined }));
-  };
-
   // ── validation + submit ───────────────────────────────────────────────────
   const handleSubmit = async () => {
     const errs = {};
@@ -102,6 +113,9 @@ export default function SponsorForm({ mode, sponsorId }) {
     else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email       = 'Please enter a valid email address.';
     if (!form.organizationName.trim())   errs.organizationName   = 'Organization Name is required.';
     if (!form.registrationNumber.trim()) errs.registrationNumber = 'Registration Number is required.';
+    // Postal code (location) drives City/District/State/Country, so requiring it
+    // covers the whole address. Pick one from Masters → Locations.
+    if (!form.zipcode.trim())            errs.zipcode            = 'Postal Code is required.';
     if (!form.city.trim())               errs.city               = 'City is required.';
     if (!form.district.trim())           errs.district           = 'District is required.';
 
@@ -175,18 +189,18 @@ export default function SponsorForm({ mode, sponsorId }) {
       {/* Form card */}
       <div className={styles.card}>
 
-        {/* ── Photo ──────────────────────────────────────────────────────── */}
+        {/* ── Sponsor photo ──────────────────────────────────────────────── */}
         <div className={styles.photoRow}>
           <FormField label="Sponsor Photograph" name="photograph">
             <ImageUpload
-              value={form.photograph}
+              value={resolveFileUrl(form.photograph)}
               onChange={(val) => setForm((p) => ({ ...p, photograph: val }))}
-              accept="image/jpeg,image/jpg,image/png"
+              accept="image/jpeg,image/jpg,image/png,image/webp"
               maxSize={2}
               circular
             />
           </FormField>
-          <p className={styles.photoHint}>JPEG or PNG · max 2 MB</p>
+          <p className={styles.photoHint}>JPEG, PNG or WebP · max 2 MB</p>
         </div>
 
         {/* ── Section: Personal & Contact ───────────────────────────────── */}
@@ -247,6 +261,17 @@ export default function SponsorForm({ mode, sponsorId }) {
             <FormField label="Website" name="website">
               <input id="website" className={styles.input} value={form.website} onChange={set('website')} placeholder="https://example.com" type="url" />
             </FormField>
+            <FormField label="Organization Logo" name="organizationLogo">
+              <ImageUpload
+                value={resolveFileUrl(form.organizationLogo)}
+                onChange={(val) => setForm((p) => ({ ...p, organizationLogo: val }))}
+                accept="image/jpeg,image/jpg,image/png,image/webp"
+                maxSize={2}
+              />
+              <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: 'var(--text-muted, #94a3b8)' }}>
+                JPEG, PNG or WebP · max 2 MB
+              </span>
+            </FormField>
           </div>
         </section>
 
@@ -261,29 +286,31 @@ export default function SponsorForm({ mode, sponsorId }) {
               <input id="addressLine2" className={styles.input} value={form.addressLine2} onChange={set('addressLine2')} placeholder="Apt, suite, floor…" />
             </FormField>
           </div>
-          <div className={styles.row3}>
-            <FormField label="City" name="city" required error={errors.city}>
-              <input id="city" className={ic(styles, errors.city)} value={form.city} onChange={set('city')} placeholder="City" />
-            </FormField>
-            <FormField label="District" name="district" required error={errors.district}>
-              <input id="district" className={ic(styles, errors.district)} value={form.district} onChange={set('district')} placeholder="District / County" />
-            </FormField>
-            <FormField label="State" name="state">
-              <input id="state" className={styles.input} value={form.state} onChange={set('state')} placeholder="State / Province" />
-            </FormField>
-          </div>
+          {/* Postal code drives the rest: picking one auto-fills City / District /
+              State / Country from the locations master. */}
           <div className={styles.row2}>
-            <FormField label="Zipcode" name="zipcode">
-              <input id="zipcode" className={styles.input} value={form.zipcode} onChange={set('zipcode')} placeholder="Postal / ZIP code" />
+            <FormField label="Postal Code" name="zipcode" required error={errors.zipcode}>
+              <PostalCodeSelect
+                value={form.zipcode}
+                locations={locations}
+                onSelect={handlePostalSelect}
+                invalid={Boolean(errors.zipcode)}
+                placeholder="Search postal code…"
+              />
             </FormField>
             <FormField label="Country" name="countryId">
-              <SearchableDropdown
-                options={countryOptions}
-                value={form.countryId}
-                onChange={handleCountryChange}
-                placeholder="Select country…"
-                searchPlaceholder="Search countries…"
-              />
+              <input id="countryName" className={styles.input} value={form.countryName} readOnly placeholder="Auto-filled from postal code" />
+            </FormField>
+          </div>
+          <div className={styles.row3}>
+            <FormField label="City" name="city" required error={errors.city}>
+              <input id="city" className={ic(styles, errors.city)} value={form.city} readOnly placeholder="Auto-filled" />
+            </FormField>
+            <FormField label="District" name="district" required error={errors.district}>
+              <input id="district" className={ic(styles, errors.district)} value={form.district} readOnly placeholder="Auto-filled" />
+            </FormField>
+            <FormField label="State" name="state">
+              <input id="state" className={styles.input} value={form.state} readOnly placeholder="Auto-filled" />
             </FormField>
           </div>
         </section>

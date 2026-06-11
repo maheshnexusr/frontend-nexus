@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Pencil, Mail, Phone, Building2, Globe, MapPin, Hash, Lock } from 'lucide-react';
 import Modal       from '@/components/feedback/Modal';
 import StatusBadge from '@/components/feedback/StatusBadge';
+import { resolveFileUrl } from '@/api/fileUrl';
 import { formatDate } from '@/utils/formatDate';
 import styles from './SponsorViewModal.module.css';
 
@@ -43,12 +44,19 @@ export default function SponsorViewModal({ sponsor, onClose }) {
 
         {/* Profile header */}
         <div className={styles.profileHead}>
-          <Avatar photo={sponsor.photograph} name={sponsor.fullName} />
+          <Avatar photo={resolveFileUrl(sponsor.photograph)} name={sponsor.fullName} />
           <div>
             <h3 className={styles.name}>{sponsor.fullName}</h3>
             <p className={styles.orgName}>{sponsor.organizationName}</p>
             <StatusBadge status={sponsor.status} />
           </div>
+          {sponsor.organizationLogo && (
+            <img
+              src={resolveFileUrl(sponsor.organizationLogo)}
+              alt={`${sponsor.organizationName} logo`}
+              style={{ marginLeft: 'auto', maxHeight: 48, maxWidth: 120, objectFit: 'contain' }}
+            />
+          )}
         </div>
 
         {/* Details grid */}

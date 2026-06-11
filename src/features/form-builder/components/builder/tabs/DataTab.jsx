@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2, GripVertical } from 'lucide-react';
+import { Plus, Trash2, GripVertical, ChevronDown } from 'lucide-react';
 import useFormStore from '@/store/useFormStore';
 import { Toggle } from './GeneralTab';
 
@@ -8,6 +8,20 @@ const labelCls = 'block text-xs font-medium text-slate-600 mb-1';
 
 const HAS_OPTIONS = ['select', 'multiselect', 'checkboxgroup', 'radiogroup', 'tags'];
 const HAS_SLIDER = ['slider', 'rangeslider'];
+
+/* Accepted-file presets — the picker is multi-select and composes the chosen
+   presets into element.accept (the native input accept attribute). */
+const FILE_TYPE_PRESETS = [
+  { key: 'images',    label: 'Images (JPG, PNG)',                     exts: ['.jpg', '.jpeg', '.png'] },
+  { key: 'documents', label: 'Documents (PDF, XLSX, DOCX, PPT, CSV)', exts: ['.pdf', '.xlsx', '.docx', '.ppt', '.pptx', '.csv'] },
+];
+const acceptFromPresets = (keys = []) =>
+  FILE_TYPE_PRESETS.filter((p) => keys.includes(p.key)).flatMap((p) => p.exts).join(',');
+const presetsFromAccept = (accept) => {
+  if (!accept) return [];
+  const lower = accept.toLowerCase();
+  return FILE_TYPE_PRESETS.filter((p) => p.exts.some((e) => lower.includes(e))).map((p) => p.key);
+};
 
 export default function DataTab({ element }) {
   const { updateElement } = useFormStore();
@@ -113,27 +127,81 @@ export default function DataTab({ element }) {
       )}
 
       {/* File config */}
-      {['file', 'multifile', 'image', 'multiimage'].includes(element.type) && (
-        <>
-          <div className="mb-3">
-            <label className={labelCls}>Accepted types</label>
-            <input
-              className={inputCls}
-              value={element.accept || ''}
-              onChange={(e) => up('accept', e.target.value)}
-              placeholder="e.g. image/*, .pdf, .docx"
-            />
-          </div>
-          <div className="mb-3">
-            <label className={labelCls}>Max size (MB)</label>
-            <input className={inputCls} type="number" min={1} value={element.maxSize || 5} onChange={(e) => up('maxSize', Number(e.target.value))} />
-          </div>
-          {['multifile', 'multiimage'].includes(element.type) && (
+      {['file', 'multifile', 'image', 'multiimage'].includes(element.type) && (() => {
+        // element.multiple is authoritative when set; legacy fields fall back to
+        // their multi-variant type. Single vs multi is a toggle, not the type.
+        const fileMulti = element.multiple != null
+          ? !!element.multiple
+          : ['multifile', 'multiimage'].includes(element.type);
+        const presets = element.acceptPresets ?? presetsFromAccept(element.accept);
+        return (
+          <>
             <div className="mb-3">
-              <label className={labelCls}>Max files</label>
-              <input className={inputCls} type="number" min={1} value={element.maxFiles || 10} onChange={(e) => up('maxFiles', Number(e.target.value))} />
+              <label className={labelCls}>Accepted types</label>
+              <AcceptTypePicker
+                value={presets}
+                onChange={(keys) => updateElement(element.id, { acceptPresets: keys, accept: acceptFromPresets(keys) })}
+              />
             </div>
-          )}
+            <div className="flex items-center justify-between py-2 mb-1">
+              <span className="text-xs font-medium text-slate-600">Allow multiple files</span>
+              <Toggle value={fileMulti} onChange={(v) => up('multiple', v)} />
+            </div>
+            <div className="mb-3">
+              <label className={labelCls}>Max size (MB)</label>
+              <input className={inputCls} type="number" min={1} value={element.maxSize || 5} onChange={(e) => up('maxSize', Number(e.target.value))} />
+            </div>
+            {fileMulti && (
+              <div className="mb-3">
+                <label className={labelCls}>Max files</label>
+                <input className={inputCls} type="number" min={1} value={element.maxFiles || 10} onChange={(e) => up('maxFiles', Number(e.target.value))} />
+              </div>
+            )}
+          </>
+        );
+      })()}
+    </div>
+  );
+}
+
+/** Multi-select dropdown for accepted file types. */
+function AcceptTypePicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const selected = value ?? [];
+  const toggle = (key) =>
+    onChange(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
+  const summary = selected.length
+    ? FILE_TYPE_PRESETS.filter((p) => selected.includes(p.key)).map((p) => p.label).join(', ')
+    : 'Any file type';
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`${inputCls} flex items-center justify-between gap-2 text-left`}
+      >
+        <span className={selected.length ? 'text-slate-700' : 'text-slate-400'}>{summary}</span>
+        <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 right-0 top-full mt-1 z-50 p-1 bg-white border border-slate-200 rounded-md shadow-lg">
+            {FILE_TYPE_PRESETS.map((p) => (
+              <label
+                key={p.key}
+                className="flex items-center gap-2 px-2 py-1.5 text-sm text-slate-700 rounded hover:bg-slate-50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(p.key)}
+                  onChange={() => toggle(p.key)}
+                  className="w-3.5 h-3.5 accent-[#07bf9b] cursor-pointer"
+                />
+                <span>{p.label}</span>
+              </label>
+            ))}
+          </div>
         </>
       )}
     </div>

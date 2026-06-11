@@ -3,6 +3,7 @@ import { useNavigate }   from 'react-router-dom';
 import { useDispatch }   from 'react-redux';
 import { Plus, Pencil, Trash2, Users } from 'lucide-react';
 import { sponsorsClient, exportSponsorsCSV } from '@/features/cro/api/sponsorsClient';
+import { resolveFileUrl } from '@/api/fileUrl';
 import { addToast }      from '@/app/notificationSlice';
 import DataTable         from '@/components/data-table/DataTable';
 import StatusBadge       from '@/components/feedback/StatusBadge';
@@ -123,7 +124,7 @@ export default function SponsorListPage() {
       sortable: true,
       render:   (val, row) => (
         <button className={styles.nameBtn} onClick={() => setView(row)} type="button">
-          <Avatar photo={row.photograph} name={val} />
+          <Avatar photo={resolveFileUrl(row.photograph)} name={val} />
         </button>
       ),
     },
