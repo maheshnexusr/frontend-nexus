@@ -29,12 +29,14 @@ const EMPTY = {
   status:        'Invited',
 };
 
-export default function SitePersonnelModal({ open, mode, personnel, onClose, onSaved, onError }) {
+export default function SitePersonnelModal({ open, mode, personnel, roles = [], onClose, onSaved, onError }) {
   const isEdit = mode === 'edit';
 
   const [form,   setForm]   = useState(EMPTY);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+
+  const roleNames = roles.map((r) => r.name);
 
   useEffect(() => {
     if (!open) return;
@@ -44,7 +46,10 @@ export default function SitePersonnelModal({ open, mode, personnel, onClose, onS
         fullName:      personnel.fullName     ?? '',
         email:         personnel.email        ?? '',
         contactNumber: personnel.contactNumber ?? '',
-        roleId:        personnel.roleId       ?? personnel.role ?? '',
+        // Show the human-readable role NAME (not the internal role_id) when
+        // re-editing. The backend resolves either a name or an id on save, so
+        // seeding the name keeps the field legible and still round-trips.
+        roleId:        personnel.role         ?? personnel.roleId ?? '',
         status:        personnel.status       ?? 'Invited',
       });
     } else {
@@ -157,15 +162,28 @@ export default function SitePersonnelModal({ open, mode, personnel, onClose, onS
             />
           </FormField>
 
-          <FormField label="Role" name="roleId" helpText="Site role name or ID for this study.">
-            <input
+          <FormField
+            label="Role"
+            name="roleId"
+            helpText={roles.length === 0 ? 'No site roles configured for this study yet.' : ''}
+          >
+            <select
               id="roleId"
-              type="text"
               className={styles.input}
               value={form.roleId}
               onChange={setField('roleId')}
-              placeholder="e.g. Principal Investigator"
-            />
+            >
+              <option value="">— Select role —</option>
+              {/* The currently-assigned role may have since been renamed or
+                  removed from the master; keep it selectable so editing never
+                  silently drops it. */}
+              {form.roleId && !roleNames.includes(form.roleId) && (
+                <option value={form.roleId}>{form.roleId}</option>
+              )}
+              {roles.map((r) => (
+                <option key={r.id || r.name} value={r.name}>{r.name}</option>
+              ))}
+            </select>
           </FormField>
         </div>
 

@@ -25,7 +25,8 @@ import ConfirmDialog                 from '@/components/feedback/ConfirmDialog';
 import { usePermissions }            from '@/features/auth/usePermissions';
 import css from '@/features/sponsor/pages/PersonnelPage.module.css';
 
-const ROLES_FILTER   = ['All', 'Principal Investigator', 'Site Coordinator', 'Study Nurse', 'Subject/Patient', 'Pharmacist', 'Lab Technician', 'Other'];
+// Role options are loaded from the Site Roles master at runtime (see
+// roleOptions state) — never hardcoded, so custom study roles appear too.
 const STATUS_OPTIONS = ['All', 'Active', 'Inactive', 'Invited'];
 const CONSENT_STATUS = ['All', 'Pending', 'Submitted', 'Approved', 'Rejected', 'Expired'];
 
@@ -74,6 +75,9 @@ export default function SitePersonnelPage() {
   // Data
   const [personnel,  setPersonnel]  = useState([]);
   const [sites,      setSites]      = useState([]);
+  // Site Roles master for this study — drives the role filter + invite/edit
+  // picker. Loaded once; [] until it resolves.
+  const [roleOptions, setRoleOptions] = useState([]);
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -127,6 +131,11 @@ export default function SitePersonnelPage() {
   }, [statusFilter, roleFilter, siteFilter, consentFilter]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Roles don't change with the personnel filters, so load them once.
+  useEffect(() => {
+    siteSitePersonnelClient.roles('').then(setRoleOptions).catch(() => setRoleOptions([]));
+  }, []);
 
   const filtered = useMemo(() => {
     let list = personnel;
@@ -310,7 +319,8 @@ export default function SitePersonnelPage() {
             value={roleFilter}
             onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
           >
-            {ROLES_FILTER.map((r) => <option key={r} value={r}>{r === 'All' ? 'All Roles' : r}</option>)}
+            <option value="All">All Roles</option>
+            {roleOptions.map((r) => <option key={r.id || r.name} value={r.name}>{r.name}</option>)}
           </select>
 
           {sites.length > 0 && (
@@ -556,6 +566,7 @@ export default function SitePersonnelPage() {
         open={inviteOpen || Boolean(editTarget)}
         mode={editTarget ? 'edit' : 'invite'}
         personnel={editTarget}
+        roles={roleOptions}
         onClose={() => { setInviteOpen(false); setEditTarget(null); }}
         onSaved={() => {
           dispatch(addToast({
