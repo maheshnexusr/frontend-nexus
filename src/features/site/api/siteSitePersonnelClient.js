@@ -137,6 +137,21 @@ export const siteSitePersonnelClient = {
     return [];
   },
 
+  /** Site Roles master for this study — feeds the Personnel role filter and the
+   *  invite/edit role picker so neither hardcodes role names. Returns
+   *  { id, name, status }[]. Best-effort: [] on error so the UI still renders. */
+  async roles(_studyId) {
+    try {
+      const res = await siteAxiosClient.get(`${WORKSPACE}/lookups/site-roles`);
+      const arr = Array.isArray(res) ? res : (res?.roles ?? res?.items ?? res?.data ?? []);
+      return arr.map((r) => ({
+        id:     r.role_id   ?? r.roleId   ?? r.id   ?? '',
+        name:   r.role_name ?? r.roleName ?? r.name ?? '',
+        status: r.status    ?? 'Active',
+      })).filter((r) => r.name);
+    } catch { return []; }
+  },
+
   /** Site filter dropdown source — single row (the user's own site). */
   async getSites(_studyId) {
     try {
