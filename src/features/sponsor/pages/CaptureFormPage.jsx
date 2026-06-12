@@ -337,9 +337,9 @@ export default function CaptureFormPage() {
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px',
               borderRadius: 999, fontSize: 11.5, fontWeight: 700,
-              background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
+              background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca',
             }}>
-              🔒 Submitted — read-only
+              🔒 Submitted (Read-only)
             </span>
             {canReopen && (
               <button

@@ -37,14 +37,6 @@ const thirtyAgoIso = () => {
 
 import styles from '@/features/sponsor/pages/PersonnelFormPage.module.css';
 
-const ENROLLMENT_STATUSES = [
-  { value: 'Pending',      label: 'Pending' },
-  { value: 'Enrolled',     label: 'Enrolled' },
-  { value: 'Completed',    label: 'Completed' },
-  { value: 'Withdrawn',    label: 'Withdrawn' },
-  { value: 'Discontinued', label: 'Discontinued' },
-];
-
 const EMPTY = {
   subjectNumber:    '',  // populated by backend on create; shown read-only after
   subjectInitials:  '',
@@ -118,12 +110,6 @@ export default function SiteSubjectFormPage() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [isEdit, subjectId, dispatch]);
-
-  const setField = (key) => (e) => {
-    const value = e.target.value;
-    setForm((f) => ({ ...f, [key]: value }));
-    if (errors[key]) setErrors((er) => ({ ...er, [key]: undefined }));
-  };
 
   const handleSubmit = useCallback(async (e) => {
     e?.preventDefault?.();
@@ -244,23 +230,10 @@ export default function SiteSubjectFormPage() {
             />
           </FormField>
 
-          {/* Status is set automatically on create (new subjects start
-              "Enrolled", then move to "Pending" when data capture begins).
-              It only becomes editable here once the subject exists. */}
-          {isEdit && (
-            <FormField label="Enrollment Status" name="enrollmentStatus">
-              <select
-                id="enrollmentStatus"
-                className={styles.input}
-                value={form.enrollmentStatus}
-                onChange={setField('enrollmentStatus')}
-              >
-                {ENROLLMENT_STATUSES.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </FormField>
-          )}
+          {/* Enrollment Status is managed automatically by the lifecycle
+              (new subjects start "Enrolled", move to "Pending" when data
+              capture begins, etc.) — it is not user-editable here, so no
+              status control is rendered in create OR edit mode. */}
         </div>
       </div>
 

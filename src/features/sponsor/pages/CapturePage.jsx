@@ -17,7 +17,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
-  Database, RefreshCw, Search, X, Filter,
+  Database, RefreshCw, Search, X,
   ClipboardList, FileText, UserCheck, AlertCircle,
   Clock, CheckCircle2, PauseCircle, XCircle, History, Trash2, ArrowRightLeft,
 } from 'lucide-react';
@@ -417,20 +417,6 @@ export default function CapturePage() {
             )}
           </div>
 
-          <div className={css.filterRow}>
-            <Filter size={13} className={css.filterIcon} />
-            {/* Pills filter by the enrollment lifecycle (the unified status). */}
-            {['All', 'Enrolled', 'Pending', 'Completed'].map((s) => (
-              <button
-                key={s}
-                className={`${css.filterBtn} ${statusFilter === s ? css.filterBtnActive : ''}`}
-                onClick={() => setStatusFilter(s)}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-
           {siteOptions.length > 0 && (
             <select className={css.siteSelect} value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)}>
               <option value="">All Sites</option>
@@ -536,8 +522,8 @@ export default function CapturePage() {
                           type="button"
                           className={css.iconBtn}
                           onClick={() => openForm(subject)}
-                          title="Navigate to CRF"
-                          aria-label="Navigate to CRF"
+                          title="Open CRF"
+                          aria-label="Open CRF"
                         >
                           <FileText size={16} />
                         </button>

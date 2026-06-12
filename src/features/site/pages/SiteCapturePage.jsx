@@ -14,7 +14,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
-  Database, RefreshCw, Search, X, Filter, Plus,
+  Database, RefreshCw, Search, X, Plus,
   ClipboardList, FileText, Pencil, UserCheck, AlertCircle, Trash2, ArrowRightLeft,
   Clock, CheckCircle2, PauseCircle, XCircle,
 } from 'lucide-react';
@@ -307,18 +307,6 @@ export default function SiteCapturePage() {
             )}
           </div>
 
-          <div className={css.filterRow}>
-            <Filter size={13} className={css.filterIcon} />
-            {['All', 'Enrolled', 'Pending', 'Completed', 'Withdrawn', 'Discontinued'].map((s) => (
-              <button
-                key={s}
-                className={`${css.filterBtn} ${statusFilter === s ? css.filterBtnActive : ''}`}
-                onClick={() => setStatusFilter(s)}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
         </div>
         <span className={css.count}>{filtered.length} of {subjects.length} subject{subjects.length !== 1 ? 's' : ''}</span>
       </div>
@@ -401,8 +389,8 @@ export default function SiteCapturePage() {
                         <button
                           className={pageCss.iconBtn}
                           onClick={() => openForm(subject)}
-                          title="Enter eCRF data"
-                          aria-label="Enter eCRF data"
+                          title="Open CRF"
+                          aria-label="Open CRF"
                         >
                           <FileText size={14} />
                         </button>

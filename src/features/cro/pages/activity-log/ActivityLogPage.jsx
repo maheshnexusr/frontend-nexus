@@ -162,14 +162,6 @@ function DetailModal({ logId, onClose }) {
                 ))}
               </div>
 
-              {/* Description */}
-              {log.description && (
-                <div className={styles.mSection}>
-                  <p className={styles.mSectionLabel}>Description</p>
-                  <p className={styles.mDesc}>{log.description}</p>
-                </div>
-              )}
-
               {/* Failure reason */}
               {log.failureReason && (
                 <div className={styles.mSection}>
@@ -313,14 +305,6 @@ export default function ActivityLogPage() {
     {
       key: 'module', label: 'Module', sortable: true, width: '110px',
       render: (v) => <span className={styles.moduleChip}>{v}</span>,
-    },
-    {
-      key: 'entityName', label: 'Entity',
-      render: (v) => <span className={styles.entityCell} title={v}>{v ?? '—'}</span>,
-    },
-    {
-      key: 'description', label: 'Details',
-      render: (v) => <span className={styles.detailsCell} title={v}>{v ?? '—'}</span>,
     },
     {
       key: 'ipAddress', label: 'IP Address', width: '115px',
