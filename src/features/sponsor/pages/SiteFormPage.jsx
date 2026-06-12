@@ -45,6 +45,8 @@ const EMPTY = {
   state:              '',
   countryId:          '',
   active:             true,
+  enableSubjectLimit: false,
+  subjectLimit:       '',
 };
 
 function ic(s, err) { return err ? `${s.input} ${s.inputError}` : s.input; }
@@ -68,6 +70,8 @@ function seedFromSite(site) {
     state:              site.state              ?? '',
     countryId:          site.countryId          ?? '',
     active:             site.status ? site.status === 'Active' : (site.active ?? true),
+    enableSubjectLimit: site.enableSubjectLimit ?? false,
+    subjectLimit:       site.subjectLimit != null ? String(site.subjectLimit) : '',
   };
 }
 
@@ -160,6 +164,12 @@ export default function SiteFormPage() {
     if (form.email && !EMAIL_RE.test(form.email))  errs.email      = 'Enter a valid email address.';
     if (form.contactNumber && !PHONE_RE.test(form.contactNumber.replace(/\D/g, '')))
                                                    errs.contactNumber = 'Enter a valid 10-digit number.';
+    // Subject limit: only required/validated when the toggle is on.
+    if (form.enableSubjectLimit) {
+      const n = Number(form.subjectLimit);
+      if (!form.subjectLimit || !Number.isInteger(n) || n < 1)
+        errs.subjectLimit = 'Enter a maximum number of subjects (1 or more).';
+    }
     return errs;
   };
 
@@ -415,6 +425,48 @@ export default function SiteFormPage() {
               searchPlaceholder="Search countries…"
             />
           </FormField>
+
+          {/* Subject Limit — when enabled, cap the number of subjects that can
+              be enrolled at this site; when off, the site allows unlimited
+              subjects and the field is hidden. Enforced server-side on enrol. */}
+          <div className={styles.row2}>
+            <FormField label="Enable Subject Limit" name="enableSubjectLimit">
+              <label className={styles.activeWrap} style={{ marginTop: 4 }}>
+                <span className={styles.toggle}>
+                  <input
+                    type="checkbox"
+                    checked={form.enableSubjectLimit}
+                    disabled={readOnly}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      // Clear the value + any error when switching off.
+                      setForm((p) => ({ ...p, enableSubjectLimit: on, subjectLimit: on ? p.subjectLimit : '' }));
+                      if (!on) setErrors((er) => { const x = { ...er }; delete x.subjectLimit; return x; });
+                    }}
+                  />
+                  <span className={`${styles.toggleTrack} ${form.enableSubjectLimit ? styles.toggleTrackOn : ''}`} />
+                </span>
+                <span className={styles.activeLabel}>
+                  {form.enableSubjectLimit ? 'Limited' : 'Unlimited subjects'}
+                </span>
+              </label>
+            </FormField>
+
+            {form.enableSubjectLimit && (
+              <FormField label="Maximum Subjects" name="subjectLimit" required error={errors.subjectLimit}>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  className={ic(styles, errors.subjectLimit)}
+                  value={form.subjectLimit}
+                  disabled={readOnly}
+                  placeholder="e.g. 50"
+                  onChange={(e) => set('subjectLimit')(e.target.value)}
+                />
+              </FormField>
+            )}
+          </div>
         </section>
         </fieldset>
 
