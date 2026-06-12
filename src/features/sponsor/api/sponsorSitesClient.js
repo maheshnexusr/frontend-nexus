@@ -44,6 +44,9 @@ function normalizeSite(raw) {
     status:                raw.status               ?? 'Active',
     enrollmentTarget:      enrollTarget,
     enrolledSubjects:      enrolled,
+    // Per-site hard subject cap (toggle + value).
+    enableSubjectLimit:    raw.enable_subject_limit ?? raw.enableSubjectLimit ?? false,
+    subjectLimit:          raw.subject_limit        ?? raw.subjectLimit        ?? null,
     lastActivityAt:        raw.last_activity_at     ?? raw.lastActivityAt        ?? '',
     createdAt:             raw.created_at           ?? raw.createdAt             ?? '',
     updatedAt:             raw.updated_at           ?? raw.updatedAt             ?? '',
@@ -130,6 +133,11 @@ function buildSitePayload(data, _isCreate = false) {
     country_id:             data.countryId            ?? '',
     status:                 data.status ?? (data.active === false ? 'Inactive' : 'Active'),
     is_locked:              data.isLocked ?? false,
+    // Per-site subject limit: send the toggle always; the value only when on.
+    enable_subject_limit:   data.enableSubjectLimit === true,
+    subject_limit:          data.enableSubjectLimit === true
+                              ? (Number(data.subjectLimit) || null)
+                              : null,
   };
 
   // Legacy / optional spec fields — only attached when the caller actually
