@@ -288,7 +288,8 @@ export const router = createBrowserRouter([
         element: sp(AuthLayout),
         children: [
           { path: 'signin',            element: sp(SignInPage) },
-          { path: 'signup',            element: sp(SignUpPage) },
+          // { path: 'signup',            element: sp(SignUpPage) },  // self-service sign-up temporarily disabled
+
           { path: 'forgot-password',   element: sp(ForgotPasswordPage) },
           { path: 'activate',          element: sp(AccountActivationPage) },
           // Sponsor activation — the invite email links here. Static path
