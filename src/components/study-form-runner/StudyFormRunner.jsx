@@ -1425,9 +1425,9 @@ function StudyFormRunnerInner({
             open={submitConfirmOpen}
             onClose={() => setSubmitConfirmOpen(false)}
             onConfirm={doSubmit}
-            variant="info"
-            title="Submit form"
-            message="Submit this form? Once submitted it becomes read-only — further changes go through the Reopen flow."
+            variant="danger"
+            title="Submit CRF"
+            message="Once submitted, this CRF will become read-only. To make further changes, the CRF must be reopened by the Administrator."
             confirmLabel="Submit"
             cancelLabel="Cancel"
           />

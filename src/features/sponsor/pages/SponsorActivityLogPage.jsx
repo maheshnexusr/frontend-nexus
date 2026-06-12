@@ -38,6 +38,26 @@ const STATUSES     = ['SUCCESS', 'FAILURE', 'WARNING'];
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
 const fmtDate = (ts) => formatDateTime(ts) || '—';
 
+// Render a stored value for the change diff. Empty/blank shows an "(empty)"
+// placeholder so a first-time entry still reads clearly.
+const fmtVal = (v) => {
+  if (v === null || v === undefined || v === '') return '(empty)';
+  if (Array.isArray(v)) return v.join(', ') || '(empty)';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+};
+const diffPill = { fontSize: 11.5, padding: '1px 7px', borderRadius: 5, fontFamily: 'monospace' };
+
+// Friendly labels for raw resource_type / module values stored on the log.
+// CRF form events are recorded under the internal 'subject_form_data' name —
+// surface them as "CRF Form" in the Module column.
+const MODULE_LABELS = {
+  subject_form_data: 'CRF Form',
+  subject:           'Subject',
+  site_role:         'Site Role',
+};
+const moduleLabel = (m) => (m ? (MODULE_LABELS[m] ?? m) : '');
+
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 function sevenDaysAgoISO() {
   const d = new Date();
@@ -61,7 +81,7 @@ function buildExportRows(items) {
     timestamp:   fmtDate(r.timestamp),
     userName:    r.userName    ?? '',
     actionType:  r.actionType  ?? '',
-    module:      r.module      ?? '',
+    module:      moduleLabel(r.module),
     entityName:  r.entityName  ?? '',
     description: r.description ?? '',
     ipAddress:   r.ipAddress   ?? '',
@@ -105,7 +125,7 @@ function DetailPanel({ log, onClose }) {
               { label: 'Timestamp',   value: fmtDate(log.timestamp), icon: <Clock size={12} /> },
               { label: 'User',        value: log.userName ?? '—',     icon: <UserIcon size={12} /> },
               { label: 'Action',      value: <ActionPill type={log.actionType} /> },
-              { label: 'Module',      value: log.module ?? '—' },
+              { label: 'Module',      value: moduleLabel(log.module) || '—' },
               { label: 'Entity Type', value: log.entityType ?? '—' },
               { label: 'Entity Name', value: log.entityName ?? '—' },
               { label: 'Status',      value: <StatusPill status={log.status} /> },
@@ -118,10 +138,41 @@ function DetailPanel({ log, onClose }) {
             ))}
           </div>
 
-          {log.description && (
+          {/* Per-field changes (data-capture edits): only rendered when fields
+              actually changed — nothing shows for actions with no value diff. */}
+          {Array.isArray(log.metadata?.changes) && log.metadata.changes.length > 0 && (
             <div className={css.section}>
-              <p className={css.sectionLabel}>Description</p>
-              <p className={css.sectionText}>{log.description}</p>
+              <p className={css.sectionLabel}>Field Changes</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {log.metadata.changes.map((c, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 12.5 }}>
+                    <span style={{ fontWeight: 600, color: '#475569', minWidth: 120 }}>{c.field_label ?? c.field}</span>
+                    <span style={{ ...diffPill, background: '#fef2f2', color: '#b91c1c' }}>{fmtVal(c.previous_value)}</span>
+                    <span style={{ color: '#94a3b8' }}>→</span>
+                    <span style={{ ...diffPill, background: '#ecfdf5', color: '#047857' }}>{fmtVal(c.new_value)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Status change (e.g. Submit / Reopen): shown only when a prev→new
+              status pair was recorded. */}
+          {(log.metadata?.previous_value != null || log.metadata?.new_value != null) && (
+            <div className={css.section}>
+              <p className={css.sectionLabel}>Status Change</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 12.5 }}>
+                <span style={{ ...diffPill, background: '#fef2f2', color: '#b91c1c' }}>{fmtVal(log.metadata.previous_value)}</span>
+                <span style={{ color: '#94a3b8' }}>→</span>
+                <span style={{ ...diffPill, background: '#ecfdf5', color: '#047857' }}>{fmtVal(log.metadata.new_value)}</span>
+              </div>
+            </div>
+          )}
+
+          {log.metadata?.reason && (
+            <div className={css.section}>
+              <p className={css.sectionLabel}>Reason</p>
+              <p className={css.sectionText}>{log.metadata.reason}</p>
             </div>
           )}
 
@@ -278,15 +329,7 @@ export default function SponsorActivityLogPage() {
     },
     {
       key: 'module', label: 'Module', sortable: true, width: '120px',
-      render: (v) => <span className={css.moduleChip}>{v ?? '—'}</span>,
-    },
-    {
-      key: 'entityName', label: 'Entity',
-      render: (v) => <span className={css.cellTrunc} title={v}>{v ?? '—'}</span>,
-    },
-    {
-      key: 'description', label: 'Details',
-      render: (v) => <span className={css.cellTrunc} title={v}>{v ?? '—'}</span>,
+      render: (v) => <span className={css.moduleChip}>{moduleLabel(v) || '—'}</span>,
     },
     {
       key: 'ipAddress', label: 'IP Address', width: '115px',

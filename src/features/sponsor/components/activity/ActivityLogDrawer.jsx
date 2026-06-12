@@ -33,7 +33,7 @@ const fmtAuditVal = (v) => {
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
 };
-const AUDIT_OMIT = new Set(['actor_name', 'previous_value', 'new_value', 'reason', 'changes', 'subject_id', 'form_id', 'comment_id']);
+const AUDIT_OMIT = new Set(['actor_name', 'description', 'previous_value', 'new_value', 'reason', 'changes', 'subject_id', 'form_id', 'comment_id', 'snapshot', 'deleted_counts', 'site_id', 'changed']);
 function AuditChange({ metadata }) {
   if (!metadata || typeof metadata !== 'object') return null;
   const { previous_value, new_value, reason, changes } = metadata;
@@ -54,7 +54,7 @@ function AuditChange({ metadata }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {changes.map((c, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 12 }}>
-              <span style={{ fontWeight: 600, color: '#475569' }}>{c.field}:</span>
+              <span style={{ fontWeight: 600, color: '#475569' }}>{c.field_label ?? c.field}:</span>
               <span style={{ ...pill, background: '#fef2f2', color: '#b91c1c' }}>{fmtAuditVal(c.previous_value)}</span>
               <span style={{ color: '#94a3b8' }}>→</span>
               <span style={{ ...pill, background: '#ecfdf5', color: '#047857' }}>{fmtAuditVal(c.new_value)}</span>
@@ -79,6 +79,17 @@ const TYPE_LABELS = {
   form:      'Form',
   site_role: 'Site Role',
 };
+
+// Friendly labels for the raw resource_type stored on each log row. CRF form
+// events are logged under 'subject_form_data' — show them as "CRF" instead of
+// the internal table name.
+const RESOURCE_LABELS = {
+  subject_form_data: 'CRF Form',
+  subject:           'Subject',
+  site_role:         'Site Role',
+  form:              'Form',
+};
+const resourceLabelOf = (rt) => (rt ? (RESOURCE_LABELS[rt] ?? rt) : null);
 
 export default function ActivityLogDrawer({
   open, resourceType, resourceId, resourceLabel, onClose,
@@ -186,14 +197,15 @@ export default function ActivityLogDrawer({
                       <span className={s.time}>{formatDateTime(item.created_at ?? item.timestamp)}</span>
                     </div>
                     <div className={s.entryMeta}>
-                      {(item.actor_name ?? item.user_name ?? item.metadata?.actor_name) && (
-                        <span>by <strong>{item.actor_name ?? item.user_name ?? item.metadata?.actor_name}</strong></span>
+                      {(item.actor_name ?? item.user_name ?? item.userName ?? item.metadata?.actor_name) && (
+                        <span>by <strong>{item.actor_name ?? item.user_name ?? item.userName ?? item.metadata?.actor_name}</strong></span>
                       )}
-                      {item.resource_type && <span>· {item.resource_type}</span>}
+                      {resourceLabelOf(item.resource_type ?? item.module) && <span>· {resourceLabelOf(item.resource_type ?? item.module)}</span>}
+                      {(item.ipAddress ?? item.ip_address) && <span>· IP {item.ipAddress ?? item.ip_address}</span>}
                     </div>
                     <AuditChange metadata={item.metadata} />
-                    {item.action_description && (
-                      <p className={s.entryDesc}>{item.action_description}</p>
+                    {(item.description ?? item.action_description ?? item.metadata?.description) && (
+                      <p className={s.entryDesc}>{item.description ?? item.action_description ?? item.metadata?.description}</p>
                     )}
                   </div>
                 </li>
