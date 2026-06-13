@@ -11,7 +11,7 @@ import {
   GripVertical, Type, Hash, Mail, Phone, Calendar, CheckSquare,
   List, Circle, FileUp, PenLine, AlignLeft, ToggleLeft, Clock,
   Star, Image, Minus, AlignCenter, LayoutList, Pencil, SlidersHorizontal,
-  Heading,
+  Heading, Table2, Calculator,
 } from 'lucide-react';
 import {
   selectBlocks, selectSelectedBlockId, selectSelectedPageId,
@@ -59,6 +59,13 @@ const FIELD_GROUPS = [
       { type: 'rating',       label: 'Rating',       Icon: Star        },
       { type: 'slider',       label: 'Slider',       Icon: SlidersHorizontal },
       { type: 'image',        label: 'Image',        Icon: Image       },
+    ],
+  },
+  {
+    group: 'Advanced',
+    fields: [
+      { type: 'table',        label: 'Table / Grid', Icon: Table2      },
+      { type: 'formula',      label: 'Formula',      Icon: Calculator  },
     ],
   },
   {

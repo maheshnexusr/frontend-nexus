@@ -14,6 +14,8 @@ import {
 } from '@/features/cro/store/studyFormSlice';
 import { selectStep3 } from '@/features/cro/store/studyWizardSlice';
 import { REGEX_PRESETS } from '@/features/form-builder/lib/fieldSchema';
+import { TableConfigPanel, ColumnBuilder } from './tableConfig';
+import FormulaBuilder from './FormulaBuilder';
 import {
   HEADING_FONT_SIZES, HEADING_FONT_WEIGHTS, HEADING_ALIGNMENTS,
   HEADING_THEME_COLORS, headingStyleToCss,
@@ -183,6 +185,8 @@ function FieldPropsPanel({ block, page, field }) {
   const upH      = (k, v) => up('headingStyle', { ...field.headingStyle, [k]: v });
 
   const isLayout   = ['h2', 'h3', 'paragraph', 'divider'].includes(field.type);
+  const isTable    = field.type === 'table';
+  const isFormula  = field.type === 'formula';
   const isHeading  = field.type === 'h2' || field.type === 'h3';
   const hasOptions = ['select','multiselect','radiogroup','checkboxgroup'].includes(field.type);
   const isText     = ['text','textarea','email','phone','url','password'].includes(field.type);
@@ -227,13 +231,30 @@ function FieldPropsPanel({ block, page, field }) {
           </Accordion>
         )}
 
-        {!isLayout && (
+        {isTable && (
+          <>
+            <Accordion title="Table Settings" icon={<LayoutGrid size={13} />} defaultOpen>
+              <TableConfigPanel field={field} up={up} />
+            </Accordion>
+            <Accordion title="Columns" icon={<Settings size={13} />} defaultOpen>
+              <ColumnBuilder field={field} up={up} />
+            </Accordion>
+          </>
+        )}
+
+        {isFormula && (
+          <Accordion title="Formula Builder" icon={<Settings size={13} />} defaultOpen>
+            <FormulaBuilder field={field} up={up} />
+          </Accordion>
+        )}
+
+        {!isLayout && !isTable && !isFormula && (
           <Accordion title="Appearance & Layout" icon={<LayoutGrid size={13} />}>
             <AppearanceTab field={field} up={up} />
           </Accordion>
         )}
 
-        {!isLayout && (
+        {!isLayout && !isTable && !isFormula && (
           <Accordion title="Validation Rules">
             <ValidationTab field={field} up={up} upV={upV} isText={isText} isNum={isNum} />
           </Accordion>
@@ -350,14 +371,16 @@ function GeneralTab({ field, up, hasOptions, isLayout }) {
         </SField>
       )}
 
-      <SField label="Default Value">
-        <input
-          className={s.sinput}
-          value={field.defaultValue ?? ''}
-          onChange={(e) => up('defaultValue', e.target.value)}
-          placeholder="Enter default value"
-        />
-      </SField>
+      {field.type !== 'table' && (
+        <SField label="Default Value">
+          <input
+            className={s.sinput}
+            value={field.defaultValue ?? ''}
+            onChange={(e) => up('defaultValue', e.target.value)}
+            placeholder="Enter default value"
+          />
+        </SField>
+      )}
 
       <SField label="Help Text">
         <textarea
@@ -369,10 +392,13 @@ function GeneralTab({ field, up, hasOptions, isLayout }) {
         />
       </SField>
 
-      <div className={s.toggleRow}>
-        <span className={s.toggleRowLabel}>Read-only</span>
-        <Toggle value={field.readOnly ?? false} onChange={(v) => up('readOnly', v)} />
-      </div>
+      {/* Formula fields are always read-only — the toggle is hidden for them. */}
+      {field.type !== 'formula' && (
+        <div className={s.toggleRow}>
+          <span className={s.toggleRowLabel}>Read-only</span>
+          <Toggle value={field.readOnly ?? false} onChange={(v) => up('readOnly', v)} />
+        </div>
+      )}
 
       <div className={s.toggleRow}>
         <span className={s.toggleRowLabel}>Hidden by Default</span>
@@ -546,10 +572,9 @@ function AppearanceTab({ field, up }) {
           value={field.fieldWidth ?? 'full'}
           onChange={(e) => up('fieldWidth', e.target.value)}
         >
-          <option value="full">Full Width</option>
-          <option value="half">Half Width</option>
-          <option value="third">One Third</option>
-          <option value="two-thirds">Two Thirds</option>
+          <option value="full">Full width (100%)</option>
+          <option value="left">Half — left (50%)</option>
+          <option value="right">Half — right (50%)</option>
         </select>
       </SField>
 
@@ -938,6 +963,8 @@ function operatorsForType(type) {
       return opItems('signed', 'not_signed');
     case 'autocomplete': case 'search':
       return opItems('equals', 'not_equals', 'contains');
+    case 'table':
+      return opItems('is_empty', 'is_not_empty');
     default:
       return opItems('equals', 'not_equals', 'contains', 'is_empty', 'is_not_empty');
   }

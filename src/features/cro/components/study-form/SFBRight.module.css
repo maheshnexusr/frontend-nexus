@@ -1065,3 +1065,95 @@
   line-height: 1.5;
   margin: 0;
 }
+
+/* ── Formula Builder ──────────────────────────────────────────────────────── */
+.formulaEditor,
+.formulaHighlight {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  margin: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 64px;
+}
+.formulaEditor {
+  position: relative;
+  background: transparent;
+  color: transparent;
+  caret-color: #0f172a;
+  resize: vertical;
+  outline: none;
+}
+.formulaEditor:focus { border-color: #93c5fd; box-shadow: 0 0 0 2px #dbeafe; }
+.formulaHighlight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: #f8fafc;
+  color: #0f172a;
+  overflow: hidden;
+}
+.formulaAutocomplete {
+  position: absolute;
+  z-index: 20;
+  left: 8px;
+  top: 100%;
+  margin-top: 2px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+  min-width: 180px;
+}
+.formulaAcItem {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 5px 9px;
+  background: none; border: 0; cursor: pointer; text-align: left;
+  font-size: 12px;
+}
+.formulaAcItem:hover { background: #eff6ff; }
+.formulaAcItem code { color: #2563eb; font-weight: 600; }
+.formulaAcLabel { color: #94a3b8; font-size: 11px; }
+
+.formulaOk, .formulaErr {
+  display: flex; align-items: center; gap: 5px;
+  margin-top: 6px; padding: 5px 9px; border-radius: 6px;
+  font-size: 12px; font-weight: 600;
+}
+.formulaOk  { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+.formulaErr { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+
+.formulaChips { display: flex; flex-wrap: wrap; gap: 4px; }
+.formulaChip {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  padding: 3px 9px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #334155;
+}
+.formulaChip:hover { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
+
+.formulaFieldList { display: flex; flex-direction: column; gap: 3px; max-height: 180px; overflow-y: auto; }
+.formulaFieldItem {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid #eef2f7;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+.formulaFieldItem:hover { background: #f8fafc; border-color: #cbd5e1; }
+.formulaFieldItem code { color: #2563eb; font-weight: 600; font-size: 12px; flex-shrink: 0; }
+.formulaFieldLabel { color: #475569; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.formulaFieldType { color: #94a3b8; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; flex-shrink: 0; }

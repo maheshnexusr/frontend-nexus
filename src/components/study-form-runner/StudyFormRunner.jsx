@@ -32,6 +32,10 @@ import RuntimeFieldRenderer from '@/features/cro/components/study-form/runtime/R
 import { evaluateField, evaluateEligibility } from '@/features/cro/components/study-form/runtime/runtimeEngine';
 import { headingStyleToCss } from '@/features/cro/components/study-form/headingStyle';
 import SignatureInput       from './SignatureInput';
+import TableFieldInput       from './TableFieldInput';
+import { validateTable }      from './tableEngine';
+import { evaluateExpression, coerceOutput } from '@/features/cro/components/study-form/formulaEngine';
+import { fieldKeyOf } from '@/features/cro/store/studyFormSlice';
 import { uploadFormFile }    from '@/api/formFileClient';
 import { resolveFileUrl }    from '@/api/fileUrl';
 import { FormQueriesProvider, useFormQueries } from './FormQueriesContext';
@@ -46,14 +50,32 @@ function escapeRegExp(str) { return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
 // collapse together and arrays compare by content. Used to detect whether a
 // page changed since it was last completed.
 function sameValue(a, b) {
-  const norm = (v) => (v === undefined || v === null)
-    ? ''
-    : Array.isArray(v) ? v.join(' ') : String(v);
+  const norm = (v) => {
+    if (v === undefined || v === null) return '';
+    // Objects/arrays (e.g. a Table field's array-of-row-objects) compare by
+    // their JSON so a cell edit registers as a change (dirty + SDV staleness).
+    if (typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+  };
   return norm(a) === norm(b);
 }
 
 // Non-input field types — excluded from data-entry / verification counting.
 const LAYOUT_TYPES = ['h2', 'h3', 'paragraph', 'divider'];
+
+// Per-field width → CSS grid-column placement inside the 2-column .fields grid.
+//   full (default) → span the whole row (100%)
+//   left           → left half (50%, first column)
+//   right          → right half (50%, second column)
+// A legacy 'half' value falls back to auto (one 50% cell, flows in order).
+const gridColForWidth = (w) => {
+  switch (w) {
+    case 'left':  return '1 / 2';
+    case 'right': return '2 / 3';
+    case 'half':  return 'auto';
+    default:      return '1 / -1';   // 'full' / unset
+  }
+};
 
 // Record-status workflow colours (Draft → … → Completed).
 const RECORD_STATUS_STYLE = {
@@ -498,6 +520,44 @@ function StudyFormRunnerInner({
     if (Object.keys(patch).length) setValues((prev) => ({ ...prev, ...patch }));
   }, [values, blocks]);
 
+  // ── Formula recalculation (Formula field type) ──────────────────────────
+  // Formulas reference other fields by their Internal Field Name (fieldKey),
+  // but `values` is keyed by field.id. Build a fieldKey→id map, then evaluate
+  // every formula field against a fieldKey-scoped snapshot, writing the coerced
+  // result back to values[formulaField.id]. Iterate so a formula that depends on
+  // another formula settles; cap passes to stay safe against any cycle that
+  // slipped past the builder's circular-reference guard.
+  useEffect(() => {
+    const formulaFields = [];
+    const keyToId = {};
+    for (const blk of blocks || []) {
+      for (const pg of blk.pages || []) {
+        for (const f of pg.fields || []) {
+          const key = fieldKeyOf(f);
+          if (key) keyToId[key] = f.id;
+          if (f?.type === 'formula' && (f.expression || '').trim()) formulaFields.push(f);
+        }
+      }
+    }
+    if (!formulaFields.length) return;
+
+    const next = { ...values };
+    let changed = false;
+    for (let pass = 0; pass < 10; pass += 1) {
+      let passChanged = false;
+      // Scope = current values addressed by fieldKey.
+      const scope = {};
+      for (const [key, id] of Object.entries(keyToId)) scope[key] = next[id];
+      for (const f of formulaFields) {
+        const { value: raw, error } = evaluateExpression(f.expression, scope);
+        const out = error ? null : coerceOutput(raw, f.outputType, f.precision);
+        if (!sameValue(next[f.id], out)) { next[f.id] = out; passChanged = true; changed = true; }
+      }
+      if (!passChanged) break;
+    }
+    if (changed) setValues(next);
+  }, [values, blocks]);
+
   if (!blocks.length) {
     return (
       <div className={s.emptyRoot} style={{ flex: 1 }}>
@@ -598,8 +658,10 @@ function StudyFormRunnerInner({
     if (typeof v === 'object') return Object.keys(v).length > 0;
     return true;
   };
+  // Formula fields are computed + read-only, so they're not user-entry data:
+  // excluded from the mandatory-field gate and the SDV/verification rollup.
   const isVisibleData = (f) =>
-    !LAYOUT_TYPES.includes(f.type) && !evaluateField(f, values).hidden;
+    !LAYOUT_TYPES.includes(f.type) && f.type !== 'formula' && !evaluateField(f, values).hidden;
   const pageVerifyRollup = (pg) => {
     const data = (pg.fields || []).filter(isVisibleData);
     const filled = data.filter(fieldHasValue);
@@ -629,8 +691,18 @@ function StudyFormRunnerInner({
   // Mandatory-field gate for page navigation: a VISIBLE hard-required field left
   // blank blocks Next (and is flagged inline). Mirrors the backend submit gate
   // (requiredFields.js) — layout + conditionally-hidden fields are excluded.
+  // A table is "invalid" (blocks Next/Submit) when it's below its minimum row
+  // count or any visible cell fails validation. Required-but-empty is already
+  // covered by the generic isHardReq path below (table value is an array).
+  const tableInvalid = (f) => {
+    if (f.type !== 'table') return false;
+    const list = Array.isArray(values[f.id]) ? values[f.id] : [];
+    const min = Number(f.rowSettings?.minRows) || 0;
+    if (min && list.length < min) return true;
+    return validateTable(f, list).hasErrors;
+  };
   const pageMissingRequired = (pg) =>
-    (pg.fields || []).filter(isVisibleData).filter((f) => isHardReq(f) && !fieldHasValue(f));
+    (pg.fields || []).filter(isVisibleData).filter((f) => (isHardReq(f) && !fieldHasValue(f)) || tableInvalid(f));
   const missingRequiredNow = pageMissingRequired(page);
   const missingRequiredIds = new Set(missingRequiredNow.map((f) => f.id));
 
@@ -1173,6 +1245,7 @@ function StudyFormRunnerInner({
                     data-field-id={field.id}
                     style={{
                       minWidth: 0,
+                      gridColumn: gridColForWidth(field.fieldWidth),
                       // Flag a mandatory field the user tried to skip past. Outline
                       // doesn't affect layout flow, so the grid doesn't shift.
                       // Hard (red) takes precedence over soft (amber).
@@ -1211,7 +1284,7 @@ function StudyFormRunnerInner({
                           disabled={readOnly || pageReadOnly || disabled || !canEditField(f)}
                           style={{ border: 0, padding: 0, margin: 0 }}
                         >
-                          <FieldInput field={f} value={v} onChange={onChange} />
+                          <FieldInput field={f} value={v} onChange={onChange} allValues={values} showErrors={triedNext} />
                         </fieldset>
                       )}
                     </RuntimeFieldRenderer>
@@ -1720,7 +1793,7 @@ function FileFieldInput({ field, value, onChange }) {
   );
 }
 
-function FieldInput({ field, value, onChange }) {
+function FieldInput({ field, value, onChange, allValues, showErrors }) {
   const v = value ?? '';
   // "Other" free-text mode for radio/checkbox groups (allowOther).
   const [otherOpen, setOtherOpen] = useState(false);
@@ -1729,6 +1802,20 @@ function FieldInput({ field, value, onChange }) {
     : undefined;
 
   switch (field.type) {
+    case 'table':
+      return <TableFieldInput field={field} value={value} onChange={onChange} allValues={allValues} showErrors={showErrors} />;
+    case 'formula': {
+      // Read-only computed output. The value is maintained by the form-level
+      // recompute effect; this just displays it (coerced for safety).
+      const display = coerceOutput(value, field.outputType, field.precision);
+      const text = display == null || display === '' ? '—'
+        : typeof display === 'boolean' ? (display ? 'True' : 'False') : String(display);
+      return (
+        <div className={s.input} style={{ background: '#f8fafc', color: '#0f172a', fontWeight: 600, display: 'flex', alignItems: 'center', cursor: 'default' }}>
+          {text}
+        </div>
+      );
+    }
     case 'text':
     case 'number':
     case 'email':
