@@ -12,22 +12,26 @@
  * context (study_id + environment) so the backend can scope the storage folder.
  */
 
-import axios from 'axios';
 import store from '@/app/store';
+import siteAxiosClient    from '@/api/siteAxiosClient';
+import sponsorAxiosClient from '@/api/sponsorAxiosClient';
+import axiosClient        from '@/api/axiosClient';
 
-const API_BASE = import.meta.env.VITE_USE_LOCAL === 'true'
-  ? (import.meta.env.VITE_LOCAL_API_URL ?? 'http://187.127.139.10:8080')
-  : (import.meta.env.VITE_PROD_API_URL  ?? 'https://backend-nexusr.onrender.com');
-
-// Active access token, in the same priority order the workspace clients use:
-// a site session has only the site token; a sponsor/CRO session has the
-// sponsor/view/CRO tokens. Only one of these is ever present at a time.
-function pickToken() {
-  return localStorage.getItem('siteWorkspaceToken')
-      || localStorage.getItem('sponsorViewToken')
-      || localStorage.getItem('sponsorAccessToken')
-      || localStorage.getItem('accessToken')
-      || null;
+// Pick the workspace client whose session is active, in the same priority order
+// the app uses elsewhere (site → sponsor/view → CRO). Only one session is ever
+// live at a time. Delegating to the SCOPED client (instead of a bare axios with
+// a hand-attached token) means the upload inherits that client's 401 → silent
+// refresh / re-mint + retry. The previous bare-axios upload could not refresh,
+// so once the 15-minute access token expired mid-capture, uploads 401'd with no
+// recovery (the file/image/signature would just fail to attach).
+function pickClient() {
+  if (localStorage.getItem('siteWorkspaceToken') || localStorage.getItem('siteAccessToken')) {
+    return siteAxiosClient;
+  }
+  if (localStorage.getItem('sponsorViewToken') || localStorage.getItem('sponsorAccessToken')) {
+    return sponsorAxiosClient;
+  }
+  return axiosClient; // CRO designer / preview
 }
 
 // Active study context — whichever session is live. Site and sponsor each store
@@ -62,7 +66,7 @@ export async function uploadFormFile(file, category) {
   if (!ctx) {
     throw new Error('No active study context — cannot upload file.');
   }
-  const token = pickToken();
+  const client = pickClient();
 
   // study_id + category MUST precede the file: the backend computes the
   // destination folder inside multer's file handler, which only sees fields
@@ -74,11 +78,11 @@ export async function uploadFormFile(file, category) {
   if (category) fd.append('category', category);
   fd.append('file', file);
 
-  const res = await axios.post(`${API_BASE}/api/v1/form-files`, fd, {
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    timeout: 60_000,
-  });
-  return res.data.file; // { url, name, type, size }
+  // The scoped clients attach their own auth token + exempt FormData from the
+  // snake-case transform, and their response interceptor unwraps to res.data —
+  // so this resolves to { success, file }, not the raw axios response.
+  const data = await client.post('/api/v1/form-files', fd, { timeout: 60_000 });
+  return data.file; // { url, name, type, size }
 }
 
 export default uploadFormFile;

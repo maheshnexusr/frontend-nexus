@@ -175,7 +175,7 @@ export default function CaptureFormPage() {
   }, [subjectId]);
 
   /* ── submit handler ── */
-  const handleSubmit = useCallback(async (formData, { reason } = {}) => {
+  const handleSubmit = useCallback(async (formData, { reason, reasons } = {}) => {
     if (ro.isReadOnly) {
       dispatch(addToast({ type: 'info', message: ro.readOnlyMessage }));
       throw new Error('read-only');
@@ -194,7 +194,7 @@ export default function CaptureFormPage() {
     try {
       await sponsorAxiosClient.post(
         `/api/v1/sponsor/workspace/subjects/${subjectId}/forms/${formId}/data`,
-        { form_data: formData, status: 'Submitted', change_reason: reason },
+        { form_data: formData, status: 'Submitted', change_reason: reason, change_reasons: reasons },
       );
     } catch (e) {
       rethrowIfRfc(e);   // surfaces the Reason-for-Change dialog (no error toast)
