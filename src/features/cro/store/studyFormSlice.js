@@ -12,8 +12,14 @@ export const toColumnKey = (label = '') =>
 // A field's stable reference key for formulas/conditions. Prefer the explicit
 // Internal Field Name; fall back to one derived from the label so fields saved
 // with a blank fieldKey (older forms) still resolve. Returns '' for no label.
+// NOTE: the capture runtime reads the stored form structure in snake_case
+// (the CRO designer is camelCase) — accept `field_key` too, or formulas that
+// reference an explicit Internal Field Name (e.g. DATEDIFF over two date
+// fields) silently fall back to the label-derived key, mismatch the scope, and
+// evaluate to blank. See [[form-structure-snake-camel-runtime]].
 export const fieldKeyOf = (f) => {
-  if (f?.fieldKey) return f.fieldKey;
+  if (f?.fieldKey)  return f.fieldKey;
+  if (f?.field_key) return f.field_key;
   const lbl = String(f?.label ?? '').trim();
   return lbl ? lbl.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') : '';
 };
@@ -85,6 +91,13 @@ export const makeField = (type = 'text') => ({
   allowOther: false,
   otherLabel: 'Other',
   otherFreeText: true,
+  // Checkbox group — per-option additional input. When ON, each option may be
+  // configured to accept an extra value (text/number/date/textarea) that is
+  // captured only while that option is selected. Per-option config lives on the
+  // option object itself: { allowInput, inputType, inputPlaceholder, inputRequired }.
+  // Captured values are stored under the companion key `${field.id}__optInputs`
+  // = { [optionValue]: enteredValue } so the selection array stays intact.
+  allowOptionInput: false,
   defaultValues: [],           // checkbox group default selection
   minSelections: '',           // checkbox group
   maxSelections: '',           // checkbox group
@@ -141,6 +154,12 @@ const initialState = {
     submitWindowEnd:     '',
     confirmationMessage: 'Thank you for your submission.',
     redirectUrl:         '',
+    // Reason for Change (RFC) — when a modification to PREVIOUSLY-ENTERED data
+    // must capture a reason (logged to the immutable Audit Trail). The audit
+    // trail itself is always on; this only governs the mandatory-reason prompt.
+    //   'never' | 'after_submission' (default) | 'after_signoff'
+    //   'after_verification' | 'always'
+    reasonForChange:     'after_submission',
   },
   triggers:  [],
   comments:  [],

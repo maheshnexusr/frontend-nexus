@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { siteAuthClient }  from '@/features/site/api/siteAuthClient';
 import { siteStudyClient } from '@/features/site/api/siteStudyClient';
+import { resolveFileUrl } from '@/api/fileUrl';
 import {
   getSiteAuthUser,
   getSiteStudies,
@@ -116,16 +117,23 @@ export default function SiteDashboardPage() {
                     disabled={phase === 'choosing' || !s.isPublished}
                     onClick={() => handleChoose(s)}
                   >
-                    <span className={styles.studyTitle}>
-                      {s.studyTitle || s.protocolNumber || s.studyId}
+                    <span className={styles.cardLogo}>
+                      {resolveFileUrl(s.organizationLogo)
+                        ? <img src={resolveFileUrl(s.organizationLogo)} alt={s.sponsorName || 'Sponsor'} className={styles.cardLogoImg} />
+                        : <Building2 size={18} strokeWidth={2} />}
                     </span>
-                    <span className={styles.studyMeta}>
-                      {s.protocolNumber} · {s.environment} · {s.roleName || 'Site personnel'}
-                      {s.siteName ? ` · ${s.siteName}` : ''}
+                    <span className={styles.cardText}>
+                      <span className={styles.studyTitle}>
+                        {s.studyTitle || s.protocolNumber || s.studyId}
+                      </span>
+                      <span className={styles.studyMeta}>
+                        {s.protocolNumber} · {s.environment} · {s.roleName || 'Site personnel'}
+                        {s.siteName ? ` · ${s.siteName}` : ''}
+                      </span>
+                      {!s.isPublished && (
+                        <span className={styles.studyMeta}>Not published yet</span>
+                      )}
                     </span>
-                    {!s.isPublished && (
-                      <span className={styles.studyMeta}>Not published yet</span>
-                    )}
                   </button>
                 </li>
               ))}

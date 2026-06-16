@@ -24,9 +24,11 @@ export const siteWorkspaceClient = {
     return siteAxiosClient.get(`${BASE}/consent/pending`);
   },
 
-  /** Record agreement to the consent template (logs the activity). */
-  async acceptConsent(templateId) {
-    return siteAxiosClient.post(`${BASE}/consent/accept`, { template_id: templateId });
+  /** Record agreement to the consent template (logs the activity) and submit the
+   *  filled-in answers + signature for Sponsor/CRO review. `extra` carries
+   *  { responses, signatureDataUrl, version }. */
+  async acceptConsent(templateId, extra = {}) {
+    return siteAxiosClient.post(`${BASE}/consent/accept`, { template_id: templateId, ...extra });
   },
 
   /** Site dashboard for the currently chosen study. Optional date range

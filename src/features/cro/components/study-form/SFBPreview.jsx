@@ -445,6 +445,56 @@ export default function SFBPreview({ onExitPreview }) {
 }
 
 /* ── Interactive field renderer (used inside RuntimeFieldRenderer) ───────── */
+/* Designer-preview checkbox group. Mirrors the runtime, incl. per-option
+ * additional input (field.allowOptionInput) — values are kept in local state
+ * since the preview has no submission record. */
+function PreviewCheckboxGroup({ field, value, onChange }) {
+  const checked = Array.isArray(value) ? value : [];
+  const [optInputs, setOptInputs] = useState({});
+  const setOptInput = (optVal, inputVal) => setOptInputs((prev) => {
+    const next = { ...prev };
+    if (inputVal === '' || inputVal == null) delete next[optVal];
+    else next[optVal] = inputVal;
+    return next;
+  });
+  return (
+    <div className={s.choiceGroup}>
+      {(field.options ?? []).map((o) => {
+        const isChk = checked.includes(o.value);
+        const wantsInput = field.allowOptionInput && o.allowInput;
+        return (
+          <div key={o.value} style={{ display: 'flex', flexDirection: 'column', flexBasis: '100%' }}>
+            <label className={`${s.choiceItem} ${isChk ? s.choiceItemSelected : ''}`}>
+              <input
+                type="checkbox"
+                checked={isChk}
+                onChange={() => {
+                  const next = isChk ? checked.filter((x) => x !== o.value) : [...checked, o.value];
+                  if (isChk && wantsInput) setOptInput(o.value, '');
+                  onChange(next);
+                }}
+              />
+              <span>{o.label}</span>
+            </label>
+            {wantsInput && isChk && (
+              o.inputType === 'textarea' ? (
+                <textarea className={s.textarea} style={{ marginTop: 6, marginLeft: 24 }} rows={2}
+                  placeholder={o.inputPlaceholder || 'Please specify…'} value={optInputs[o.value] ?? ''}
+                  onChange={(e) => setOptInput(o.value, e.target.value)} />
+              ) : (
+                <input type={o.inputType === 'number' ? 'number' : o.inputType === 'date' ? 'date' : 'text'}
+                  className={s.input} style={{ marginTop: 6, marginLeft: 24, maxWidth: 'calc(100% - 24px)' }}
+                  placeholder={o.inputPlaceholder || 'Please specify…'} value={optInputs[o.value] ?? ''}
+                  onChange={(e) => setOptInput(o.value, e.target.value)} />
+              )
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function FieldInput({ field, value, onChange }) {
   const v = value ?? '';
 
@@ -518,28 +568,8 @@ function FieldInput({ field, value, onChange }) {
           ))}
         </div>
       );
-    case 'checkboxgroup': {
-      const checked = Array.isArray(v) ? v : [];
-      return (
-        <div className={s.choiceGroup}>
-          {(field.options ?? []).map((o) => (
-            <label key={o.value} className={`${s.choiceItem} ${checked.includes(o.value) ? s.choiceItemSelected : ''}`}>
-              <input
-                type="checkbox"
-                checked={checked.includes(o.value)}
-                onChange={() => {
-                  const next = checked.includes(o.value)
-                    ? checked.filter((x) => x !== o.value)
-                    : [...checked, o.value];
-                  onChange(next);
-                }}
-              />
-              <span>{o.label}</span>
-            </label>
-          ))}
-        </div>
-      );
-    }
+    case 'checkboxgroup':
+      return <PreviewCheckboxGroup field={field} value={v} onChange={onChange} />;
     case 'toggle':
       return (
         <div className={s.toggleWrap} onClick={() => onChange(!v)}>

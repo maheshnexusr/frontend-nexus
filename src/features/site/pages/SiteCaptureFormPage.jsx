@@ -22,6 +22,13 @@ import PrescriptionUpload from '@/components/capture/PrescriptionUpload';
 import s from '@/features/sponsor/pages/CaptureFormPage.module.css';
 import picker from './SiteCaptureFormPage.module.css';
 
+// Detect the backend "Reason for Change required" rejection and rethrow a tagged
+// error so the runner shows the RFC dialog (instead of a generic error toast).
+const rethrowIfRfc = (e) => {
+  const d = e?.details ?? e?.raw?.response?.data?.details ?? e?.response?.data?.details;
+  if (d?.reasonRequired) throw Object.assign(new Error('rfc'), { rfcRequired: true, changedFields: d.changedFields });
+};
+
 export default function SiteCaptureFormPage() {
   const [params]  = useSearchParams();
   const navigate  = useNavigate();
@@ -75,6 +82,7 @@ export default function SiteCaptureFormPage() {
   // owner is never briefly locked out before the flag loads (the backend also
   // enforces this on every save).
   const [isOwner, setIsOwner] = useState(true);
+  const [rfcActive, setRfcActive] = useState(false);
   // Owner-scoped data entry. Drives every editable affordance below.
   const canEnterData = isOwner;
   // Step-3 study module toggles (from the form GET). When off, the form hides
@@ -136,6 +144,7 @@ export default function SiteCaptureFormPage() {
           setDefaults(row?.form_data ?? row?.formData ?? {});
           setFormStatus(row?.status ?? 'In Progress');
           if (row) setIsOwner(row.is_owner !== false);
+          setRfcActive(row?.rfc_active === true);
 
           // Which pages are already Marked Completed → the runner shows a
           // "Page Completed" badge instead of the button. Non-fatal on error.
@@ -208,7 +217,7 @@ export default function SiteCaptureFormPage() {
     };
   }, [formId, subjectId]);
 
-  const handleSubmit = useCallback(async (formData) => {
+  const handleSubmit = useCallback(async (formData, { reason } = {}) => {
     if (!canEnterData) {
       dispatch(addToast({ type: 'info', message: "Only the subject's owner can submit this form." }));
       throw new Error('not-owner');
@@ -221,10 +230,12 @@ export default function SiteCaptureFormPage() {
       await siteWorkspaceClient.saveSubjectFormData(subjectId, formId, {
         form_data: formData,
         status: 'Submitted',
+        change_reason: reason,
       });
       dispatch(addToast({ type: 'success', message: 'Form submitted.' }));
       setSubmitted(true);
     } catch (e) {
+      rethrowIfRfc(e);   // surfaces the Reason-for-Change dialog (no error toast)
       dispatch(addToast({ type: 'error', message: e?.response?.data?.message || e?.message || 'Failed to save form.' }));
       throw e;
     }
@@ -312,7 +323,7 @@ export default function SiteCaptureFormPage() {
   // Save progress without finalising. Backend keeps the form "In Progress" and
   // moves the subject Enrolled → Pending (data capture has begun). Stays on
   // the form so the user can keep editing.
-  const handleSave = useCallback(async (formData) => {
+  const handleSave = useCallback(async (formData, { reason } = {}) => {
     if (!canEnterData) {
       dispatch(addToast({ type: 'info', message: "Only the subject's owner can edit this form." }));
       throw new Error('not-owner');
@@ -325,9 +336,11 @@ export default function SiteCaptureFormPage() {
       await siteWorkspaceClient.saveSubjectFormData(subjectId, formId, {
         form_data: formData,
         status: 'In Progress',
+        change_reason: reason,
       });
       dispatch(addToast({ type: 'success', message: 'Progress saved — subject is in Pending.' }));
     } catch (e) {
+      rethrowIfRfc(e);   // surfaces the Reason-for-Change dialog (no error toast)
       dispatch(addToast({ type: 'error', message: e?.message ?? 'Failed to save form.' }));
       throw e;
     }
@@ -478,6 +491,8 @@ export default function SiteCaptureFormPage() {
         submitLabel={canEnterData ? 'Submit eCRF' : 'Read-only view'}
         readOnly={!canEnterData || isSubmitted}
         onBack={() => navigate(-1)}
+        onExcluded={() => navigate('/site/capture')}
+        rfcActive={rfcActive}
         topContent={topContent}
       />
 

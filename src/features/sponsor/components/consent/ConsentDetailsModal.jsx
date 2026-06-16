@@ -1,13 +1,19 @@
 import { useState, useEffect } from 'react';
 import {
-  User, FileText, Database, FileIcon, PenLine,
-  Clock, AlertCircle, CheckCircle, XCircle, Download,
-  ChevronRight,
+  User, FileText, FileIcon, PenLine,
+  CheckCircle, XCircle, Download,
 } from 'lucide-react';
 import Modal from '@/components/feedback/Modal';
 import { sponsorConsentReviewClient } from '@/features/sponsor/api/sponsorConsentReviewClient';
 import { formatDate, formatDateTime } from '@/utils/formatDate';
+import { resolveFileUrl } from '@/api/fileUrl';
+import { useProtectedFileUrl, isProtectedUrl, downloadProtectedFile } from '@/api/protectedFile';
+import ConsentFormFill from '@/features/sponsor/components/consent/ConsentFormFill';
+import { normalizeConsentBlocks } from '@/utils/consentContent';
 import styles from './ConsentDetailsModal.module.css';
+
+const isImageDoc = (doc) =>
+  /^image\//i.test(doc.type || '') || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(doc.name || doc.url || '');
 
 const STATUS_META = {
   Pending:  { color: '#f59e0b', bg: '#fffbeb', label: 'Pending'  },
@@ -16,12 +22,13 @@ const STATUS_META = {
   Expired:  { color: '#94a3b8', bg: '#f8fafc', label: 'Expired'  },
 };
 
+// "Submitted Data" tab intentionally removed — the filled values are already
+// shown in the "Consent Form" tab (the consent form rendered with the user's
+// answers), so a separate raw key/value dump is redundant.
 const TABS = [
-  { key: 'overview',   label: 'Overview',        icon: User      },
-  { key: 'sections',   label: 'Consent Sections', icon: FileText  },
-  { key: 'data',       label: 'Submitted Data',  icon: Database  },
-  { key: 'documents',  label: 'Documents',       icon: FileIcon  },
-  { key: 'audit',      label: 'Audit Trail',     icon: Clock     },
+  { key: 'overview',   label: 'Overview',     icon: User      },
+  { key: 'sections',   label: 'Consent Form', icon: FileText  },
+  { key: 'documents',  label: 'Documents',    icon: FileIcon  },
 ];
 
 const fmtDate      = (iso) => formatDateTime(iso) || '—';
@@ -32,18 +39,86 @@ function fmtSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-const AUDIT_ICONS = {
-  submitted:   <Clock    size={14} />,
-  approved:    <CheckCircle size={14} style={{ color: '#10b981' }} />,
-  rejected:    <XCircle  size={14} style={{ color: '#dc2626' }} />,
-  resubmitted: <ChevronRight size={14} />,
-  downloaded:  <Download size={14} />,
-};
+// Electronic signature image — a private uploaded file (new) or a legacy
+// inline data URL. Streams protected refs through the authenticated route.
+function SigImage({ url }) {
+  const prot = useProtectedFileUrl(isProtectedUrl(url) ? url : null);
+  if (!url) return <div className={styles.sigPlaceholder}><PenLine size={20} /> Signature on file</div>;
+  let src;
+  if (isProtectedUrl(url)) { if (prot.loading) return <div className={styles.sigPlaceholder}>Loading…</div>; src = prot.src; }
+  else if (/^data:/.test(url)) src = url;
+  else src = resolveFileUrl(url);
+  if (!src) return <div className={styles.sigPlaceholder}><PenLine size={20} /> Signature on file</div>;
+  return <img src={src} alt="Signature" className={styles.sigImage} />;
+}
 
-export default function ConsentDetailsModal({ studyId, submission, onClose }) {
+// One uploaded consent document. Consent files are private (served only via the
+// authenticated route), so the thumbnail + "View" link resolve through the
+// protected loader; download goes through the parent's protected download.
+function DocRow({ doc, onDownload }) {
+  const prot   = useProtectedFileUrl(doc.url);
+  const isProt = isProtectedUrl(doc.url);
+  const href   = isProt ? prot.src : resolveFileUrl(doc.url);
+  const ready  = !isProt || (!prot.loading && href);
+
+  return (
+    <div className={styles.docRow} style={{ alignItems: 'center' }}>
+      {isImageDoc(doc) && href
+        ? <a href={href} target="_blank" rel="noreferrer">
+            <img src={href} alt={doc.name} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }} />
+          </a>
+        : <FileIcon size={15} className={styles.docIcon} />}
+      <div className={styles.docInfo}>
+        <span className={styles.docName}>{doc.name}</span>
+        {doc.size > 0 && <span className={styles.docSize}>{fmtSize(doc.size)}</span>}
+      </div>
+      {ready ? (
+        <>
+          <a href={href} target="_blank" rel="noreferrer" className={styles.docDownload}>View</a>
+          <button type="button" onClick={onDownload} className={styles.docDownload}
+            style={{ border: 0, background: 'transparent', cursor: 'pointer' }}>
+            <Download size={13} /> Download
+          </button>
+        </>
+      ) : (
+        <span className={styles.docSize}>{prot.error ? 'Unavailable' : 'Loading…'}</span>
+      )}
+    </div>
+  );
+}
+
+
+export default function ConsentDetailsModal({ studyId, submission, onClose, onApprove, onReject }) {
   const [activeTab, setActiveTab] = useState('overview');
   const [details,   setDetails]   = useState(null);
   const [loading,   setLoading]   = useState(true);
+
+  // Force a real download. A cross-origin <a download> is ignored by browsers
+  // (it just opens the file), so fetch the bytes and save via a same-origin
+  // blob URL. Falls back to opening in a new tab if the fetch is blocked.
+  const downloadDoc = async (doc) => {
+    // Consent docs are private → stream via the authenticated route.
+    if (isProtectedUrl(doc.url)) {
+      try { await downloadProtectedFile(doc.url, doc.name); } catch { /* surfaced below */ }
+      return;
+    }
+    const url = resolveFileUrl(doc.url);
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = doc.name || 'document';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.open(url, '_blank', 'noopener');
+    }
+  };
 
   useEffect(() => {
     if (!submission) return;
@@ -112,10 +187,7 @@ export default function ConsentDetailsModal({ studyId, submission, onClose }) {
         {d.signature && (
           <div className={styles.sigBox}>
             <span className={styles.sigLabel}>Electronic Signature</span>
-            {d.signature.imageUrl
-              ? <img src={d.signature.imageUrl} alt="Signature" className={styles.sigImage} />
-              : <div className={styles.sigPlaceholder}><PenLine size={20} /> Signature on file</div>
-            }
+            <SigImage url={d.signature.imageUrl} />
             <span className={styles.sigTimestamp}>Signed: {fmtDate(d.signature.timestamp)}</span>
           </div>
         )}
@@ -134,8 +206,19 @@ export default function ConsentDetailsModal({ studyId, submission, onClose }) {
   }
 
   function renderSections() {
+    // Preferred: re-render the EXACT consent form the site user saw, filled with
+    // their answers, read-only — so the reviewer reviews the same thing.
+    const blocks = normalizeConsentBlocks(details?.formStructure?.blocks);
+    if (Array.isArray(blocks) && blocks.length) {
+      return (
+        <div className={styles.section}>
+          <ConsentFormFill blocks={blocks} values={details?.responses ?? {}} onChange={() => {}} disabled />
+        </div>
+      );
+    }
+    // Fallback (legacy section-based templates).
     const sections = details?.sections ?? [];
-    if (!sections.length) return <p className={styles.empty}>No consent sections available.</p>;
+    if (!sections.length) return <p className={styles.empty}>No consent form available.</p>;
     return (
       <div className={styles.section}>
         {sections.map((s, i) => (
@@ -156,69 +239,18 @@ export default function ConsentDetailsModal({ studyId, submission, onClose }) {
     );
   }
 
-  function renderData() {
-    const data = details?.submittedData ?? {};
-    const entries = Object.entries(data);
-    if (!entries.length) return <p className={styles.empty}>No submitted field data available.</p>;
-    return (
-      <div className={styles.section}>
-        <div className={styles.dataGrid}>
-          {entries.map(([key, value]) => (
-            <div key={key} className={styles.dataItem}>
-              <span className={styles.dataLabel}>{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-              <span className={styles.dataValue}>{value?.toString() || '—'}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   function renderDocuments() {
     const docs = details?.documents ?? [];
     if (!docs.length) return <p className={styles.empty}>No documents uploaded.</p>;
     return (
       <div className={styles.section}>
+        <p style={{ fontSize: 12.5, color: '#64748b', margin: '0 0 12px' }}>
+          Review the files the site user uploaded. Open or download each to verify before approving;
+          reject if there’s an issue and the user will be asked to resubmit.
+        </p>
         <div className={styles.docList}>
           {docs.map((doc) => (
-            <div key={doc.id} className={styles.docRow}>
-              <FileIcon size={15} className={styles.docIcon} />
-              <div className={styles.docInfo}>
-                <span className={styles.docName}>{doc.name}</span>
-                {doc.size > 0 && <span className={styles.docSize}>{fmtSize(doc.size)}</span>}
-              </div>
-              {doc.url && (
-                <a href={doc.url} target="_blank" rel="noreferrer" className={styles.docDownload}>
-                  <Download size={13} /> Download
-                </a>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  function renderAudit() {
-    const trail = details?.auditTrail ?? [];
-    if (!trail.length) return <p className={styles.empty}>No audit trail entries found.</p>;
-    return (
-      <div className={styles.section}>
-        <div className={styles.timeline}>
-          {trail.map((entry, i) => (
-            <div key={entry.id || i} className={styles.timelineItem}>
-              <div className={styles.timelineDot}>
-                {AUDIT_ICONS[entry.action?.toLowerCase()] ?? <Clock size={13} />}
-              </div>
-              <div className={styles.timelineContent}>
-                <div className={styles.timelineAction}>{entry.action}</div>
-                <div className={styles.timelineMeta}>
-                  {entry.performedBy && <span>by <strong>{entry.performedBy}</strong></span>}
-                  <span>{fmtDate(entry.timestamp)}</span>
-                </div>
-                {entry.notes && <p className={styles.timelineNotes}>{entry.notes}</p>}
-              </div>
-            </div>
+            <DocRow key={doc.id} doc={doc} onDownload={() => downloadDoc(doc)} />
           ))}
         </div>
       </div>
@@ -232,39 +264,56 @@ export default function ConsentDetailsModal({ studyId, submission, onClose }) {
       title="Consent Submission Details"
       size="lg"
       footer={
-        <button
-          className={styles.btnClose}
-          onClick={onClose}
-          type="button"
-        >
-          Close
-        </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', gap: 10 }}>
+          <button className={styles.btnClose} onClick={onClose} type="button">Close</button>
+          {d?.status === 'Pending' && (onApprove || onReject) && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              {onReject && (
+                <button type="button" onClick={() => onReject(d)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8,
+                    border: '1px solid #dc2626', background: '#fff', color: '#dc2626', fontWeight: 600, cursor: 'pointer' }}>
+                  <XCircle size={15} /> Reject
+                </button>
+              )}
+              {onApprove && (
+                <button type="button" onClick={() => onApprove(d)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8,
+                    border: '1px solid #059669', background: '#059669', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>
+                  <CheckCircle size={15} /> Approve
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       }
     >
       <div className={styles.wrapper}>
-        {/* Status strip */}
-        <div className={styles.statusStrip} style={{ background: status.bg, borderColor: status.color }}>
-          <div className={styles.stripLeft}>
-            <span className={styles.stripName}>{d?.userName}</span>
-            <span className={styles.stripMeta}>{d?.role} · {d?.siteName || d?.siteCode}</span>
+        {/* Pinned header — status strip + tabs stay put while content scrolls. */}
+        <div className={styles.stickyHead}>
+          {/* Status strip */}
+          <div className={styles.statusStrip} style={{ background: status.bg, borderColor: status.color }}>
+            <div className={styles.stripLeft}>
+              <span className={styles.stripName}>{d?.userName}</span>
+              <span className={styles.stripMeta}>{d?.role} · {d?.siteName || d?.siteCode}</span>
+            </div>
+            <span className={styles.statusBadge} style={{ color: status.color, background: `${status.color}18`, border: `1px solid ${status.color}40` }}>
+              {status.label}
+            </span>
           </div>
-          <span className={styles.statusBadge} style={{ color: status.color, background: `${status.color}18`, border: `1px solid ${status.color}40` }}>
-            {status.label}
-          </span>
-        </div>
 
-        {/* Tabs */}
-        <div className={styles.tabs}>
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              className={`${styles.tab} ${activeTab === key ? styles.tabActive : ''}`}
-              onClick={() => setActiveTab(key)}
-            >
-              <Icon size={13} />
-              {label}
-            </button>
-          ))}
+          {/* Tabs */}
+          <div className={styles.tabs}>
+            {TABS.map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                className={`${styles.tab} ${activeTab === key ? styles.tabActive : ''}`}
+                onClick={() => setActiveTab(key)}
+              >
+                <Icon size={13} />
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Content */}
@@ -278,9 +327,7 @@ export default function ConsentDetailsModal({ studyId, submission, onClose }) {
             <>
               {activeTab === 'overview'  && renderOverview()}
               {activeTab === 'sections'  && renderSections()}
-              {activeTab === 'data'      && renderData()}
               {activeTab === 'documents' && renderDocuments()}
-              {activeTab === 'audit'     && renderAudit()}
             </>
           )}
         </div>

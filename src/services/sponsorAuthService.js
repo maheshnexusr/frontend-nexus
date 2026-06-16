@@ -183,6 +183,7 @@ function normalizeStudyAssignment(raw) {
     roleName:        raw.roleName         ?? raw.role_name         ?? '',
     sponsorId:       raw.sponsorId        ?? raw.sponsor_id        ?? null,
     sponsorName:     raw.sponsorName      ?? raw.sponsor_name      ?? '',
+    organizationLogo: raw.organizationLogo ?? raw.organization_logo_path ?? null,
     accessStartsAt:  raw.accessStartsAt   ?? raw.access_starts_at  ?? null,
     accessEndsAt:    raw.accessEndsAt     ?? raw.access_ends_at    ?? null,
     // Step 3 module toggles from the wizard. The backend now joins

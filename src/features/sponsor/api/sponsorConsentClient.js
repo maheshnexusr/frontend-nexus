@@ -52,7 +52,9 @@ export const sponsorConsentClient = {
   /** Fetch site roles for the study (spec §13.2). */
   async getRoles(_studyId) {
     const res = await sponsorAxiosClient.get(`${WORKSPACE}/lookups/site-roles`);
-    const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
+    // The lookup returns { success, roles } — must read `roles` (not items/data),
+    // else the Consent Builder's role dropdown is always empty.
+    const arr = Array.isArray(res) ? res : (res?.roles ?? res?.items ?? res?.data ?? []);
     return arr.map((r) => ({
       id:   r.id        ?? r.role_id  ?? r.roleId,
       name: r.name      ?? r.role_name ?? r.roleName ?? '',

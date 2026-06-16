@@ -54,6 +54,7 @@ const initialState = {
   activeEnvironment: 'UAT',
   studyScope:        null,
   studyConfig:       null,
+  sponsorLogo:       null,
   sidebarCollapsed:  false,
   studyStatus:       'idle',
   studyError:        null,
@@ -102,6 +103,7 @@ export const fetchStudyAsync = createAsyncThunk(
           title:  match.title,
           scope:  match.scope,
           config: match.config ?? null,
+          logo:   match.organizationLogo ?? null,
         };
       } catch (err) {
         return rejectWithValue(err?.message ?? 'Failed to load sponsor study.');
@@ -165,11 +167,12 @@ const workspaceSlice = createSlice({
      * @param {{ payload: { id: string, title: string, scope?: StudyScope, config?: StudyConfig } }} action
      */
     selectStudy(state, action) {
-      const { id, title, scope = null, config = null } = action.payload;
+      const { id, title, scope = null, config = null, logo = null } = action.payload;
       state.activeStudyId    = id;
       state.activeStudyTitle = title;
       state.studyScope       = scope;
       state.studyConfig      = config;
+      state.sponsorLogo      = logo;
       state.studyStatus      = 'succeeded';
       state.studyError       = null;
     },
@@ -212,6 +215,9 @@ const workspaceSlice = createSlice({
         state.activeStudyTitle = payload.title;
         state.studyScope       = payload.scope  ?? null;
         state.studyConfig      = payload.config ?? null;
+        // Sponsor organisation logo (for the sidebar brand). Sponsor list path
+        // sends `logo`; the CRO study-detail path sends `organization_logo_path`.
+        state.sponsorLogo      = payload.logo ?? payload.organization_logo_path ?? null;
         state.studyStatus      = 'succeeded';
         state.studyError       = null;
       })
@@ -243,6 +249,7 @@ export const selectActiveStudy      = (state) => ({
   title:  state.workspace.activeStudyTitle,
   scope:  state.workspace.studyScope,
   config: state.workspace.studyConfig,
+  logo:   state.workspace.sponsorLogo ?? null,
 });
 export const selectEnvironment      = (state) => state.workspace.activeEnvironment;
 export const selectSidebarCollapsed = (state) => state.workspace.sidebarCollapsed;

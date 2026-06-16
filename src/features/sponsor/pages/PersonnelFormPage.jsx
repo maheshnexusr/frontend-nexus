@@ -48,6 +48,9 @@ const EMPTY = {
   email:          '',
   role:           '',   // role_name (for display)
   roleId:         '',   // site_roles.role_id — what the API expects
+  // Consent form assigned to this person. Only required/shown when the selected
+  // role has Consent Required enabled.
+  consentTemplateId: '',
   // Multi-site assignment. `assignAllSites=true` posts every active site;
   // otherwise `siteIds` is the explicit subset the user picked.
   assignAllSites: false,
@@ -68,7 +71,7 @@ const formatSiteLabel = (s) => {
 function ic(s, err) { return err ? `${s.input} ${s.inputError}` : s.input; }
 function asOpt(arr) { return arr.map((v) => ({ value: v, label: v })); }
 
-function validate(form, isEdit) {
+function validate(form, isEdit, consentRequired) {
   const e = {};
   if (!form.fullName.trim())                                e.fullName = 'Full Name is required.';
   if (!isEdit) {
@@ -76,6 +79,8 @@ function validate(form, isEdit) {
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email    = 'Email Address must be valid.';
   }
   if (!form.role)                                           e.role     = 'Role is required.';
+  // When the selected role requires consent, a consent form must be assigned.
+  if (consentRequired && !form.consentTemplateId)          e.consentTemplateId = 'Please assign a consent form for this role.';
   // Either "All Sites" is chosen OR at least one specific site is selected.
   if (!form.assignAllSites && (!Array.isArray(form.siteIds) || form.siteIds.length === 0)) {
     e.siteIds = 'Pick at least one site, or choose "All Sites".';
@@ -110,6 +115,17 @@ export default function PersonnelFormPage() {
   const [siteOpts,    setSiteOpts]   = useState([]);
   const [roleOpts,    setRoleOpts]   = useState([]);     // pulled from Site Roles master
   const [rolesLoaded, setRolesLoaded] = useState(false);
+  const [consentForms, setConsentForms] = useState([]);  // published consent forms
+
+  // Whether the currently selected role requires a consent assignment — driven
+  // entirely by the role's `consentRequired` flag (never a hardcoded role name).
+  const selectedRoleOpt = roleOpts.find((o) => o.value === form.role);
+  const consentRequired = selectedRoleOpt?._consentRequired === true;
+  const selectedRoleId  = selectedRoleOpt?._id ?? '';
+  // Only offer consents ASSIGNED to the selected role (empty assigned-roles = all).
+  const consentFormChoices = consentForms.filter(
+    (f) => !Array.isArray(f.assignedRoleIds) || f.assignedRoleIds.length === 0 || f.assignedRoleIds.includes(selectedRoleId),
+  );
 
   // ── Load active sites + Site Roles master ─────────────────────────────────
   // Both use the auth-only lookup endpoints — populating these dropdowns must
@@ -130,11 +146,22 @@ export default function PersonnelFormPage() {
           all
             .filter((r) => r.status === 'Active')
             .sort((a, b) => (a.roleName ?? '').localeCompare(b.roleName ?? ''))
-            .map((r) => ({ value: r.roleName, label: r.roleName, _id: r.id })),
+            .map((r) => ({
+              value: r.roleName,
+              label: r.roleName,
+              _id: r.id,
+              _consentRequired: r.consentRequired === true,
+            })),
         );
       })
       .catch(() => setRoleOpts([]))
       .finally(() => setRolesLoaded(true));
+
+    // Published consent forms — populate the "Consent Form Assignment" dropdown
+    // shown when the selected role requires consent.
+    sponsorPersonnelClient.getConsentForms()
+      .then((forms) => setConsentForms(forms))
+      .catch(() => setConsentForms([]));
   }, [studyId]);
 
   // ── Load existing personnel record (edit OR view) ──────────────────────────
@@ -176,9 +203,17 @@ export default function PersonnelFormPage() {
     // The Select's value is the role_name; resolve the matching role_id so the
     // API gets the id it expects (the backend also accepts the name as a
     // fallback, but sending the id is the contract).
-    const roleId = roleOpts.find((o) => o.value === role)?._id ?? '';
-    setForm((prev) => ({ ...prev, role: role ?? '', roleId }));
-    setErrors((prev) => { const e = { ...prev }; delete e.role; return e; });
+    const opt = roleOpts.find((o) => o.value === role);
+    const roleId = opt?._id ?? '';
+    // Drop any consent assignment when the new role doesn't require consent.
+    const keepConsent = opt?._consentRequired === true;
+    setForm((prev) => ({
+      ...prev,
+      role: role ?? '',
+      roleId,
+      consentTemplateId: keepConsent ? prev.consentTemplateId : '',
+    }));
+    setErrors((prev) => { const e = { ...prev }; delete e.role; delete e.consentTemplateId; return e; });
   };
 
   const handleAssignModeChange = (allSites) => {
@@ -188,7 +223,7 @@ export default function PersonnelFormPage() {
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    const errs = validate(form, isEdit);
+    const errs = validate(form, isEdit, consentRequired);
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setApiError('');
     setSaving(true);
@@ -198,7 +233,11 @@ export default function PersonnelFormPage() {
     const resolvedSiteIds = form.assignAllSites
       ? allActiveSites.map((s) => s.id).filter(Boolean)
       : form.siteIds;
-    const payload = { ...form, siteIds: resolvedSiteIds };
+    const payload = {
+      ...form,
+      siteIds: resolvedSiteIds,
+      consentTemplateId: consentRequired ? form.consentTemplateId : '',
+    };
     try {
       if (isEdit) {
         const updated = await sponsorPersonnelClient.update(studyId, personnelId, payload);
@@ -354,6 +393,41 @@ export default function PersonnelFormPage() {
           )}
         </FormField>
       </section>
+
+      {/* ── Consent Form Assignment ──────────────────────────────────────────
+          Shown only when the selected role has "Consent Required" enabled. */}
+      {consentRequired && (
+        <section className={styles.card}>
+          <h2 className={styles.cardHeading}>Consent Form Assignment (Required)</h2>
+          <p className={styles.cardSub}>
+            Select the consent form that will be assigned to this site personnel. The
+            selected form will be available for review, acknowledgment, or signature
+            based on the user&apos;s role.
+          </p>
+          <FormField label="Consent Form" name="consentTemplateId" required error={errors.consentTemplateId}>
+            <SearchableDropdown
+              options={consentFormChoices.map((f) => ({
+                value: f.id,
+                label: [f.code, f.name].filter(Boolean).join(' — ') + (f.version ? ` (v${f.version})` : ''),
+              }))}
+              value={form.consentTemplateId}
+              onChange={set('consentTemplateId')}
+              placeholder={
+                consentFormChoices.length === 0
+                  ? 'No consent form assigned to this role'
+                  : 'Search or select a consent form…'
+              }
+              searchPlaceholder="Search consent forms…"
+            />
+          </FormField>
+          {consentFormChoices.length === 0 && (
+            <p className={styles.cardSub} style={{ marginTop: 8 }}>
+              No published consent form is assigned to this role yet. In the Consent
+              Builder, publish a consent and add this role under “Assigned Roles”.
+            </p>
+          )}
+        </section>
+      )}
 
       {/* ── Compensation ─────────────────────────────────────────────────── */}
       <section className={styles.card}>

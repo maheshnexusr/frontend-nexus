@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { XCircle, Info } from 'lucide-react';
+import { XCircle, Info, Check, AlertTriangle } from 'lucide-react';
 import Modal     from '@/components/feedback/Modal';
-import FormField from '@/components/form/FormField';
 import styles from './RejectModal.module.css';
 
 const ACTION_ITEMS = [
@@ -13,20 +12,20 @@ const ACTION_ITEMS = [
   { key: 'provideId',          label: 'Provide valid identification'    },
 ];
 
+const MAX_MESSAGE = 1000;
+
 export default function RejectModal({ submission, bulk, onConfirm, onClose }) {
   const [form, setForm] = useState({
     rejectionReason: '',
     customMessage:   '',
     actionItems:     [],
   });
-  const [errors,  setErrors]  = useState({});
-  const [saving,  setSaving]  = useState(false);
-  const [charCount, setCharCount] = useState(0);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
 
   const set = (key) => (e) => {
     const val = e.target.value;
     setForm((p) => ({ ...p, [key]: val }));
-    if (key === 'customMessage') setCharCount(val.length);
     setErrors((p) => ({ ...p, [key]: undefined }));
   };
 
@@ -42,7 +41,7 @@ export default function RejectModal({ submission, bulk, onConfirm, onClose }) {
   const handleConfirm = async () => {
     const errs = {};
     if (!form.rejectionReason.trim()) errs.rejectionReason = 'Rejection reason is required.';
-    if (form.customMessage.length > 1000) errs.customMessage = 'Custom message cannot exceed 1000 characters.';
+    if (form.customMessage.length > MAX_MESSAGE) errs.customMessage = `Message cannot exceed ${MAX_MESSAGE} characters.`;
     if (Object.keys(errs).length) { setErrors(errs); return; }
 
     setSaving(true);
@@ -61,77 +60,109 @@ export default function RejectModal({ submission, bulk, onConfirm, onClose }) {
     <>
       <button className={styles.btnCancel} onClick={onClose} disabled={saving} type="button">Cancel</button>
       <button className={styles.btnReject} onClick={handleConfirm} disabled={saving} type="button">
-        <XCircle size={14} />
-        {saving ? 'Rejecting…' : bulk ? `Reject ${bulk}` : 'Reject'}
+        <XCircle size={15} />
+        {saving ? 'Rejecting…' : bulk ? `Reject ${bulk}` : 'Reject Consent'}
       </button>
     </>
   );
 
   return (
-    <Modal open onClose={onClose} title={title} size="sm" footer={footer}>
+    <Modal open onClose={onClose} title={title} size="md" footer={footer}>
       <div className={styles.body}>
 
+        {/* Destructive intent banner */}
+        <div className={styles.banner}>
+          <span className={styles.bannerIcon}><AlertTriangle size={16} /></span>
+          <div>
+            <strong className={styles.bannerTitle}>This consent will be rejected.</strong>
+            <span className={styles.bannerText}>
+              {bulk
+                ? `The same reason and action items will be sent to all ${bulk} selected submissions.`
+                : 'The user will be emailed the reason below and can resubmit after making the corrections.'}
+            </span>
+          </div>
+        </div>
+
+        {/* Who is being rejected */}
         {!bulk && submission && (
           <div className={styles.userInfo}>
-            <span className={styles.userName}>{submission.userName}</span>
-            <span className={styles.userMeta}>{submission.role} · {submission.siteName}</span>
+            <span className={styles.avatar}>
+              {(submission.userName || '?').trim().charAt(0).toUpperCase()}
+            </span>
+            <div className={styles.userMain}>
+              <span className={styles.userName}>{submission.userName || 'Unknown user'}</span>
+              <span className={styles.userMeta}>
+                {[submission.role, submission.siteName].filter(Boolean).join(' · ') || '—'}
+              </span>
+            </div>
           </div>
         )}
 
-        {bulk && (
-          <div className={styles.bulkInfo}>
-            <Info size={14} />
-            The same rejection reason will be sent to all {bulk} selected submissions.
-          </div>
-        )}
-
-        <FormField label="Reason for Rejection" name="rejectionReason" required error={errors.rejectionReason}
-          helpText="This reason will be shared with the user in the rejection email.">
+        {/* Reason */}
+        <div className={styles.field}>
+          <label htmlFor="rejectionReason" className={styles.label}>
+            Reason for rejection <span className={styles.req}>*</span>
+          </label>
           <textarea
             id="rejectionReason"
             className={`${styles.textarea} ${errors.rejectionReason ? styles.inputError : ''}`}
             value={form.rejectionReason}
             onChange={set('rejectionReason')}
             placeholder="Provide a clear reason for rejecting this consent submission…"
-            rows={4}
+            rows={3}
           />
-        </FormField>
+          {errors.rejectionReason
+            ? <span className={styles.errorText}>{errors.rejectionReason}</span>
+            : <span className={styles.hint}>Shared with the user in the rejection email.</span>}
+        </div>
 
-        <FormField label="Action Items" name="actionItems" helpText="Select specific actions the user needs to take.">
-          <div className={styles.actionList}>
-            {ACTION_ITEMS.map(({ key, label }) => (
-              <label key={key} className={styles.checkRow}>
-                <input
-                  type="checkbox"
-                  className={styles.checkbox}
-                  checked={form.actionItems.includes(key)}
-                  onChange={() => toggleAction(key)}
-                />
-                {label}
-              </label>
-            ))}
+        {/* Action items — selectable chips */}
+        <div className={styles.field}>
+          <label className={styles.label}>Action items</label>
+          <span className={styles.hint}>Select what the user needs to correct (optional).</span>
+          <div className={styles.actionGrid}>
+            {ACTION_ITEMS.map(({ key, label }) => {
+              const active = form.actionItems.includes(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`${styles.chip} ${active ? styles.chipActive : ''}`}
+                  onClick={() => toggleAction(key)}
+                  aria-pressed={active}
+                >
+                  <span className={styles.chipBox}>{active && <Check size={12} strokeWidth={3} />}</span>
+                  {label}
+                </button>
+              );
+            })}
           </div>
-        </FormField>
+        </div>
 
-        <FormField
-          label="Additional Instructions"
-          name="customMessage"
-          helpText={`Optional additional message to the user. ${charCount}/1000`}
-          error={errors.customMessage}
-        >
+        {/* Additional instructions */}
+        <div className={styles.field}>
+          <label htmlFor="customMessage" className={styles.label}>Additional instructions</label>
           <textarea
             id="customMessage"
             className={`${styles.textarea} ${errors.customMessage ? styles.inputError : ''}`}
             value={form.customMessage}
             onChange={set('customMessage')}
-            placeholder="Optional: Provide specific instructions for the user…"
+            placeholder="Optional message with specific instructions for the user…"
             rows={3}
           />
-        </FormField>
+          <div className={styles.metaRow}>
+            {errors.customMessage
+              ? <span className={styles.errorText}>{errors.customMessage}</span>
+              : <span className={styles.hint}>Optional.</span>}
+            <span className={`${styles.counter} ${form.customMessage.length > MAX_MESSAGE ? styles.counterOver : ''}`}>
+              {form.customMessage.length}/{MAX_MESSAGE}
+            </span>
+          </div>
+        </div>
 
         <div className={styles.noticeRow}>
           <Info size={13} className={styles.noticeIcon} />
-          <span>User will receive a rejection email with the reason and action items. They can resubmit after making corrections.</span>
+          <span>A rejection email with the reason and action items is sent automatically.</span>
         </div>
 
       </div>

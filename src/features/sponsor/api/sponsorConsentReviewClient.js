@@ -10,9 +10,22 @@
  */
 
 import sponsorAxiosClient from '@/api/sponsorAxiosClient';
+import siteAxiosClient    from '@/api/siteAxiosClient';
 
-const BASE      = '/api/v1/sponsor/workspace/consent-submissions';
-const WORKSPACE = '/api/v1/sponsor/workspace';
+// Consent Review is mounted under BOTH /sponsor/workspace and /site/workspace
+// (a site role may be granted consent_review). pickScope() selects the right
+// axios + URL prefix from the live token — site wins only when no sponsor token.
+function pickScope() {
+  if (typeof window === 'undefined') {
+    return { axios: sponsorAxiosClient, base: '/api/v1/sponsor/workspace/consent-submissions', workspace: '/api/v1/sponsor/workspace' };
+  }
+  const hasSponsor = !!localStorage.getItem('sponsorAccessToken') || !!localStorage.getItem('sponsorViewToken');
+  const hasSite    = !!localStorage.getItem('siteAccessToken');
+  if (hasSite && !hasSponsor) {
+    return { axios: siteAxiosClient, base: '/api/v1/site/workspace/consent-submissions', workspace: '/api/v1/site/workspace' };
+  }
+  return { axios: sponsorAxiosClient, base: '/api/v1/sponsor/workspace/consent-submissions', workspace: '/api/v1/sponsor/workspace' };
+}
 
 // ── Normalizers ────────────────────────────────────────────────────────────────
 
@@ -55,10 +68,15 @@ function normalizeDetails(raw) {
       acknowledged: s.acknowledged ?? false,
     })),
     submittedData:  raw.submitted_data  ?? raw.submittedData  ?? {},
+    // The exact consent form the site user saw + their raw answers, so the
+    // reviewer can re-render it filled and read-only.
+    formStructure:  raw.form_structure  ?? raw.formStructure  ?? null,
+    responses:      raw.responses       ?? {},
     documents: (raw.documents ?? []).map((d) => ({
       id:   d.id   ?? '',
       name: d.name ?? d.file_name ?? '',
       url:  d.url  ?? d.file_url  ?? '',
+      type: d.type ?? d.file_type ?? '',
       size: d.size ?? 0,
     })),
     signature: raw.signature ? {
@@ -91,18 +109,21 @@ export const sponsorConsentReviewClient = {
     if (filters.dateFrom) params.date_from = filters.dateFrom;
     if (filters.dateTo)   params.date_to   = filters.dateTo;
 
-    const res = await sponsorAxiosClient.get(BASE, { params });
+    const { axios, base } = pickScope();
+    const res = await axios.get(base, { params });
     const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
     return arr.map(normalizeSubmission);
   },
 
   async getById(_studyId, submissionId) {
-    const res = await sponsorAxiosClient.get(`${BASE}/${submissionId}`);
+    const { axios, base } = pickScope();
+    const res = await axios.get(`${base}/${submissionId}`);
     return normalizeDetails(res?.item ?? res ?? {});
   },
 
   async approve(_studyId, submissionId, data) {
-    const res = await sponsorAxiosClient.post(`${BASE}/${submissionId}/approve`, {
+    const { axios, base } = pickScope();
+    const res = await axios.post(`${base}/${submissionId}/approve`, {
       customMessage:  data.customMessage,
       effectiveDate:  data.effectiveDate,
       expiryDate:     data.expiryDate,
@@ -111,7 +132,8 @@ export const sponsorConsentReviewClient = {
   },
 
   async reject(_studyId, submissionId, data) {
-    const res = await sponsorAxiosClient.post(`${BASE}/${submissionId}/reject`, {
+    const { axios, base } = pickScope();
+    const res = await axios.post(`${base}/${submissionId}/reject`, {
       rejectionReason: data.rejectionReason,
       customMessage:   data.customMessage,
       actionItems:     data.actionItems,
@@ -120,7 +142,8 @@ export const sponsorConsentReviewClient = {
   },
 
   async bulkApprove(_studyId, ids, data) {
-    const res = await sponsorAxiosClient.post(`${BASE}/bulk-approve`, {
+    const { axios, base } = pickScope();
+    const res = await axios.post(`${base}/bulk-approve`, {
       submissionIds:  ids,
       customMessage:  data.customMessage,
       effectiveDate:  data.effectiveDate,
@@ -129,7 +152,8 @@ export const sponsorConsentReviewClient = {
   },
 
   async bulkReject(_studyId, ids, data) {
-    const res = await sponsorAxiosClient.post(`${BASE}/bulk-reject`, {
+    const { axios, base } = pickScope();
+    const res = await axios.post(`${base}/bulk-reject`, {
       submissionIds:   ids,
       rejectionReason: data.rejectionReason,
       customMessage:   data.customMessage,
@@ -139,7 +163,8 @@ export const sponsorConsentReviewClient = {
   },
 
   async download(_studyId, submissionId) {
-    const res = await sponsorAxiosClient.get(`${BASE}/${submissionId}/download`, {
+    const { axios, base } = pickScope();
+    const res = await axios.get(`${base}/${submissionId}/download`, {
       responseType: 'blob',
     });
     return res instanceof Blob ? res : new Blob([res], { type: 'application/pdf' });
@@ -148,8 +173,10 @@ export const sponsorConsentReviewClient = {
   /** Role list from spec §13.2. */
   async getRoles(_studyId) {
     try {
-      const res = await sponsorAxiosClient.get(`${WORKSPACE}/lookups/site-roles`);
-      const arr = Array.isArray(res) ? res : (res?.items ?? res?.data ?? []);
+      const { axios, workspace } = pickScope();
+      const res = await axios.get(`${workspace}/lookups/site-roles`);
+      // Lookup returns { success, roles } — read `roles` first (not items/data).
+      const arr = Array.isArray(res) ? res : (res?.roles ?? res?.items ?? res?.data ?? []);
       return arr.map((r) => ({ value: r.id ?? r.role_id, label: r.name ?? r.role_name ?? '' }));
     } catch { return []; }
   },

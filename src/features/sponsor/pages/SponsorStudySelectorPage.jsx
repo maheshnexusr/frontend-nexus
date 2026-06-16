@@ -23,6 +23,7 @@ import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { selectStudy }          from '@/features/workspace/store/workspaceSlice';
 import { selectCurrentUser }    from '@/features/auth/authSlice';
 import { sponsorStudiesService }  from '@/services/sponsorAuthService';
+import { resolveFileUrl }         from '@/api/fileUrl';
 import StatusBadge               from '@/components/feedback/StatusBadge';
 import ReadOnlySponsorBanner     from '@/features/workspace/components/ReadOnlySponsorBanner';
 import styles                    from './SponsorStudySelectorPage.module.css';
@@ -62,7 +63,9 @@ function StudyCard({ study, onSelect, busy }) {
     >
       <div className={styles.cardHeader}>
         <div className={styles.cardIcon}>
-          <FlaskConical size={18} strokeWidth={1.5} aria-hidden="true" />
+          {resolveFileUrl(study.organizationLogo)
+            ? <img src={resolveFileUrl(study.organizationLogo)} alt={study.sponsorName || 'Sponsor'} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 3 }} />
+            : <FlaskConical size={18} strokeWidth={1.5} aria-hidden="true" />}
         </div>
         <div className={styles.cardBadgeRow}>
           <ScopeBadge scope={study.scope} />
@@ -179,6 +182,7 @@ export default function SponsorStudySelectorPage() {
           title:  study.title,
           scope:  study.scope,
           config: study.config,
+          logo:   study.organizationLogo ?? null,
         }),
       );
       navigate(`/sponsor/${study.id}/dashboard`, { replace });

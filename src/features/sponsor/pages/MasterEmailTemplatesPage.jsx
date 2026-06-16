@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Pencil, Eye,
-  X, ChevronDown, Mail,
+  X, ChevronDown, Mail, Plus,
 } from 'lucide-react';
 import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
@@ -18,11 +18,15 @@ import styles from './MasterEmailTemplatesPage.module.css';
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
 
-// Per spec the Sponsor Email Templates page is scoped to exactly two
-// configurable templates (others stay in the master list for live sends):
+// The Sponsor Email Templates page is scoped to the configurable templates
+// (others stay in the master list for live sends):
 //   • SPONSOR_SITE_PERSONNEL_INVITE — "Invite User (Assign Site)"
 //   • SPONSOR_STUDY_SUBMISSION      — "Study Submission"
-const SPONSOR_TEMPLATE_CODES = 'SPONSOR_SITE_PERSONNEL_INVITE,SPONSOR_STUDY_SUBMISSION';
+//   • CONSENT_SUBMITTED             — "Consent Submitted (Review)" → reviewers
+//   • CONSENT_APPROVED              — "Consent Approved"           → submitting user
+//   • CONSENT_REJECTED              — "Consent Rejected"           → submitting user
+const SPONSOR_TEMPLATE_CODES =
+  'SPONSOR_SITE_PERSONNEL_INVITE,SPONSOR_STUDY_SUBMISSION,CONSENT_SUBMITTED,CONSENT_APPROVED,CONSENT_REJECTED';
 
 // The list endpoint returns raw master_email_templates rows (snake_case DB
 // columns). Map them to the camelCase shape the table + modals consume.
@@ -654,7 +658,12 @@ export default function MasterEmailTemplatesPage() {
 
   const filtersActive = catFilter || statFilter;
 
-  /* ── Edit ─────────────────────────────────────────────────────────────── */
+  /* ── Create / Edit ────────────────────────────────────────────────────── */
+  function openNew() {
+    setEditingTemplate(null);
+    setModalMode('new');
+  }
+
   function openEdit(tpl) {
     setEditingTemplate(tpl);
     setModalMode('edit');
@@ -663,8 +672,13 @@ export default function MasterEmailTemplatesPage() {
   async function handleSave(formData) {
     setSaving(true);
     try {
-      await emailTemplateService.update(editingTemplate.id, toApiPayload(formData));
-      dispatch(addToast({ type: 'success', message: 'Email template updated successfully.' }));
+      if (modalMode === 'new') {
+        await emailTemplateService.create(toApiPayload(formData));
+        dispatch(addToast({ type: 'success', message: 'Email template created successfully.' }));
+      } else {
+        await emailTemplateService.update(editingTemplate.id, toApiPayload(formData));
+        dispatch(addToast({ type: 'success', message: 'Email template updated successfully.' }));
+      }
       setModalMode(null);
       setEditingTemplate(null);
       setPage(1);
@@ -763,8 +777,19 @@ export default function MasterEmailTemplatesPage() {
       <div className={styles.pageHeader}>
         <div>
           <h1 className={styles.title}>Email Templates</h1>
-          <p className={styles.sub}>View and edit the pre-configured email templates for study communications.</p>
+          <p className={styles.sub}>Create, view and edit the email templates for study communications.</p>
         </div>
+        {canEdit && (
+          <button
+            type="button"
+            className={styles.newBtn}
+            onClick={openNew}
+            disabled={ro.isReadOnly}
+            title={ro.isReadOnly ? ro.readOnlyMessage : 'Create a new email template'}
+          >
+            <Plus size={15} /> New Template
+          </button>
+        )}
       </div>
 
       {/* Filter row */}
@@ -819,7 +844,7 @@ export default function MasterEmailTemplatesPage() {
       />
 
       {/* Modals */}
-      {modalMode === 'edit' && (
+      {(modalMode === 'edit' || modalMode === 'new') && (
         <TemplateFormModal
           mode={modalMode}
           template={editingTemplate}

@@ -55,8 +55,20 @@ export function evaluateFormula(expr, row, allRows = [], columns = []) {
 
   // Scope = this row's values addressed by each column's key (raw values, so
   // dates stay strings for DATEDIFF; the engine coerces numbers as needed).
+  // ALSO alias the designer's Internal Field Name in both casings: the capture
+  // runtime sees the structure snake_case (`field_key`), so colKey falls back to
+  // the internal column key and a formula referencing `end_date` / `start_date`
+  // (e.g. DATEDIFF over two date columns) would resolve to undefined → blank.
+  // Aliasing leaves the cell STORAGE key untouched (no data migration), it only
+  // makes the expression's identifiers resolve. See [[form-structure-snake-camel-runtime]].
   const scope = {};
-  columns.forEach((c) => { scope[colKey(c)] = row?.[colKey(c)]; });
+  columns.forEach((c) => {
+    const k = colKey(c);
+    const v = row?.[k];
+    scope[k] = v;
+    if (c.fieldKey  && c.fieldKey  !== k) scope[c.fieldKey]  = v;
+    if (c.field_key && c.field_key !== k) scope[c.field_key] = v;
+  });
 
   const { value, error } = evaluateExpression(s, scope);
   if (error || value == null) return '';

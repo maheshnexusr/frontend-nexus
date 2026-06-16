@@ -10,6 +10,7 @@ import {
 import { addToast }                  from '@/app/notificationSlice';
 import { sponsorPersonnelClient }    from '../api/sponsorPersonnelClient';
 import PersonnelDetailsModal         from '../components/personnel/PersonnelDetailsModal';
+import PersonnelDeleteModal          from '../components/personnel/PersonnelDeleteModal';
 import PersonnelImportModal          from '../components/personnel/PersonnelImportModal';
 import ConfirmDialog                 from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }           from '@/features/workspace/hooks/useReadOnlyView';
@@ -170,22 +171,17 @@ export default function PersonnelPage() {
 
   // ── CRUD Handlers ─────────────────────────────────────────────────────────
 
-  async function handleDelete() {
+  async function handleDelete(reason) {
     if (!deleteTarget) return;
     try {
-      await sponsorPersonnelClient.delete(studyId, deleteTarget.id);
+      await sponsorPersonnelClient.delete(studyId, deleteTarget.id, reason);
       setPersonnel((prev) => prev.filter((p) => p.id !== deleteTarget.id));
-      dispatch(addToast({ type: 'success', message: `'${deleteTarget.fullName}' deleted successfully.` }));
-    } catch (e) {
-      const msg = e?.response?.data?.message ?? e?.message ?? '';
-      dispatch(addToast({
-        type: 'error',
-        message: msg.includes('associated')
-          ? 'Cannot delete user. They have associated data entries, consents, or queries.'
-          : 'Failed to delete user. Please try again.',
-      }));
-    } finally {
+      dispatch(addToast({ type: 'success', message: `'${deleteTarget.fullName}' and all of their data deleted.` }));
       setDeleteTarget(null);
+    } catch (e) {
+      const msg = e?.response?.data?.message ?? e?.message ?? 'Failed to delete user. Please try again.';
+      dispatch(addToast({ type: 'error', message: msg }));
+      throw e; // keep the modal open on failure
     }
   }
 
@@ -536,17 +532,13 @@ export default function PersonnelPage() {
         />
       )}
 
-      {/* Delete Confirm */}
+      {/* Delete — impact summary + required reason */}
       {deleteTarget && (
-        <ConfirmDialog
-          open
+        <PersonnelDeleteModal
+          studyId={studyId}
+          target={deleteTarget}
           onClose={() => setDeleteTarget(null)}
           onConfirm={handleDelete}
-          title="Delete Personnel"
-          message={`Are you sure you want to delete "${deleteTarget.fullName}"? This action cannot be undone.`}
-          confirmLabel="Delete"
-          cancelLabel="Cancel"
-          variant="danger"
         />
       )}
 

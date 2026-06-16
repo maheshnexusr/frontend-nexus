@@ -1,0 +1,41 @@
+.form { display: flex; flex-direction: column; gap: 18px; }
+.block { display: flex; flex-direction: column; gap: 14px; }
+.blockTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  margin: 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-light, #e2e8f0);
+}
+.page { display: flex; flex-direction: column; gap: 14px; }
+.pageTitle { font-size: 14px; font-weight: 700; color: #334155; margin: 4px 0 0; }
+/* Dense 2-col field grid — matches the consent builder preview. Fields carry
+   their own gridColumn (full / half-left / half-right) inline. */
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; align-items: start; }
+@media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+
+.h2 { font-size: 15px; font-weight: 700; color: #0f172a; margin: 8px 0 0; }
+.h3 { font-size: 13px; font-weight: 600; color: #334155; margin: 6px 0 0; }
+.paragraph { font-size: 13px; line-height: 1.6; color: #475569; margin: 0; white-space: pre-wrap; }
+.divider { border: none; border-top: 1px solid #e2e8f0; margin: 6px 0; }
+
+.fieldRow { display: flex; flex-direction: column; gap: 6px; }
+.label { font-size: 13px; font-weight: 600; color: #0f172a; }
+.req { color: #dc2626; margin-left: 2px; }
+.help { font-size: 12px; color: #94a3b8; }
+
+.input {
+  width: 100%;
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-medium, #cbd5e1);
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  box-sizing: border-box;
+}
+.input:disabled { background: #f8fafc; opacity: 0.7; }
+
+.optList { display: flex; flex-direction: column; gap: 6px; }
+.optRow { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #334155; }

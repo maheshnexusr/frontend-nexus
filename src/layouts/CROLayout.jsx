@@ -27,6 +27,7 @@ import {
 } from '@/features/workspace/store/workspaceSlice';
 import { selectPermissions, selectPermissionsTree } from '@/features/auth/authSlice';
 import Sidebar                 from '@/components/layout/Sidebar';
+import brandLogo               from '@/assets/images/SclinNexus_color_logo.png';
 import WorkspaceHeader         from './WorkspaceHeader';
 import SponsorWorkspacePicker  from '@/features/workspace/components/SponsorWorkspacePicker';
 import styles                  from './CROLayout.module.css';
@@ -177,6 +178,8 @@ export default function CROLayout() {
         profilePath="/cro/profile"
         changePasswordPath="/cro/profile/password"
         notificationsPath="/cro/activity-log"
+        logoUrl={brandLogo}
+        subtitle="CRO Workspace"
       />
 
       {/* Main body shifts right by sidebar width on desktop */}
