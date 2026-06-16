@@ -9,20 +9,23 @@
  * object URL the browser can render/download.
  */
 
-import axios from 'axios';
 import { useEffect, useState } from 'react';
+import siteAxiosClient    from '@/api/siteAxiosClient';
+import sponsorAxiosClient from '@/api/sponsorAxiosClient';
+import axiosClient        from '@/api/axiosClient';
 
-const API_BASE = import.meta.env.VITE_USE_LOCAL === 'true'
-  ? (import.meta.env.VITE_LOCAL_API_URL ?? 'http://187.127.139.10:8080')
-  : (import.meta.env.VITE_PROD_API_URL  ?? 'https://backend-nexusr.onrender.com');
-
-// Same token priority the other workspace clients use — only one is ever live.
-function pickToken() {
-  return localStorage.getItem('siteWorkspaceToken')
-      || localStorage.getItem('sponsorViewToken')
-      || localStorage.getItem('sponsorAccessToken')
-      || localStorage.getItem('accessToken')
-      || null;
+// Pick the active workspace client (site → sponsor/view → CRO; only one session
+// is live at a time). Delegating to the scoped client gives this stream the
+// client's 401 → silent refresh + retry — a bare axios with a hand-attached
+// token would 401 unrecoverably once the 15-minute access token expired.
+function pickClient() {
+  if (localStorage.getItem('siteWorkspaceToken') || localStorage.getItem('siteAccessToken')) {
+    return siteAxiosClient;
+  }
+  if (localStorage.getItem('sponsorViewToken') || localStorage.getItem('sponsorAccessToken')) {
+    return sponsorAxiosClient;
+  }
+  return axiosClient;
 }
 
 /** True for stored refs that must be streamed through the authenticated route. */
@@ -32,15 +35,16 @@ export function isProtectedUrl(url) {
 
 /** Fetch a private upload and return an object URL (caller must revoke it). */
 export async function fetchProtectedObjectUrl(storedUrl) {
-  const token = pickToken();
+  const client = pickClient();
   const rel = String(storedUrl).replace(/^\/?(uploads\/)?/, '');
-  const res = await axios.get(`${API_BASE}/api/v1/form-files/view`, {
+  // The scoped client's response interceptor unwraps to res.data, so with
+  // responseType:'blob' this resolves to the Blob itself.
+  const blob = await client.get('/api/v1/form-files/view', {
     params: { path: rel },
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     responseType: 'blob',
     timeout: 60_000,
   });
-  return URL.createObjectURL(res.data);
+  return URL.createObjectURL(blob);
 }
 
 /** Force a browser download of a private upload. */

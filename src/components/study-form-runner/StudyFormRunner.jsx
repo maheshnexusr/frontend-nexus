@@ -390,12 +390,13 @@ function StudyFormRunnerInner({
   // exclusion criterion at Submit time (change responses vs. continue & exclude).
   const [exclusionConfirmOpen, setExclusionConfirmOpen] = useState(false);
   // Reason for Change (RFC): when edits require a reason (rfcActive), the live
-  // prompt fires the moment a saved value is modified and captures one reason
-  // for the edit session; it rides along on the next Save/Submit.
+  // prompt fires the moment a saved value is modified — and EVERY modified field
+  // needs its OWN reason. We keep a per-field reason map and re-prompt whenever a
+  // newly-changed field has no reason yet; the map rides along on the next
+  // Save/Submit (as change_reasons) and the backend enforces it field-by-field.
   const [rfcOpen, setRfcOpen]     = useState(false);
-  const [rfcFields, setRfcFields] = useState([]); // labels of the fields being changed
-  const rfcReasonRef  = useRef(null);  // reason captured for the current edit session
-  const rfcDismissedRef = useRef(false); // (reserved) suppress re-open within a session
+  const [rfcFields, setRfcFields] = useState([]); // labels of the fields the dialog is asking about
+  const rfcReasonsRef = useRef({});    // fieldId → reason captured this edit session
   const rfcLiveIdsRef = useRef([]);    // field ids the live prompt is currently asking about
 
   // Deep-link support — ?pageId=… jumps straight to a page (used below).
@@ -630,27 +631,46 @@ function StudyFormRunnerInner({
   // ── Live Reason-for-Change prompt ────────────────────────────────────────
   // When edits already require a reason (rfcActive — e.g. the form was submitted
   // and reopened), the MOMENT a previously-saved value is modified we prompt for
-  // the reason. Captured once per edit session (rfcReasonRef) and reused on save;
-  // the backend also enforces it. Cancel sets rfcDismissedRef so it doesn't loop.
+  // a reason — and we re-prompt for EVERY modified field that doesn't have a
+  // reason yet (each field's reason is recorded separately in the audit). The
+  // backend enforces the same field-by-field rule. Cancel reverts the just-asked
+  // fields so nothing un-reasoned is left to re-trigger the prompt.
   useEffect(() => {
-    if (readOnly || !rfcActive) return;
-    if (rfcReasonRef.current || rfcDismissedRef.current || rfcOpen) return;
+    if (readOnly || !rfcActive || rfcOpen) return undefined;
     const isEmpty = (v) => v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
-    const labels = [];
-    const ids = [];
-    for (const blk of blocks || []) {
-      for (const pg of blk.pages || []) {
-        for (const f of pg.fields || []) {
-          if (LAYOUT_TYPES.includes(f.type) || f.type === 'formula') continue;
-          if (f.readOnly || f.read_only) continue;
-          if (!isEmpty(baseline[f.id]) && !sameValue(values[f.id], baseline[f.id])) {
-            labels.push(f.label || f.fieldKey || f.field_key || f.id);
-            ids.push(f.id);
+    const reasons = rfcReasonsRef.current;
+    // Drop reasons for fields the user reverted back to their saved value.
+    for (const id of Object.keys(reasons)) {
+      if (sameValue(values[id], baseline[id])) delete reasons[id];
+    }
+    // Debounce: wait until the user pauses (≈700ms) before prompting, so typing
+    // into a text/number field (e.g. "30" → "35") isn't interrupted mid-edit.
+    // Each keystroke resets the timer; the dialog opens once editing settles.
+    const timer = setTimeout(() => {
+      const labels = [];
+      const ids = [];
+      for (const blk of blocks || []) {
+        for (const pg of blk.pages || []) {
+          for (const f of pg.fields || []) {
+            if (LAYOUT_TYPES.includes(f.type) || f.type === 'formula') continue;
+            if (f.readOnly || f.read_only) continue;
+            // A field's data may live under its id AND a companion key (checkbox
+            // per-option input → `${id}__opt_inputs`). The backend treats each as
+            // a separately-modified field, so collect every changed data key and
+            // attribute them all to this one field's reason.
+            const dataKeys = [f.id, `${f.id}__opt_inputs`];
+            const changedKeys = dataKeys.filter((k) =>
+              !isEmpty(baseline[k]) && !sameValue(values[k], baseline[k]) && reasons[k] == null);
+            if (changedKeys.length) {
+              labels.push(f.label || f.fieldKey || f.field_key || f.id);
+              ids.push(...changedKeys);
+            }
           }
         }
       }
-    }
-    if (ids.length) { rfcLiveIdsRef.current = ids; setRfcFields(labels); setRfcOpen(true); }
+      if (ids.length) { rfcLiveIdsRef.current = ids; setRfcFields(labels); setRfcOpen(true); }
+    }, 700);
+    return () => clearTimeout(timer);
   }, [values, baseline, blocks, rfcActive, readOnly, rfcOpen]);
 
   if (!blocks.length) {
@@ -985,14 +1005,25 @@ function StudyFormRunnerInner({
     rfcLiveIdsRef.current = [];
   };
 
+  // Build the Reason-for-Change payload from the per-field reason map captured
+  // live this session: `reasons` (fieldId → reason) for field-by-field audit +
+  // a combined `reason` summary for back-compat. Empty when nothing was asked.
+  const rfcPayload = () => {
+    const reasons = rfcReasonsRef.current || {};
+    const ids = Object.keys(reasons);
+    if (!ids.length) return {};
+    const combined = [...new Set(ids.map((id) => reasons[id]))].filter(Boolean).join('; ');
+    return { reason: combined || undefined, reasons: { ...reasons } };
+  };
+
   // Actual submit, run after the user confirms in the dialog. `reason` is the
   // Reason for Change supplied via the RFC dialog (undefined on the first try).
   const doSubmit = async (reason) => {
     if (readOnly || busy) return;
     setBusy(true);
     try {
-      await onSubmit?.(values, { reason: reason ?? rfcReasonRef.current ?? undefined });
-      rfcReasonRef.current = null; rfcDismissedRef.current = false;
+      await onSubmit?.(values, rfcPayload());
+      rfcReasonsRef.current = {};
       setSubmitted(true);
     } catch (e) {
       // RFC is captured live on field change, never at submit — so an RFC
@@ -1018,8 +1049,8 @@ function StudyFormRunnerInner({
       // Accepting the exclusion finalizes the form just like a normal Submit, so
       // the subject becomes Completed (with eligibility = Excluded). Then hand
       // control to onExcluded → return to the subjects table.
-      await onSubmit?.(values, { reason: reason ?? rfcReasonRef.current ?? undefined });
-      rfcReasonRef.current = null; rfcDismissedRef.current = false;
+      await onSubmit?.(values, rfcPayload());
+      rfcReasonsRef.current = {};
       if (onExcluded) onExcluded();
       else setSubmitted(true);
     } catch (e) {
@@ -1049,10 +1080,10 @@ function StudyFormRunnerInner({
     }
     setSaving(true);
     try {
-      await onSave?.(values, { reason: reason ?? rfcReasonRef.current ?? undefined });
+      await onSave?.(values, rfcPayload());
       // Saved data becomes the new baseline → a fresh edit session (the live RFC
       // prompt re-arms for the next modification).
-      rfcReasonRef.current = null; rfcDismissedRef.current = false;
+      rfcReasonsRef.current = {};
       setBaseline({ ...values });
     } catch (e) {
       if (!e?.rfcRequired) { /* page surfaces other errors */ }
@@ -1067,8 +1098,8 @@ function StudyFormRunnerInner({
     if (readOnly || completing) return;
     setCompleting(true);
     try {
-      await onSave?.(values, { reason: reason ?? rfcReasonRef.current ?? undefined });
-      rfcReasonRef.current = null; rfcDismissedRef.current = false;
+      await onSave?.(values, rfcPayload());
+      rfcReasonsRef.current = {};
       await onCompletePage?.(page.id, page.title);
       // Mark this page completed locally and snapshot its values as the new
       // baseline, so the footer flips to "Page Completed" until it's edited again.
@@ -1707,9 +1738,14 @@ function StudyFormRunnerInner({
               revertRfcEdits();
             }}
             onSave={(reason) => {
-              // Capture the reason for this edit session; it rides along on the
-              // next Save/Submit. No re-prompt at submit.
-              rfcReasonRef.current = reason;
+              // Record this reason against the field(s) the dialog just asked
+              // about. Any other modified field still without a reason re-opens
+              // the dialog (the live effect re-fires). Reasons ride along on the
+              // next Save/Submit as a per-field map.
+              const ids = rfcLiveIdsRef.current || [];
+              const next = { ...rfcReasonsRef.current };
+              for (const id of ids) next[id] = reason;
+              rfcReasonsRef.current = next;
               rfcLiveIdsRef.current = [];
               setRfcOpen(false);
             }}
