@@ -217,7 +217,7 @@ export default function SiteCaptureFormPage() {
     };
   }, [formId, subjectId]);
 
-  const handleSubmit = useCallback(async (formData, { reason } = {}) => {
+  const handleSubmit = useCallback(async (formData, { reason, reasons } = {}) => {
     if (!canEnterData) {
       dispatch(addToast({ type: 'info', message: "Only the subject's owner can submit this form." }));
       throw new Error('not-owner');
@@ -231,6 +231,7 @@ export default function SiteCaptureFormPage() {
         form_data: formData,
         status: 'Submitted',
         change_reason: reason,
+        change_reasons: reasons,
       });
       dispatch(addToast({ type: 'success', message: 'Form submitted.' }));
       setSubmitted(true);
@@ -323,7 +324,7 @@ export default function SiteCaptureFormPage() {
   // Save progress without finalising. Backend keeps the form "In Progress" and
   // moves the subject Enrolled → Pending (data capture has begun). Stays on
   // the form so the user can keep editing.
-  const handleSave = useCallback(async (formData, { reason } = {}) => {
+  const handleSave = useCallback(async (formData, { reason, reasons } = {}) => {
     if (!canEnterData) {
       dispatch(addToast({ type: 'info', message: "Only the subject's owner can edit this form." }));
       throw new Error('not-owner');
@@ -337,6 +338,7 @@ export default function SiteCaptureFormPage() {
         form_data: formData,
         status: 'In Progress',
         change_reason: reason,
+        change_reasons: reasons,
       });
       dispatch(addToast({ type: 'success', message: 'Progress saved — subject is in Pending.' }));
     } catch (e) {
