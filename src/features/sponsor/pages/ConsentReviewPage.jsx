@@ -551,6 +551,8 @@ export default function ConsentReviewPage() {
           studyId={studyId}
           submission={detailsTarget}
           onClose={() => setDetailsTarget(null)}
+          onApprove={(s) => { setDetailsTarget(null); setApproveTarget(s); }}
+          onReject={(s) => { setDetailsTarget(null); setRejectTarget(s); }}
         />
       )}
 

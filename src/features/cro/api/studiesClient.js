@@ -111,6 +111,7 @@ function normalize(raw) {
     // and only normalise to a real boolean when one of those is itself a
     // boolean. Otherwise we leave it `undefined`.
     consentManager:      pickBool(cfg, raw, 'enable_consent_manager',      'enableConsentManager'),
+    consentApproval:     pickBool(cfg, raw, 'enable_consent_approval',     'enableConsentApproval'),
     queryManager:        pickBool(cfg, raw, 'enable_query_manager',        'enableQueryManager'),
     dataManager:         pickBool(cfg, raw, 'enable_data_manager',         'enableDataManager'),
     verificationManager: pickBool(cfg, raw, 'enable_verification_manager', 'enableVerificationManager'),
@@ -154,6 +155,7 @@ function normalizeFormDefinition(raw) {
     submissionControls,
     triggers: deepToCamel(struct.triggers ?? raw.triggers ?? []),
     comments: deepToCamel(struct.comments ?? raw.comments ?? []),
+    eligibilityCriteria: deepToCamel(struct.eligibility_criteria ?? struct.eligibilityCriteria ?? []),
   };
 }
 
@@ -271,6 +273,7 @@ export const studiesClient = {
   async step3(id, data) {
     const res = await axiosClient.put(`/api/v1/studies/${id}/step-3`, {
       enable_consent_manager:      Boolean(data.consentManager),
+      enable_consent_approval:     Boolean(data.consentManager) && Boolean(data.consentApproval),
       enable_query_manager:        Boolean(data.queryManager),
       enable_data_manager:         Boolean(data.dataManager),
       enable_verification_manager: Boolean(data.verificationManager),

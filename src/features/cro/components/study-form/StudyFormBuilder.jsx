@@ -9,10 +9,11 @@ import { Settings2, Zap, Users, ArrowLeft, ArrowRight, Save, LayoutTemplate, Eye
 import {
   initForm, setActivePanel,
   selectActivePanel, selectBlocks, selectIsDirty, markSaved,
-  selectTriggers, selectSubmissionCtrl, selectEligibilityCriteria,
+  selectTriggers, selectSubmissionCtrl, selectEligibilityCriteria, fieldKeyOf,
 } from '@/features/cro/store/studyFormSlice';
 import { selectStep1 }              from '@/features/cro/store/studyWizardSlice';
 import { studiesClient }            from '@/features/cro/api/studiesClient';
+import { detectCircular }           from './formulaEngine';
 import { addToast }                 from '@/app/notificationSlice';
 import { usePermissions }           from '@/features/auth/usePermissions';
 import SFBLeft                      from './SFBLeft';
@@ -55,10 +56,31 @@ export default function StudyFormBuilder({ formId, formTitle, onPrevious, onNext
       });
   }, [step1.studyDbId]);
 
+  // Reject a save when two+ formula fields reference each other in a cycle
+  // (A = B + 1, B = A + 1). Returns the cycle's field keys, or null when clean.
+  const findFormulaCycle = () => {
+    const formulaFields = [];
+    for (const blk of blocks || []) {
+      for (const pg of blk.pages || []) {
+        for (const f of pg.fields || []) {
+          if (f?.type === 'formula') {
+            const key = fieldKeyOf(f);
+            if (key) formulaFields.push({ fieldKey: key, expression: f.expression || '' });
+          }
+        }
+      }
+    }
+    return detectCircular(formulaFields);
+  };
+
   // ── Save (hits PUT /api/v1/studies/{id}/step-4) ──────────────────────────
   const persistStep4 = async () => {
     if (!step1.studyDbId) {
       throw new Error('Study record not found. Please complete Step 1 first.');
+    }
+    const cycle = findFormulaCycle();
+    if (cycle) {
+      throw new Error(`Circular reference detected between formula fields: ${cycle.cycle.join(' → ')}`);
     }
     await studiesClient.step4(step1.studyDbId, {
       formStructure: { blocks, submissionControls, eligibilityCriteria },

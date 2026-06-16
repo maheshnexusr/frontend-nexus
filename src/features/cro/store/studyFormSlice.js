@@ -5,6 +5,66 @@ import { createSlice } from '@reduxjs/toolkit';
 
 const uid = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
+// Derive a safe snake_case column key from a human label.
+export const toColumnKey = (label = '') =>
+  String(label).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'column';
+
+// A field's stable reference key for formulas/conditions. Prefer the explicit
+// Internal Field Name; fall back to one derived from the label so fields saved
+// with a blank fieldKey (older forms) still resolve. Returns '' for no label.
+// NOTE: the capture runtime reads the stored form structure in snake_case
+// (the CRO designer is camelCase) — accept `field_key` too, or formulas that
+// reference an explicit Internal Field Name (e.g. DATEDIFF over two date
+// fields) silently fall back to the label-derived key, mismatch the scope, and
+// evaluate to blank. See [[form-structure-snake-camel-runtime]].
+export const fieldKeyOf = (f) => {
+  if (f?.fieldKey)  return f.fieldKey;
+  if (f?.field_key) return f.field_key;
+  const lbl = String(f?.label ?? '').trim();
+  return lbl ? lbl.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') : '';
+};
+
+// A single Table / Grid column definition. Nested inside field.columns; the
+// whole object round-trips through form_structure jsonb untouched (camelCase).
+export const makeColumn = (type = 'text', idx = 1) => ({
+  key: uid('col'),
+  label: `Column ${idx}`,
+  fieldKey: `column_${idx}`,
+  type,
+  required: false,
+  placeholder: '',
+  defaultValue: '',
+  width: 160,
+  readOnly: false,
+  hidden: false,
+  options: ['select', 'multiselect', 'radiogroup', 'checkbox'].includes(type)
+    ? [{ label: 'Option 1', value: 'opt_1' }, { label: 'Option 2', value: 'opt_2' }]
+    : undefined,
+  validation: { minLength: '', maxLength: '', min: '', max: '', pattern: '', patternPreset: '', unique: false, customMessage: '' },
+  formula: { enabled: type === 'formula', expr: '', grandTotal: false },
+  // Column-level conditional behaviour (Show / Hide / Required), mirrors field.condition.
+  condition: { enabled: false, logic: 'AND', rules: [] },
+});
+
+// Default config block for a Table / Grid field. Spread into makeField only for
+// type === 'table' so other field types stay lean.
+const tableDefaults = () => ({
+  showLabel: true,
+  // Read-only / Hidden come from the shared GeneralTab (field.readOnly / field.hiddenByDefault).
+  // REPEATING model: the designer defines only the COLUMNS; the data-entry user
+  // adds rows at runtime. These gate the runtime Add / Delete / Duplicate actions.
+  allowAddRow: true,
+  allowDeleteRow: true,
+  allowDuplicateRow: true,
+  allowEditRow: true,
+  rowNumbering: true,
+  allowEmptyRows: false,
+  rowSettings: { minRows: 0, maxRows: '', defaultRowCount: 1, autoAddEmptyRow: false },
+  pagination: { enabled: false, pageSize: 25 },
+  density: 'comfortable',           // 'comfortable' | 'compact'
+  columns: [makeColumn('text', 1)],
+});
+
 export const makeField = (type = 'text') => ({
   id: uid('fld'),
   type,
@@ -31,6 +91,13 @@ export const makeField = (type = 'text') => ({
   allowOther: false,
   otherLabel: 'Other',
   otherFreeText: true,
+  // Checkbox group — per-option additional input. When ON, each option may be
+  // configured to accept an extra value (text/number/date/textarea) that is
+  // captured only while that option is selected. Per-option config lives on the
+  // option object itself: { allowInput, inputType, inputPlaceholder, inputRequired }.
+  // Captured values are stored under the companion key `${field.id}__optInputs`
+  // = { [optionValue]: enteredValue } so the selection array stays intact.
+  allowOptionInput: false,
   defaultValues: [],           // checkbox group default selection
   minSelections: '',           // checkbox group
   maxSelections: '',           // checkbox group
@@ -41,6 +108,17 @@ export const makeField = (type = 'text') => ({
   trackChanges: true,
   condition: { enabled: false, logic: 'AND', rules: [] },
   comments: [],
+  // Table / Grid config (columns + row settings). Only meaningful for type 'table'.
+  ...(type === 'table' ? tableDefaults() : {}),
+  // Formula (calculated) field config. Only meaningful for type 'formula'.
+  // Always read-only (end users never edit); recomputed from `expression`.
+  ...(type === 'formula' ? {
+    expression: '',
+    outputType: 'number',     // 'number' | 'text' | 'boolean'
+    precision: 2,             // decimal places (number output)
+    dependencies: [],         // [fieldKey,…] derived from the expression
+    readOnly: true,
+  } : {}),
 });
 
 export const makePage = (idx = 1) => ({
@@ -76,6 +154,12 @@ const initialState = {
     submitWindowEnd:     '',
     confirmationMessage: 'Thank you for your submission.',
     redirectUrl:         '',
+    // Reason for Change (RFC) — when a modification to PREVIOUSLY-ENTERED data
+    // must capture a reason (logged to the immutable Audit Trail). The audit
+    // trail itself is always on; this only governs the mandatory-reason prompt.
+    //   'never' | 'after_submission' (default) | 'after_signoff'
+    //   'after_verification' | 'always'
+    reasonForChange:     'after_submission',
   },
   triggers:  [],
   comments:  [],

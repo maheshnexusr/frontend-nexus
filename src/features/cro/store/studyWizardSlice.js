@@ -38,6 +38,7 @@ const STEP2_INIT = {
 };
 const STEP3_INIT = {
   consentManager:      false,
+  consentApproval:     false,   // requires consentManager ON
   queryManager:        false,
   dataManager:         false,   // EDC only
   verificationManager: false,

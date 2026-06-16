@@ -47,6 +47,8 @@
   flex-shrink: 0;
 }
 .newBtn:hover { opacity: .88; }
+.newBtn:disabled { opacity: .5; cursor: not-allowed; }
+.newBtn { border: none; }
 
 /* ── Filter row ──────────────────────────────────────────────────────────── */
 .filterRow {

@@ -27,16 +27,21 @@ import {
   UploadCloud, PenLine, Star, Layers,
   Search, FileText, Type as TypeIcon, CornerDownRight, PanelLeft,
   AlertCircle, Lock, Snowflake, CircleDot, X as XIcon, Save, ShieldCheck, ArrowLeft,
+  ShieldAlert, Pencil,
 } from 'lucide-react';
 import RuntimeFieldRenderer from '@/features/cro/components/study-form/runtime/RuntimeFieldRenderer';
 import { evaluateField, evaluateEligibility } from '@/features/cro/components/study-form/runtime/runtimeEngine';
 import { headingStyleToCss } from '@/features/cro/components/study-form/headingStyle';
 import SignatureInput       from './SignatureInput';
+import TableFieldInput       from './TableFieldInput';
+import { validateTable }      from './tableEngine';
+import { evaluateExpression, coerceOutput } from '@/features/cro/components/study-form/formulaEngine';
 import { uploadFormFile }    from '@/api/formFileClient';
 import { resolveFileUrl }    from '@/api/fileUrl';
 import { FormQueriesProvider, useFormQueries } from './FormQueriesContext';
 import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import ConfirmDialog from '@/components/feedback/ConfirmDialog';
+import Modal from '@/components/feedback/Modal';
 import { selectAllFieldData } from '@/features/cro/store/formRuntimeSlice';
 import s from '@/features/cro/components/study-form/SFBPreview.module.css';
 
@@ -46,14 +51,32 @@ function escapeRegExp(str) { return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); 
 // collapse together and arrays compare by content. Used to detect whether a
 // page changed since it was last completed.
 function sameValue(a, b) {
-  const norm = (v) => (v === undefined || v === null)
-    ? ''
-    : Array.isArray(v) ? v.join(' ') : String(v);
+  const norm = (v) => {
+    if (v === undefined || v === null) return '';
+    // Objects/arrays (e.g. a Table field's array-of-row-objects) compare by
+    // their JSON so a cell edit registers as a change (dirty + SDV staleness).
+    if (typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+  };
   return norm(a) === norm(b);
 }
 
 // Non-input field types — excluded from data-entry / verification counting.
 const LAYOUT_TYPES = ['h2', 'h3', 'paragraph', 'divider'];
+
+// Per-field width → CSS grid-column placement inside the 2-column .fields grid.
+//   full (default) → span the whole row (100%)
+//   left           → left half (50%, first column)
+//   right          → right half (50%, second column)
+// A legacy 'half' value falls back to auto (one 50% cell, flows in order).
+const gridColForWidth = (w) => {
+  switch (w) {
+    case 'left':  return '1 / 2';
+    case 'right': return '2 / 3';
+    case 'half':  return 'auto';
+    default:      return '1 / -1';   // 'full' / unset
+  }
+};
 
 // Record-status workflow colours (Draft → … → Completed).
 const RECORD_STATUS_STYLE = {
@@ -65,6 +88,23 @@ const RECORD_STATUS_STYLE = {
   'Query Resolved':     { background: '#f0fdfa', color: '#0f766e', border: '1px solid #99f6e4' },
   'Completed':          { background: '#ecfdf5', color: '#047857', border: '1px solid #6ee7b7' },
 };
+
+// Checkbox per-option additional input ([[table-grid-field-type]] / spec).
+// The captured values live alongside the form data under a companion key, as an
+// ARRAY of { option, value } pairs — both the key and the pair-keys are
+// all-lowercase so the camelCase→snake_case request interceptor leaves them
+// untouched (option codes like "Yes" stay intact through the round-trip).
+const optInputsKey = (fieldId) => `${fieldId}__opt_inputs`;
+// Field/option config may arrive camelCase (CRO designer) or snake_case (the
+// runtime reads the stored structure directly) — accept either. See
+// [[form-structure-snake-camel-runtime]].
+const allowOptionInputOf = (f) => f?.allowOptionInput ?? f?.allow_option_input ?? false;
+const optAllowInput   = (o) => o?.allowInput ?? o?.allow_input ?? false;
+const optInputType    = (o) => o?.inputType ?? o?.input_type ?? 'text';
+const optInputPlaceholder = (o) => o?.inputPlaceholder ?? o?.input_placeholder ?? '';
+const optInputRequired = (o) => o?.inputRequired ?? o?.input_required ?? false;
+const optInputValue = (arr, optVal) =>
+  (Array.isArray(arr) ? arr.find((e) => e?.option === optVal)?.value : undefined) ?? '';
 
 // Inclusion/Exclusion eligibility chip colours.
 const ELIG_STYLE = {
@@ -278,6 +318,17 @@ function StudyFormRunnerInner({
   // in the sidebar header (next to "Progress Overview") and in the collapsed
   // rail — so the page no longer needs its own top bar.
   onBack,
+  // Optional callback invoked after a subject who meets an EXCLUSION criterion
+  // is submitted via the exclusion-warning dialog's "Continue" action. Lets the
+  // capture page close the form and return to the subjects table (where the
+  // subject already shows the red "Excluded" badge). When omitted, falls back to
+  // the normal in-form "Submitted" success screen.
+  onExcluded,
+  // Reason for Change: when true, MODIFYING a previously-saved value prompts for
+  // a reason the moment it's edited (the form's RFC rule + milestone are already
+  // satisfied — computed by the backend on load). The backend also enforces it
+  // on save as a safety net.
+  rfcActive = false,
   // Optional node rendered at the very top of the main content column, above
   // the search bar (e.g. the subject identity strip + header actions). Lets the
   // capture pages drop their separate top bar and let the form fill the height.
@@ -335,6 +386,17 @@ function StudyFormRunnerInner({
   const [softBlocked, setSoftBlocked] = useState([]);
   // Open the app-styled "confirm before submit" dialog once checks pass.
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  // Open the exclusion warning dialog when the subject currently meets an
+  // exclusion criterion at Submit time (change responses vs. continue & exclude).
+  const [exclusionConfirmOpen, setExclusionConfirmOpen] = useState(false);
+  // Reason for Change (RFC): when edits require a reason (rfcActive), the live
+  // prompt fires the moment a saved value is modified and captures one reason
+  // for the edit session; it rides along on the next Save/Submit.
+  const [rfcOpen, setRfcOpen]     = useState(false);
+  const [rfcFields, setRfcFields] = useState([]); // labels of the fields being changed
+  const rfcReasonRef  = useRef(null);  // reason captured for the current edit session
+  const rfcDismissedRef = useRef(false); // (reserved) suppress re-open within a session
+  const rfcLiveIdsRef = useRef([]);    // field ids the live prompt is currently asking about
 
   // Deep-link support — ?pageId=… jumps straight to a page (used below).
   const [params] = useSearchParams();
@@ -498,6 +560,99 @@ function StudyFormRunnerInner({
     if (Object.keys(patch).length) setValues((prev) => ({ ...prev, ...patch }));
   }, [values, blocks]);
 
+  // ── Formula recalculation (Formula field type) ──────────────────────────
+  // Formulas reference other fields by their Internal Field Name (fieldKey),
+  // but `values` is keyed by field.id. Build a fieldKey→id map, then evaluate
+  // every formula field against a fieldKey-scoped snapshot, writing the coerced
+  // result back to values[formulaField.id]. Iterate so a formula that depends on
+  // another formula settles; cap passes to stay safe against any cycle that
+  // slipped past the builder's circular-reference guard.
+  useEffect(() => {
+    const formulaFields = [];
+    const keyToId = {};
+    // Register every alias a formula expression might use to address this field:
+    // the explicit Internal Field Name (camel- OR snake_case in the capture
+    // runtime — see [[form-structure-snake-camel-runtime]]) AND the label-derived
+    // key. The explicit key always wins; the label key only fills a gap. Without
+    // this, a formula referencing an explicit key (e.g. DATEDIFF over two date
+    // fields) resolved to undefined in capture → blank, while label==key fields
+    // (BMI's weight/height) worked by coincidence.
+    const labelKeyOf = (f) => {
+      const lbl = String(f?.label ?? '').trim();
+      return lbl ? lbl.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') : '';
+    };
+    const addKey = (k, id, strong) => { if (k && (strong || !(k in keyToId))) keyToId[k] = id; };
+    for (const blk of blocks || []) {
+      for (const pg of blk.pages || []) {
+        for (const f of pg.fields || []) {
+          addKey(f?.fieldKey ?? f?.field_key, f.id, true);
+          addKey(labelKeyOf(f), f.id, false);
+          if (f?.type === 'formula' && (f.expression || '').trim()) formulaFields.push(f);
+        }
+      }
+    }
+    if (!formulaFields.length) return;
+
+    const next = { ...values };
+    let changed = false;
+    for (let pass = 0; pass < 10; pass += 1) {
+      let passChanged = false;
+      // Scope = current values addressed by fieldKey.
+      const scope = {};
+      for (const [key, id] of Object.entries(keyToId)) scope[key] = next[id];
+      for (const f of formulaFields) {
+        // outputType arrives snake_case in the capture runtime (output_type).
+        const { value: raw, error } = evaluateExpression(f.expression, scope);
+        const out = error ? null : coerceOutput(raw, f.outputType ?? f.output_type, f.precision);
+        if (!sameValue(next[f.id], out)) { next[f.id] = out; passChanged = true; changed = true; }
+      }
+      if (!passChanged) break;
+    }
+    if (changed) setValues(next);
+  }, [values, blocks]);
+
+  // ── Live exclusion prompt ────────────────────────────────────────────────
+  // The moment the subject's responses make them meet an EXCLUSION criterion,
+  // pop the confirm dialog: change the response, or continue (→ persist so the
+  // subject is recorded Excluded, then return to the Subjects table). Fires only
+  // on the TRANSITION into Excluded (tracked via ref) so it doesn't re-open on
+  // every keystroke while excluded, and never in a read-only/submitted view.
+  const exclusionPrevRef = useRef(null);
+  useEffect(() => {
+    if (readOnly) { exclusionPrevRef.current = null; return; }
+    const status = evaluateEligibility(eligibilityCriteria, values).status;
+    if (status === 'Excluded' && exclusionPrevRef.current !== 'Excluded') {
+      setExclusionConfirmOpen(true);
+    }
+    exclusionPrevRef.current = status;
+  }, [values, eligibilityCriteria, readOnly]);
+
+  // ── Live Reason-for-Change prompt ────────────────────────────────────────
+  // When edits already require a reason (rfcActive — e.g. the form was submitted
+  // and reopened), the MOMENT a previously-saved value is modified we prompt for
+  // the reason. Captured once per edit session (rfcReasonRef) and reused on save;
+  // the backend also enforces it. Cancel sets rfcDismissedRef so it doesn't loop.
+  useEffect(() => {
+    if (readOnly || !rfcActive) return;
+    if (rfcReasonRef.current || rfcDismissedRef.current || rfcOpen) return;
+    const isEmpty = (v) => v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
+    const labels = [];
+    const ids = [];
+    for (const blk of blocks || []) {
+      for (const pg of blk.pages || []) {
+        for (const f of pg.fields || []) {
+          if (LAYOUT_TYPES.includes(f.type) || f.type === 'formula') continue;
+          if (f.readOnly || f.read_only) continue;
+          if (!isEmpty(baseline[f.id]) && !sameValue(values[f.id], baseline[f.id])) {
+            labels.push(f.label || f.fieldKey || f.field_key || f.id);
+            ids.push(f.id);
+          }
+        }
+      }
+    }
+    if (ids.length) { rfcLiveIdsRef.current = ids; setRfcFields(labels); setRfcOpen(true); }
+  }, [values, baseline, blocks, rfcActive, readOnly, rfcOpen]);
+
   if (!blocks.length) {
     return (
       <div className={s.emptyRoot} style={{ flex: 1 }}>
@@ -598,8 +753,10 @@ function StudyFormRunnerInner({
     if (typeof v === 'object') return Object.keys(v).length > 0;
     return true;
   };
+  // Formula fields are computed + read-only, so they're not user-entry data:
+  // excluded from the mandatory-field gate and the SDV/verification rollup.
   const isVisibleData = (f) =>
-    !LAYOUT_TYPES.includes(f.type) && !evaluateField(f, values).hidden;
+    !LAYOUT_TYPES.includes(f.type) && f.type !== 'formula' && !evaluateField(f, values).hidden;
   const pageVerifyRollup = (pg) => {
     const data = (pg.fields || []).filter(isVisibleData);
     const filled = data.filter(fieldHasValue);
@@ -629,8 +786,28 @@ function StudyFormRunnerInner({
   // Mandatory-field gate for page navigation: a VISIBLE hard-required field left
   // blank blocks Next (and is flagged inline). Mirrors the backend submit gate
   // (requiredFields.js) — layout + conditionally-hidden fields are excluded.
+  // A table is "invalid" (blocks Next/Submit) when it's below its minimum row
+  // count or any visible cell fails validation. Required-but-empty is already
+  // covered by the generic isHardReq path below (table value is an array).
+  const tableInvalid = (f) => {
+    if (f.type !== 'table') return false;
+    const list = Array.isArray(values[f.id]) ? values[f.id] : [];
+    const min = Number(f.rowSettings?.minRows) || 0;
+    if (min && list.length < min) return true;
+    return validateTable(f, list).hasErrors;
+  };
+  // A checkbox option with "additional input required when selected" left blank
+  // blocks Next/Submit — but only while that option is actually checked.
+  const checkboxOptionInputMissing = (f) => {
+    if (f.type !== 'checkboxgroup' || !allowOptionInputOf(f)) return false;
+    const selected = Array.isArray(values[f.id]) ? values[f.id] : [];
+    const inputs = values[optInputsKey(f.id)];
+    return (f.options || []).some((o) =>
+      optAllowInput(o) && optInputRequired(o) && selected.includes(o.value)
+      && String(optInputValue(inputs, o.value)).trim() === '');
+  };
   const pageMissingRequired = (pg) =>
-    (pg.fields || []).filter(isVisibleData).filter((f) => isHardReq(f) && !fieldHasValue(f));
+    (pg.fields || []).filter(isVisibleData).filter((f) => (isHardReq(f) && !fieldHasValue(f)) || tableInvalid(f) || checkboxOptionInputMissing(f));
   const missingRequiredNow = pageMissingRequired(page);
   const missingRequiredIds = new Set(missingRequiredNow.map((f) => f.id));
 
@@ -770,6 +947,14 @@ function StudyFormRunnerInner({
 
   const handleSubmit = async () => {
     if (readOnly || busy) return;
+    // Exclusion takes priority over the field gates: an Excluded subject (screen
+    // failure) is finalized as-is, so we skip soft/required checks and go
+    // straight to the exclusion prompt. (The backend likewise skips the
+    // mandatory-field gate when the data meets an exclusion criterion.)
+    if (liveEligibility.status === 'Excluded') {
+      setExclusionConfirmOpen(true);
+      return;
+    }
     // Soft checks BLOCK Submit (but never Save): an empty soft-required field
     // stops the submit, jumps the user to the FIRST missing field, and lists
     // them inline — there is no "submit anyway".
@@ -785,13 +970,60 @@ function StudyFormRunnerInner({
     setSubmitConfirmOpen(true);
   };
 
-  // Actual submit, run after the user confirms in the dialog.
-  const doSubmit = async () => {
+  // Discard the edits the live RFC prompt is asking about — used when the user
+  // cancels the Reason-for-Change dialog (they chose not to justify the change),
+  // reverting the touched fields to their last-saved values so nothing
+  // un-reasoned is left to block submit.
+  const revertRfcEdits = () => {
+    const ids = rfcLiveIdsRef.current || [];
+    if (!ids.length) return;
+    setValues((prev) => {
+      const next = { ...prev };
+      for (const id of ids) next[id] = baseline[id];
+      return next;
+    });
+    rfcLiveIdsRef.current = [];
+  };
+
+  // Actual submit, run after the user confirms in the dialog. `reason` is the
+  // Reason for Change supplied via the RFC dialog (undefined on the first try).
+  const doSubmit = async (reason) => {
     if (readOnly || busy) return;
     setBusy(true);
     try {
-      await onSubmit?.(values);
+      await onSubmit?.(values, { reason: reason ?? rfcReasonRef.current ?? undefined });
+      rfcReasonRef.current = null; rfcDismissedRef.current = false;
       setSubmitted(true);
+    } catch (e) {
+      // RFC is captured live on field change, never at submit — so an RFC
+      // rejection here is unexpected (reason already sent). Swallow it rather
+      // than popping a submit-time dialog; surface any other error.
+      if (!e?.rfcRequired) throw e;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // "Continue" on the exclusion prompt: the user accepts the exclusion. Persist
+  // the current responses (so the backend recomputes eligibility → Excluded),
+  // then hand control to onExcluded → the page returns to the Subjects table,
+  // where the subject already shows the red "Excluded" badge. Prefer onSave (a
+  // plain progress save, no submit/required gate); fall back to onSubmit, then
+  // to the in-form success screen if neither navigation hook is wired.
+  const doExcludedContinue = async (reason) => {
+    setExclusionConfirmOpen(false);
+    if (readOnly || busy) return;
+    setBusy(true);
+    try {
+      // Accepting the exclusion finalizes the form just like a normal Submit, so
+      // the subject becomes Completed (with eligibility = Excluded). Then hand
+      // control to onExcluded → return to the subjects table.
+      await onSubmit?.(values, { reason: reason ?? rfcReasonRef.current ?? undefined });
+      rfcReasonRef.current = null; rfcDismissedRef.current = false;
+      if (onExcluded) onExcluded();
+      else setSubmitted(true);
+    } catch (e) {
+      if (!e?.rfcRequired) throw e;
     } finally {
       setBusy(false);
     }
@@ -809,7 +1041,7 @@ function StudyFormRunnerInner({
   // Save progress without finalising — stays on the form (no success screen).
   // Hard checks block Save too (spec: hard = cannot save/submit until filled);
   // soft-required fields don't block. Flag the offending fields inline.
-  const handleSave = async () => {
+  const handleSave = async (reason) => {
     if (readOnly || saving) return;
     if (missingRequiredNow.length) {
       setTriedNext(true);
@@ -817,7 +1049,13 @@ function StudyFormRunnerInner({
     }
     setSaving(true);
     try {
-      await onSave?.(values);
+      await onSave?.(values, { reason: reason ?? rfcReasonRef.current ?? undefined });
+      // Saved data becomes the new baseline → a fresh edit session (the live RFC
+      // prompt re-arms for the next modification).
+      rfcReasonRef.current = null; rfcDismissedRef.current = false;
+      setBaseline({ ...values });
+    } catch (e) {
+      if (!e?.rfcRequired) { /* page surfaces other errors */ }
     } finally {
       setSaving(false);
     }
@@ -825,11 +1063,12 @@ function StudyFormRunnerInner({
 
   // Mark the CURRENT page Completed → it becomes a Verification Manager
   // work-item. Saves the page's data first so the verifier sees current values.
-  const handleCompletePage = async () => {
+  const handleCompletePage = async (reason) => {
     if (readOnly || completing) return;
     setCompleting(true);
     try {
-      await onSave?.(values);
+      await onSave?.(values, { reason: reason ?? rfcReasonRef.current ?? undefined });
+      rfcReasonRef.current = null; rfcDismissedRef.current = false;
       await onCompletePage?.(page.id, page.title);
       // Mark this page completed locally and snapshot its values as the new
       // baseline, so the footer flips to "Page Completed" until it's edited again.
@@ -853,6 +1092,8 @@ function StudyFormRunnerInner({
         return next;
       });
       setVerifiedPages((prev) => ({ ...prev, [page.id]: { status: 'Not Verified' } }));
+    } catch (e) {
+      if (!e?.rfcRequired) { /* page surfaces other errors */ }
     } finally {
       setCompleting(false);
     }
@@ -1173,6 +1414,10 @@ function StudyFormRunnerInner({
                     data-field-id={field.id}
                     style={{
                       minWidth: 0,
+                      // fieldWidth arrives snake_case in the capture runtime
+                      // (field_width) — accept either, else half-width fields
+                      // render full-width. See [[form-structure-snake-camel-runtime]].
+                      gridColumn: gridColForWidth(field.fieldWidth ?? field.field_width),
                       // Flag a mandatory field the user tried to skip past. Outline
                       // doesn't affect layout flow, so the grid doesn't shift.
                       // Hard (red) takes precedence over soft (amber).
@@ -1211,7 +1456,15 @@ function StudyFormRunnerInner({
                           disabled={readOnly || pageReadOnly || disabled || !canEditField(f)}
                           style={{ border: 0, padding: 0, margin: 0 }}
                         >
-                          <FieldInput field={f} value={v} onChange={onChange} />
+                          <FieldInput
+                            field={f}
+                            value={v}
+                            onChange={onChange}
+                            allValues={values}
+                            showErrors={triedNext}
+                            optionInputs={values[optInputsKey(f.id)]}
+                            onOptionInputsChange={(next) => setValue(optInputsKey(f.id), next)}
+                          />
                         </fieldset>
                       )}
                     </RuntimeFieldRenderer>
@@ -1266,8 +1519,10 @@ function StudyFormRunnerInner({
                 <CircleDot size={11} /> {currentRecordStatus}
               </span>
             )}
-            {/* Live Inclusion/Exclusion eligibility (subject-level, updates as you type). */}
-            {liveEligibility.status && (
+            {/* Live Inclusion/Exclusion eligibility (subject-level, updates as you type).
+                "Pending Review" (criteria exist but the source data is still
+                incomplete) is hidden — only show a resolved verdict. */}
+            {liveEligibility.status && liveEligibility.status !== 'Pending Review' && (
               <span
                 title={liveEligibility.reason || `Eligibility: ${liveEligibility.status}`}
                 style={{
@@ -1298,7 +1553,7 @@ function StudyFormRunnerInner({
             {onSave && !readOnly && (
               <button
                 type="button"
-                onClick={handleSave}
+                onClick={() => handleSave()}
                 disabled={saving || busy || statusReadOnly}
                 title={statusReadOnly
                   ? `Form is ${formStatus} — saving is disabled.`
@@ -1320,7 +1575,7 @@ function StudyFormRunnerInner({
               showCompleteBtn ? (
                 <button
                   type="button"
-                  onClick={handleCompletePage}
+                  onClick={() => handleCompletePage()}
                   disabled={completing || busy || saving || statusReadOnly}
                   title={statusReadOnly
                     ? `Form is ${formStatus} — cannot change pages.`
@@ -1431,11 +1686,147 @@ function StudyFormRunnerInner({
             confirmLabel="Submit"
             cancelLabel="Cancel"
           />
+
+          <ExclusionDialog
+            open={exclusionConfirmOpen}
+            reason={liveEligibility.reason}
+            busy={busy}
+            onChange={() => setExclusionConfirmOpen(false)}
+            onContinue={doExcludedContinue}
+          />
+
+          <ReasonForChangeDialog
+            open={rfcOpen}
+            fields={rfcFields}
+            busy={busy || saving || completing}
+            onCancel={() => {
+              // Declined to justify the change → discard the edit (revert to the
+              // last-saved value). Nothing un-reasoned remains, so submit/save
+              // won't be blocked and won't prompt again.
+              setRfcOpen(false);
+              revertRfcEdits();
+            }}
+            onSave={(reason) => {
+              // Capture the reason for this edit session; it rides along on the
+              // next Save/Submit. No re-prompt at submit.
+              rfcReasonRef.current = reason;
+              rfcLiveIdsRef.current = [];
+              setRfcOpen(false);
+            }}
+          />
         </div>
       </div>
     </div>
   );
 }
+
+/* ── Exclusion dialog ──────────────────────────────────────────────────────
+ * Shown the moment a subject's responses meet an EXCLUSION criterion. Offers a
+ * neat, purpose-built choice: go back and change the response, or accept the
+ * exclusion (→ the subject is finalized as Excluded and we return to the
+ * subjects list). Built on Modal so it inherits the focus-trap / ESC / overlay.
+ */
+function ExclusionDialog({ open, reason, busy, onChange, onContinue }) {
+  if (!open) return null;
+  const footer = (
+    <>
+      <button type="button" onClick={onChange} disabled={busy} style={EXCL.btnGhost}>
+        <Pencil size={14} /> Change responses
+      </button>
+      <button type="button" onClick={() => onContinue()} disabled={busy} style={EXCL.btnDanger}>
+        {busy ? 'Saving…' : 'Continue — mark Excluded'}
+      </button>
+    </>
+  );
+  return (
+    <Modal open={open} onClose={onChange} size="sm" footer={footer}>
+      <div style={EXCL.body}>
+        <div style={EXCL.iconWrap}>
+          <ShieldAlert size={26} />
+        </div>
+        <h3 style={EXCL.title}>Subject meets exclusion criteria</h3>
+        <p style={EXCL.sub}>
+          Based on the responses entered, this subject is <strong style={{ color: '#b91c1c' }}>Excluded</strong>.
+        </p>
+        {reason && (
+          <div style={EXCL.reasonBox}>
+            <AlertCircle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>{reason}</span>
+          </div>
+        )}
+        <p style={EXCL.note}>
+          Choose <strong>Change responses</strong> to review your answers, or <strong>Continue</strong> to
+          record the subject as Excluded and return to the subjects list.
+        </p>
+      </div>
+    </Modal>
+  );
+}
+const EXCL = {
+  body:     { display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 10, padding: '4px 4px 0' },
+  iconWrap: { width: 52, height: 52, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' },
+  title:    { margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' },
+  sub:      { margin: 0, fontSize: 13.5, color: '#475569', lineHeight: 1.5 },
+  reasonBox:{ display: 'flex', alignItems: 'flex-start', gap: 8, width: '100%', boxSizing: 'border-box', padding: '9px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, fontSize: 12.5, fontWeight: 600, color: '#b91c1c', textAlign: 'left' },
+  note:     { margin: '2px 0 0', fontSize: 12, color: '#64748b', lineHeight: 1.5 },
+  btnGhost: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 600, fontSize: 13, cursor: 'pointer' },
+  btnDanger:{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid #dc2626', background: '#dc2626', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' },
+};
+
+/* ── Reason for Change dialog ──────────────────────────────────────────────
+ * Shown when a save modifies previously-entered data and the form's RFC rule
+ * requires a reason. The reason is mandatory (Save is disabled until entered)
+ * and is written to the immutable audit trail, linked to every modified field.
+ */
+function ReasonForChangeDialog({ open, fields = [], busy, onCancel, onSave }) {
+  const [text, setText] = useState('');
+  // Reset the field each time the dialog (re)opens.
+  useEffect(() => { if (open) setText(''); }, [open]);
+  if (!open) return null;
+  const trimmed = text.trim();
+  const footer = (
+    <>
+      <button type="button" onClick={onCancel} disabled={busy} style={EXCL.btnGhost}>Cancel</button>
+      <button
+        type="button"
+        onClick={() => trimmed && onSave(trimmed)}
+        disabled={busy || !trimmed}
+        style={{ ...RFC_PRIMARY, opacity: (busy || !trimmed) ? 0.55 : 1, cursor: (busy || !trimmed) ? 'not-allowed' : 'pointer' }}
+      >
+        {busy ? 'Saving…' : 'Save changes'}
+      </button>
+    </>
+  );
+  return (
+    <Modal open={open} onClose={onCancel} size="sm" title="Reason for Change" footer={footer}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <p style={{ margin: 0, fontSize: 13.5, color: '#475569', lineHeight: 1.5 }}>
+          You are modifying previously entered data. Please provide a reason for this change.
+        </p>
+        {fields.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '8px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', width: '100%' }}>
+              {fields.length === 1 ? 'Field changed' : `${fields.length} fields changed`}
+            </span>
+            {fields.map((f, i) => (
+              <span key={i} style={{ fontSize: 12, fontWeight: 600, color: '#334155', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 999, padding: '2px 10px' }}>{f}</span>
+            ))}
+          </div>
+        )}
+        <textarea
+          autoFocus
+          rows={4}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="e.g. Incorrect date entered during initial submission"
+          style={{ width: '100%', boxSizing: 'border-box', padding: 10, fontSize: 13, border: '1px solid #cbd5e1', borderRadius: 8, resize: 'vertical', fontFamily: 'inherit' }}
+        />
+        <span style={{ fontSize: 11.5, color: '#94a3b8' }}>A reason is required and will be recorded in the audit trail.</span>
+      </div>
+    </Modal>
+  );
+}
+const RFC_PRIMARY = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid #2563eb', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 13 };
 
 /* ── Verify Page dialog (SDV) ─────────────────────────────────────────────
  * Lists the page's data fields with a checkbox each (default ticked). The
@@ -1720,7 +2111,7 @@ function FileFieldInput({ field, value, onChange }) {
   );
 }
 
-function FieldInput({ field, value, onChange }) {
+function FieldInput({ field, value, onChange, allValues, showErrors, optionInputs, onOptionInputsChange }) {
   const v = value ?? '';
   // "Other" free-text mode for radio/checkbox groups (allowOther).
   const [otherOpen, setOtherOpen] = useState(false);
@@ -1729,6 +2120,20 @@ function FieldInput({ field, value, onChange }) {
     : undefined;
 
   switch (field.type) {
+    case 'table':
+      return <TableFieldInput field={field} value={value} onChange={onChange} allValues={allValues} showErrors={showErrors} />;
+    case 'formula': {
+      // Read-only computed output. The value is maintained by the form-level
+      // recompute effect; this just displays it (coerced for safety).
+      const display = coerceOutput(value, field.outputType, field.precision);
+      const text = display == null || display === '' ? '—'
+        : typeof display === 'boolean' ? (display ? 'True' : 'False') : String(display);
+      return (
+        <div className={s.input} style={{ background: '#f8fafc', color: '#0f172a', fontWeight: 600, display: 'flex', alignItems: 'center', cursor: 'default' }}>
+          {text}
+        </div>
+      );
+    }
     case 'text':
     case 'number':
     case 'email':
@@ -1812,23 +2217,66 @@ function FieldInput({ field, value, onChange }) {
       const checked = Array.isArray(v) ? v : [];
       const otherVal = checked.find((x) => !optVals.includes(x));
       const otherChk = field.allowOther && (otherOpen || otherVal !== undefined);
+      // Per-option additional input (allowOptionInput). Captured as an array of
+      // { option, value } pairs; the input shows only while its option is
+      // checked, and is cleared (pair removed) when the option is unchecked.
+      const allowOptInput = allowOptionInputOf(field);
+      const optInputsArr = Array.isArray(optionInputs) ? optionInputs : [];
+      const setOptInput = (optVal, inputVal) => {
+        if (!onOptionInputsChange) return;
+        const rest = optInputsArr.filter((e) => e?.option !== optVal);
+        const next = (inputVal === '' || inputVal == null) ? rest : [...rest, { option: optVal, value: inputVal }];
+        onOptionInputsChange(next);
+      };
       return (
         <div className={s.choiceGroup} style={choiceStyle}>
-          {opts.map((o) => (
-            <label key={o.value} className={`${s.choiceItem} ${checked.includes(o.value) ? s.choiceItemSelected : ''}`}>
-              <input
-                type="checkbox"
-                checked={checked.includes(o.value)}
-                onChange={() => {
-                  const next = checked.includes(o.value)
-                    ? checked.filter((x) => x !== o.value)
-                    : [...checked, o.value];
-                  onChange(next);
-                }}
-              />
-              <span>{o.label}</span>
-            </label>
-          ))}
+          {opts.map((o) => {
+            const isChk = checked.includes(o.value);
+            const wantsInput = allowOptInput && optAllowInput(o);
+            const curInput = optInputValue(optInputsArr, o.value);
+            const inputMissing = wantsInput && optInputRequired(o) && isChk && String(curInput).trim() === '';
+            const itype = optInputType(o);
+            return (
+            <div key={o.value} style={{ display: 'flex', flexDirection: 'column', flexBasis: '100%' }}>
+              <label className={`${s.choiceItem} ${isChk ? s.choiceItemSelected : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={isChk}
+                  onChange={() => {
+                    const next = isChk
+                      ? checked.filter((x) => x !== o.value)
+                      : [...checked, o.value];
+                    // Deselecting clears any captured additional input for it.
+                    if (isChk && wantsInput) setOptInput(o.value, '');
+                    onChange(next);
+                  }}
+                />
+                <span>{o.label}</span>
+              </label>
+              {wantsInput && isChk && (
+                itype === 'textarea' ? (
+                  <textarea
+                    className={s.textarea}
+                    style={{ marginTop: 6, marginLeft: 24, ...(inputMissing && showErrors ? { outline: '2px solid #fca5a5' } : {}) }}
+                    rows={2}
+                    placeholder={optInputPlaceholder(o) || 'Please specify…'}
+                    value={curInput}
+                    onChange={(e) => setOptInput(o.value, e.target.value)}
+                  />
+                ) : (
+                  <input
+                    type={itype === 'number' ? 'number' : itype === 'date' ? 'date' : 'text'}
+                    className={s.input}
+                    style={{ marginTop: 6, marginLeft: 24, maxWidth: 'calc(100% - 24px)', ...(inputMissing && showErrors ? { outline: '2px solid #fca5a5' } : {}) }}
+                    placeholder={optInputPlaceholder(o) || 'Please specify…'}
+                    value={curInput}
+                    onChange={(e) => setOptInput(o.value, e.target.value)}
+                  />
+                )
+              )}
+            </div>
+            );
+          })}
           {field.allowOther && (
             <label className={`${s.choiceItem} ${otherChk ? s.choiceItemSelected : ''}`}>
               <input

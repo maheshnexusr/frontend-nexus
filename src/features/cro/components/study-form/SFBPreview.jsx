@@ -15,17 +15,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
-  ChevronLeft, ChevronRight, ChevronDown, CheckCircle2,
+  ChevronLeft, ChevronRight, ChevronDown,
   UploadCloud, PenLine, Star, Layers,
   Search, FileText, Type as TypeIcon, CornerDownRight,
 } from 'lucide-react';
-import { selectBlocks, selectFormMeta } from '@/features/cro/store/studyFormSlice';
-import { formResponsesClient } from '@/features/cro/api/formResponsesClient';
+import { selectBlocks, selectFormMeta, fieldKeyOf } from '@/features/cro/store/studyFormSlice';
 import { addToast } from '@/app/notificationSlice';
-import { validateField, evaluateField } from './runtime/runtimeEngine';
 import { headingStyleToCss } from './headingStyle';
 import RuntimeFieldRenderer from './runtime/RuntimeFieldRenderer';
 import PlatformDatePicker from '@/components/form/PlatformDatePicker';
+import TableFieldInput from '@/components/study-form-runner/TableFieldInput';
+import { evaluateExpression, coerceOutput } from './formulaEngine';
 import s from './SFBPreview.module.css';
 
 /* ── Helpers ──────────────────────────────────────────────────────────── */
@@ -50,8 +50,6 @@ export default function SFBPreview({ onExitPreview }) {
   // Active block / page indices for the main column stepper.
   const [blockIdx,  setBlockIdx]  = useState(0);
   const [pageIdx,   setPageIdx]   = useState(0);
-  const [submitted, setSubmitted] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [values,    setValues]    = useState({});       // { fieldId: { label, value } }
 
   // Sidebar — which blocks are currently expanded (show their pages).
@@ -101,6 +99,41 @@ export default function SFBPreview({ onExitPreview }) {
   const setValue = (fieldId, label, value) =>
     setValues((prev) => ({ ...prev, [fieldId]: { label, value } }));
 
+  // Formula recompute (preview) — mirrors StudyFormRunner. Formulas reference
+  // fields by fieldKey; preview `values` is keyed by field.id as { label, value }.
+  useEffect(() => {
+    const formulaFields = [];
+    const keyToId = {};
+    for (const blk of blocks || []) {
+      for (const pg of blk.pages || []) {
+        for (const f of pg.fields || []) {
+          const key = fieldKeyOf(f);
+          if (key) keyToId[key] = f.id;
+          if (f?.type === 'formula' && (f.expression || '').trim()) formulaFields.push(f);
+        }
+      }
+    }
+    if (!formulaFields.length) return;
+    setValues((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (let pass = 0; pass < 10; pass += 1) {
+        let passChanged = false;
+        const scope = {};
+        for (const [key, id] of Object.entries(keyToId)) scope[key] = next[id]?.value;
+        for (const f of formulaFields) {
+          const { value: raw, error } = evaluateExpression(f.expression, scope);
+          const out = error ? null : coerceOutput(raw, f.outputType, f.precision);
+          if (JSON.stringify(next[f.id]?.value) !== JSON.stringify(out)) {
+            next[f.id] = { label: f.label, value: out }; passChanged = true; changed = true;
+          }
+        }
+        if (!passChanged) break;
+      }
+      return changed ? next : prev;
+    });
+  }, [values, blocks]);
+
   const toggleSidebarBlock = (id) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
 
@@ -141,26 +174,6 @@ export default function SFBPreview({ onExitPreview }) {
         <Layers size={40} strokeWidth={1.25} className={s.emptyIcon} />
         <p className={s.emptyTitle}>Nothing to preview yet</p>
         <p className={s.emptySub}>Add blocks and fields in the Builder tab first.</p>
-      </div>
-    );
-  }
-
-  if (submitted) {
-    return (
-      <div className={s.successRoot}>
-        <div className={s.successCard}>
-          <div className={s.successIconWrap}>
-            <CheckCircle2 size={48} strokeWidth={1.5} className={s.successIcon} />
-          </div>
-          <h2 className={s.successTitle}>Form Submitted Successfully</h2>
-          <p className={s.successSub}>
-            Your responses have been recorded. You can view them in the
-            <strong> Submission</strong> panel.
-          </p>
-          <button className={s.successBtn} onClick={() => onExitPreview?.()}>
-            ← Back to Builder
-          </button>
-        </div>
       </div>
     );
   }
@@ -214,69 +227,6 @@ export default function SFBPreview({ onExitPreview }) {
     if (e.key === 'ArrowDown') { e.preventDefault(); setHi((i) => Math.min(i + 1, Math.max(results.length - 1, 0))); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((i) => Math.max(i - 1, 0)); }
     else if (e.key === 'Enter')   { if (results[hi]) { e.preventDefault(); jumpTo(results[hi]); } }
-  };
-
-  /**
-   * Submit Form — preview submission.
-   *
-   * Walks every field across every block/page, evaluates conditional logic
-   * (so hidden/disabled fields are skipped), then validates the value. If
-   * anything fails, jump to the first offending page, surface a toast, and
-   * do NOT persist. Preview-only persistence is localStorage; the real
-   * backend submit happens from the site/data-capture flow.
-   */
-  const handleSubmit = async () => {
-    if (submitting) return;
-
-    // Build the flat value map runtimeEngine expects: { fieldId: value }.
-    const valueMap = Object.fromEntries(
-      Object.entries(values).map(([id, v]) => [id, v?.value]),
-    );
-
-    // Find the first field with an error (across all pages, in document order).
-    let firstError = null;
-    outer: for (let bi = 0; bi < blocks.length; bi += 1) {
-      const block = blocks[bi];
-      for (let pi = 0; pi < block.pages.length; pi += 1) {
-        const page = block.pages[pi];
-        for (const f of page.fields ?? []) {
-          const evalRes = evaluateField(f, valueMap);
-          if (evalRes.hidden || evalRes.disabled) continue;
-          const err = validateField({ ...f, required: evalRes.required }, valueMap[f.id]);
-          if (err) {
-            firstError = { blockIdx: bi, pageIdx: pi, fieldId: f.id, message: err };
-            break outer;
-          }
-        }
-      }
-    }
-
-    if (firstError) {
-      setBlockIdx(firstError.blockIdx);
-      setPageIdx(firstError.pageIdx);
-      dispatch(addToast({
-        type: 'error',
-        message: `Cannot submit — please fix: ${firstError.message}`,
-        duration: 5000,
-      }));
-      // Scroll the offending field into view after the page state settles.
-      setTimeout(() => {
-        const el = document.querySelector(`[data-field-id="${firstError.fieldId}"]`);
-        if (el?.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }, 60);
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await formResponsesClient.create(meta.formId ?? null, meta.formTitle, values);
-      dispatch(addToast({ type: 'success', message: 'Form submitted successfully.' }));
-      setSubmitted(true);
-    } catch {
-      dispatch(addToast({ type: 'error', message: 'Failed to submit form. Please try again.' }));
-    } finally {
-      setSubmitting(false);
-    }
   };
 
   /* ── Progress ─────────────────────────────────────────────────────── */
@@ -430,7 +380,11 @@ export default function SFBPreview({ onExitPreview }) {
                   );
                 }
                 return (
-                  <div key={field.id} data-field-id={field.id} style={{ minWidth: 0 }}>
+                  <div
+                    key={field.id}
+                    data-field-id={field.id}
+                    style={{ minWidth: 0, gridColumn: ({ left: '1 / 2', right: '2 / 3', half: 'auto' }[field.fieldWidth]) || '1 / -1' }}
+                  >
                     <RuntimeFieldRenderer
                       field={field}
                       value={values[field.id]?.value}
@@ -469,14 +423,10 @@ export default function SFBPreview({ onExitPreview }) {
               </div>
             )}
 
+            {/* Preview has no Submit — it's a design-time test of the form, not a
+                real data-capture flow. End users submit from the site workspace. */}
             {isLastPage ? (
-              <button
-                className={s.btnSubmit}
-                onClick={handleSubmit}
-                disabled={submitting}
-              >
-                {submitting ? 'Submitting…' : 'Submit Form'} <CheckCircle2 size={14} />
-              </button>
+              <span className={s.previewEndNote}>End of form — preview only</span>
             ) : pi === block.pages.length - 1 ? (
               <button className={s.btnNextBlock} onClick={goNext}>
                 Next: {blocks[bi + 1]?.title} <ChevronRight size={15} />
@@ -495,10 +445,70 @@ export default function SFBPreview({ onExitPreview }) {
 }
 
 /* ── Interactive field renderer (used inside RuntimeFieldRenderer) ───────── */
+/* Designer-preview checkbox group. Mirrors the runtime, incl. per-option
+ * additional input (field.allowOptionInput) — values are kept in local state
+ * since the preview has no submission record. */
+function PreviewCheckboxGroup({ field, value, onChange }) {
+  const checked = Array.isArray(value) ? value : [];
+  const [optInputs, setOptInputs] = useState({});
+  const setOptInput = (optVal, inputVal) => setOptInputs((prev) => {
+    const next = { ...prev };
+    if (inputVal === '' || inputVal == null) delete next[optVal];
+    else next[optVal] = inputVal;
+    return next;
+  });
+  return (
+    <div className={s.choiceGroup}>
+      {(field.options ?? []).map((o) => {
+        const isChk = checked.includes(o.value);
+        const wantsInput = field.allowOptionInput && o.allowInput;
+        return (
+          <div key={o.value} style={{ display: 'flex', flexDirection: 'column', flexBasis: '100%' }}>
+            <label className={`${s.choiceItem} ${isChk ? s.choiceItemSelected : ''}`}>
+              <input
+                type="checkbox"
+                checked={isChk}
+                onChange={() => {
+                  const next = isChk ? checked.filter((x) => x !== o.value) : [...checked, o.value];
+                  if (isChk && wantsInput) setOptInput(o.value, '');
+                  onChange(next);
+                }}
+              />
+              <span>{o.label}</span>
+            </label>
+            {wantsInput && isChk && (
+              o.inputType === 'textarea' ? (
+                <textarea className={s.textarea} style={{ marginTop: 6, marginLeft: 24 }} rows={2}
+                  placeholder={o.inputPlaceholder || 'Please specify…'} value={optInputs[o.value] ?? ''}
+                  onChange={(e) => setOptInput(o.value, e.target.value)} />
+              ) : (
+                <input type={o.inputType === 'number' ? 'number' : o.inputType === 'date' ? 'date' : 'text'}
+                  className={s.input} style={{ marginTop: 6, marginLeft: 24, maxWidth: 'calc(100% - 24px)' }}
+                  placeholder={o.inputPlaceholder || 'Please specify…'} value={optInputs[o.value] ?? ''}
+                  onChange={(e) => setOptInput(o.value, e.target.value)} />
+              )
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function FieldInput({ field, value, onChange }) {
   const v = value ?? '';
 
   switch (field.type) {
+    case 'table':
+      return <TableFieldInput field={field} value={value} onChange={onChange} allValues={{}} />;
+    case 'formula': {
+      const display = coerceOutput(value, field.outputType, field.precision);
+      const text = display == null || display === '' ? '—'
+        : typeof display === 'boolean' ? (display ? 'True' : 'False') : String(display);
+      return (
+        <div className={s.input} style={{ background: '#f8fafc', fontWeight: 600, display: 'flex', alignItems: 'center', cursor: 'default' }}>{text}</div>
+      );
+    }
     case 'text':
     case 'number':
     case 'email':
@@ -558,28 +568,8 @@ function FieldInput({ field, value, onChange }) {
           ))}
         </div>
       );
-    case 'checkboxgroup': {
-      const checked = Array.isArray(v) ? v : [];
-      return (
-        <div className={s.choiceGroup}>
-          {(field.options ?? []).map((o) => (
-            <label key={o.value} className={`${s.choiceItem} ${checked.includes(o.value) ? s.choiceItemSelected : ''}`}>
-              <input
-                type="checkbox"
-                checked={checked.includes(o.value)}
-                onChange={() => {
-                  const next = checked.includes(o.value)
-                    ? checked.filter((x) => x !== o.value)
-                    : [...checked, o.value];
-                  onChange(next);
-                }}
-              />
-              <span>{o.label}</span>
-            </label>
-          ))}
-        </div>
-      );
-    }
+    case 'checkboxgroup':
+      return <PreviewCheckboxGroup field={field} value={v} onChange={onChange} />;
     case 'toggle':
       return (
         <div className={s.toggleWrap} onClick={() => onChange(!v)}>

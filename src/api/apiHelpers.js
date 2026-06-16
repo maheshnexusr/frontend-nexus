@@ -39,6 +39,9 @@ export function normalizeError(error) {
       status,
       message: data?.message ?? STATUS_MESSAGES[status] ?? 'Something went wrong.',
       errors:  data?.errors  ?? null,
+      // Structured error payload (e.g. { reasonRequired, changedFields } or
+      // { missingRequired }) — preserved so callers can branch on it.
+      details: data?.details ?? null,
       raw:     error,
     };
   }

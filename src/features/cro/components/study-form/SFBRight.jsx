@@ -14,6 +14,8 @@ import {
 } from '@/features/cro/store/studyFormSlice';
 import { selectStep3 } from '@/features/cro/store/studyWizardSlice';
 import { REGEX_PRESETS } from '@/features/form-builder/lib/fieldSchema';
+import { TableConfigPanel, ColumnBuilder } from './tableConfig';
+import FormulaBuilder from './FormulaBuilder';
 import {
   HEADING_FONT_SIZES, HEADING_FONT_WEIGHTS, HEADING_ALIGNMENTS,
   HEADING_THEME_COLORS, headingStyleToCss,
@@ -183,6 +185,8 @@ function FieldPropsPanel({ block, page, field }) {
   const upH      = (k, v) => up('headingStyle', { ...field.headingStyle, [k]: v });
 
   const isLayout   = ['h2', 'h3', 'paragraph', 'divider'].includes(field.type);
+  const isTable    = field.type === 'table';
+  const isFormula  = field.type === 'formula';
   const isHeading  = field.type === 'h2' || field.type === 'h3';
   const hasOptions = ['select','multiselect','radiogroup','checkboxgroup'].includes(field.type);
   const isText     = ['text','textarea','email','phone','url','password'].includes(field.type);
@@ -227,13 +231,30 @@ function FieldPropsPanel({ block, page, field }) {
           </Accordion>
         )}
 
-        {!isLayout && (
+        {isTable && (
+          <>
+            <Accordion title="Table Settings" icon={<LayoutGrid size={13} />} defaultOpen>
+              <TableConfigPanel field={field} up={up} />
+            </Accordion>
+            <Accordion title="Columns" icon={<Settings size={13} />} defaultOpen>
+              <ColumnBuilder field={field} up={up} />
+            </Accordion>
+          </>
+        )}
+
+        {isFormula && (
+          <Accordion title="Formula Builder" icon={<Settings size={13} />} defaultOpen>
+            <FormulaBuilder field={field} up={up} />
+          </Accordion>
+        )}
+
+        {!isLayout && !isTable && !isFormula && (
           <Accordion title="Appearance & Layout" icon={<LayoutGrid size={13} />}>
             <AppearanceTab field={field} up={up} />
           </Accordion>
         )}
 
-        {!isLayout && (
+        {!isLayout && !isTable && !isFormula && (
           <Accordion title="Validation Rules">
             <ValidationTab field={field} up={up} upV={upV} isText={isText} isNum={isNum} />
           </Accordion>
@@ -350,14 +371,16 @@ function GeneralTab({ field, up, hasOptions, isLayout }) {
         </SField>
       )}
 
-      <SField label="Default Value">
-        <input
-          className={s.sinput}
-          value={field.defaultValue ?? ''}
-          onChange={(e) => up('defaultValue', e.target.value)}
-          placeholder="Enter default value"
-        />
-      </SField>
+      {field.type !== 'table' && (
+        <SField label="Default Value">
+          <input
+            className={s.sinput}
+            value={field.defaultValue ?? ''}
+            onChange={(e) => up('defaultValue', e.target.value)}
+            placeholder="Enter default value"
+          />
+        </SField>
+      )}
 
       <SField label="Help Text">
         <textarea
@@ -369,10 +392,13 @@ function GeneralTab({ field, up, hasOptions, isLayout }) {
         />
       </SField>
 
-      <div className={s.toggleRow}>
-        <span className={s.toggleRowLabel}>Read-only</span>
-        <Toggle value={field.readOnly ?? false} onChange={(v) => up('readOnly', v)} />
-      </div>
+      {/* Formula fields are always read-only — the toggle is hidden for them. */}
+      {field.type !== 'formula' && (
+        <div className={s.toggleRow}>
+          <span className={s.toggleRowLabel}>Read-only</span>
+          <Toggle value={field.readOnly ?? false} onChange={(v) => up('readOnly', v)} />
+        </div>
+      )}
 
       <div className={s.toggleRow}>
         <span className={s.toggleRowLabel}>Hidden by Default</span>
@@ -517,6 +543,18 @@ function GeneralTab({ field, up, hasOptions, isLayout }) {
               </div>
             </>
           )}
+
+          {field.type === 'checkboxgroup' && (
+            <>
+              <div className={s.toggleRow}>
+                <span className={s.toggleRowLabel}>Allow additional input per option</span>
+                <Toggle value={field.allowOptionInput ?? false} onChange={(v) => up('allowOptionInput', v)} />
+              </div>
+              {field.allowOptionInput && (
+                <OptionInputEditor options={field.options ?? []} onChange={(opts) => up('options', opts)} />
+              )}
+            </>
+          )}
         </>
       )}
 
@@ -546,10 +584,9 @@ function AppearanceTab({ field, up }) {
           value={field.fieldWidth ?? 'full'}
           onChange={(e) => up('fieldWidth', e.target.value)}
         >
-          <option value="full">Full Width</option>
-          <option value="half">Half Width</option>
-          <option value="third">One Third</option>
-          <option value="two-thirds">Two Thirds</option>
+          <option value="full">Full width (100%)</option>
+          <option value="left">Half — left (50%)</option>
+          <option value="right">Half — right (50%)</option>
         </select>
       </SField>
 
@@ -938,6 +975,8 @@ function operatorsForType(type) {
       return opItems('signed', 'not_signed');
     case 'autocomplete': case 'search':
       return opItems('equals', 'not_equals', 'contains');
+    case 'table':
+      return opItems('is_empty', 'is_not_empty');
     default:
       return opItems('equals', 'not_equals', 'contains', 'is_empty', 'is_not_empty');
   }
@@ -1584,3 +1623,46 @@ function OptionsEditor({ options, onChange }) {
   );
 }
 const optMoveBtn = { fontSize: 7, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' };
+
+/* Per-option "additional input" config (checkbox group). Each option may turn
+ * on an extra input captured only while that option is selected at runtime. */
+const OPTION_INPUT_TYPES = [
+  { value: 'text',     label: 'Text' },
+  { value: 'number',   label: 'Number' },
+  { value: 'date',     label: 'Date' },
+  { value: 'textarea', label: 'Textarea' },
+];
+function OptionInputEditor({ options, onChange }) {
+  const update = (i, patch) => onChange(options.map((o, j) => (j === i ? { ...o, ...patch } : o)));
+  return (
+    <div className={s.sfield}>
+      <span className={s.sfieldLabel}>Additional input per option</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {(options ?? []).map((opt, i) => (
+          <div key={i} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', background: '#f8fafc' }}>
+            <div className={s.toggleRow} style={{ marginBottom: opt.allowInput ? 8 : 0 }}>
+              <span className={s.toggleRowLabel} style={{ fontWeight: 600 }}>{opt.label || opt.value || `Option ${i + 1}`}</span>
+              <Toggle value={opt.allowInput ?? false} onChange={(v) => update(i, { allowInput: v })} />
+            </div>
+            {opt.allowInput && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <SField label="Input type">
+                  <select className={s.sselect} value={opt.inputType ?? 'text'} onChange={(e) => update(i, { inputType: e.target.value })}>
+                    {OPTION_INPUT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </SField>
+                <SField label="Placeholder">
+                  <input className={s.sinput} value={opt.inputPlaceholder ?? ''} onChange={(e) => update(i, { inputPlaceholder: e.target.value })} placeholder="Please specify" />
+                </SField>
+                <div className={s.toggleRow}>
+                  <span className={s.toggleRowLabel}>Required when selected</span>
+                  <Toggle value={opt.inputRequired ?? false} onChange={(v) => update(i, { inputRequired: v })} />
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

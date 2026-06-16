@@ -331,6 +331,10 @@ export function evaluateField(field, allValues) {
 // criteria are configured (so the UI shows no badge).
 export function evaluateEligibility(criteria, values = {}) {
   const fid   = (c) => c?.fieldId ?? c?.field_id;
+  // Human label for the reason text — fieldLabel arrives snake_case in the
+  // capture runtime (field_label); only fall back to the opaque id as a last
+  // resort so the exclusion popup never shows a raw field id.
+  const flabel = (c) => c?.fieldLabel ?? c?.field_label ?? fid(c);
   const ctype = (c) => String(c?.type ?? c?.criteria_type ?? 'inclusion').toLowerCase();
   const rules = (criteria || []).filter((c) => c && fid(c) && c.operator);
   if (!rules.length) return { status: null, reason: null };
@@ -342,7 +346,7 @@ export function evaluateEligibility(criteria, values = {}) {
     const fv = values[fid(c)];
     if (isEmptyVal(fv)) continue;
     if (compareOp(c.operator, fv, c.value)) {
-      return { status: 'Excluded', reason: `Exclusion met: ${c.fieldLabel || fid(c)}` };
+      return { status: 'Excluded', reason: `Exclusion met: ${flabel(c)}` };
     }
   }
   if (rules.some((c) => isEmptyVal(values[fid(c)]))) {
@@ -351,7 +355,7 @@ export function evaluateEligibility(criteria, values = {}) {
   if (inclusion.length) {
     const failed = inclusion.filter((c) => !compareOp(c.operator, values[fid(c)], c.value));
     if (failed.length) {
-      return { status: 'Screen Failed', reason: `Inclusion not met: ${failed.map((c) => c.fieldLabel || fid(c)).join(', ')}` };
+      return { status: 'Screen Failed', reason: `Inclusion not met: ${failed.map((c) => flabel(c)).join(', ')}` };
     }
   }
   return { status: 'Included', reason: null };

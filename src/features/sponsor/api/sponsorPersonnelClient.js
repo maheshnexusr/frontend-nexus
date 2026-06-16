@@ -179,6 +179,7 @@ export const sponsorPersonnelClient = {
       full_name:      data.fullName,
       email_address:  data.email,
       role_id:        data.roleId ?? data.role,
+      consent_template_id: data.consentTemplateId || null,
       site_ids:       siteIds,
       // Keep the legacy single-site field populated for back-compat with
       // any caller still on the old contract.
@@ -205,6 +206,7 @@ export const sponsorPersonnelClient = {
     const res = await sponsorAxiosClient.patch(`${BASE}/${personnelId}`, {
       full_name:      data.fullName,
       role_id:        data.roleId ?? data.role,
+      consent_template_id: data.consentTemplateId || null,
       site_ids:       siteIds,
       site_id:        siteIds[0],
       contact_number: data.contactNumber,
@@ -221,9 +223,17 @@ export const sponsorPersonnelClient = {
     return normalizePersonnel(res?.item ?? res ?? {});
   },
 
-  /** DELETE /site-personnel/:personnelId — spec §13.3 delete. */
-  async delete(_studyId, personnelId) {
-    await sponsorAxiosClient.delete(`${BASE}/${personnelId}`);
+  /** GET /site-personnel/:personnelId/deletion-impact — counts of the data a
+   *  hard-delete will remove, for the pre-delete confirmation popup. */
+  async deletionImpact(_studyId, personnelId) {
+    const res = await sponsorAxiosClient.get(`${BASE}/${personnelId}/deletion-impact`);
+    return res?.impact ?? res;
+  },
+
+  /** DELETE /site-personnel/:personnelId — hard delete: the user + all of their
+   *  data. `reason` is required and recorded in the activity log. */
+  async delete(_studyId, personnelId, reason) {
+    await sponsorAxiosClient.delete(`${BASE}/${personnelId}`, { data: { reason } });
   },
 
   // ── Not in spec §13.3 — retained for current UI. ──────────────────────────
@@ -268,6 +278,24 @@ export const sponsorPersonnelClient = {
     a.download = `Personnel_${date}.${ext}`;
     a.click();
     URL.revokeObjectURL(url);
+  },
+
+  /** Published consent forms for the study — auth-only dropdown source for the
+   *  "Consent Form Assignment" section on the invite form. Returns
+   *  [{ id, name, version }]. Best-effort: [] on error. */
+  async getConsentForms() {
+    try {
+      const res = await sponsorAxiosClient.get(`${WORKSPACE}/lookups/consent-forms`);
+      const arr = Array.isArray(res) ? res : (res?.forms ?? res?.items ?? res?.data ?? []);
+      return arr.map((f) => ({
+        id:      f.template_id ?? f.id      ?? '',
+        name:    f.template_name ?? f.name  ?? 'Consent Form',
+        code:    f.consent_code ?? f.consentCode ?? '',
+        version: f.version      ?? '',
+        // Site roles this consent applies to — empty = all roles.
+        assignedRoleIds: f.assigned_role_ids ?? f.assignedRoleIds ?? [],
+      })).filter((f) => f.id);
+    } catch { return []; }
   },
 
   /** Consent template list for a role — backed by /consent/templates (§13.4). */

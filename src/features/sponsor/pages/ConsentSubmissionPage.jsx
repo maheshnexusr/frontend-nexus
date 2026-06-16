@@ -3,11 +3,12 @@
  *
  *   /sponsor/:studyId/consent/submit
  *
- * Lists Published consent templates the current user hasn't yet submitted
- * (or has had rejected). Selecting one shows the template content + per-
- * section acknowledgment checkboxes + signature pad. Submitting POSTs to
- * /consent-submissions/submit which writes a Pending row that the sponsor
- * reviewer (separate role) then approves or rejects.
+ * Lists Published consent forms the current user hasn't yet submitted (or has
+ * had rejected). Selecting one renders the consent form_structure (built with
+ * the drag-and-drop Consent Builder) via ConsentFormFill — read the text, fill
+ * the fields, sign — then POSTs to /consent-submissions/submit. When the study
+ * requires approval the row is Pending (sponsor/CRO approve/reject); otherwise
+ * it is auto-approved on submit. A "My consents" section shows status + reason.
  *
  * Permission gates:
  *   - Page entry: `consent_submission.view`
@@ -21,12 +22,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useSelector } from 'react-redux';
-import { FileText, ChevronLeft, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
+import { FileText, ChevronLeft, CheckCircle2, Loader2, AlertCircle, Download, Paperclip } from 'lucide-react';
 import { sponsorConsentSubmissionClient } from '@/features/sponsor/api/sponsorConsentSubmissionClient';
+import { downloadProtectedFile } from '@/api/protectedFile';
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import { addToast } from '@/app/notificationSlice';
 import { usePermissions } from '@/features/auth/usePermissions';
-import SignaturePad from '@/components/form/SignaturePad';
+import ConsentFormFill, { missingRequired, flattenConsentFields } from '@/features/sponsor/components/consent/ConsentFormFill';
+import { normalizeConsentBlocks } from '@/utils/consentContent';
 import { formatDateTime } from '@/utils/formatDate';
 import s from './ConsentSubmissionPage.module.css';
 
@@ -36,14 +39,30 @@ export default function ConsentSubmissionPage() {
   const { has }     = usePermissions();
   const canSubmit   = has('consent_submission', 'submit');
 
+  // Site personnel (site workspace) get the sign + "My consents" flow; everyone
+  // else (sponsor workspace: CRO/sponsor) gets the read-only oversight list of
+  // ALL submitted consents. Detected by workspace token — the same way the API
+  // client picks its scope — NOT by role name. A site-only token (no sponsor
+  // token) ⇒ site workspace.
+  const isSiteWorkspace = (() => {
+    if (typeof window === 'undefined') return false;
+    const hasSponsor = !!localStorage.getItem('sponsorAccessToken') || !!localStorage.getItem('sponsorViewToken');
+    const hasSite    = !!localStorage.getItem('siteAccessToken');
+    return hasSite && !hasSponsor;
+  })();
+
   const [items,        setItems]        = useState([]);
+  const [mine,         setMine]         = useState([]);
+  const [allSubs,      setAllSubs]      = useState([]);     // viewer mode: all submitted consents
   const [loading,      setLoading]      = useState(true);
   const [loadError,    setLoadError]    = useState(null);
   const [selectedId,   setSelectedId]   = useState(null);
-  const [acks,         setAcks]         = useState({});
-  const [signature,    setSignature]    = useState('');
+  const [values,       setValues]       = useState({});
   const [submitting,   setSubmitting]   = useState(false);
   const [submitError,  setSubmitError]  = useState(null);
+  const [pdfBusyId,    setPdfBusyId]    = useState(null);   // submission id being PDF-downloaded
+  const [docBusyId,    setDocBusyId]    = useState(null);   // document id being downloaded
+  const [agreeBusy,    setAgreeBusy]    = useState(false);  // consent-agreement PDF download
 
   const selected = useMemo(
     () => items.find((it) => it.templateId === selectedId) ?? null,
@@ -53,8 +72,24 @@ export default function ConsentSubmissionPage() {
   const load = () => {
     setLoading(true);
     setLoadError(null);
-    sponsorConsentSubmissionClient.listAvailable()
-      .then((rows) => setItems(rows))
+    // Non-site-personnel (sponsor workspace) get the oversight list: ALL
+    // submitted consents in the study, each with downloads. Site personnel get
+    // the sign + "My consents" experience. Branch is workspace-driven.
+    if (!isSiteWorkspace) {
+      sponsorConsentSubmissionClient.listAll()
+        .then((all) => setAllSubs(all))
+        .catch((err) => setLoadError(err?.message ?? 'Failed to load consents.'))
+        .finally(() => setLoading(false));
+      return;
+    }
+    Promise.all([
+      sponsorConsentSubmissionClient.listAvailable(),
+      // "My consents" — status + rejection reason. Best-effort: a view-only
+      // role that can submit but somehow lacks the /mine grant still sees the
+      // available list rather than an error.
+      sponsorConsentSubmissionClient.listMine().catch(() => []),
+    ])
+      .then(([avail, my]) => { setItems(avail); setMine(my); })
       .catch((err) => setLoadError(err?.message ?? 'Failed to load consents to sign.'))
       .finally(() => setLoading(false));
   };
@@ -64,39 +99,45 @@ export default function ConsentSubmissionPage() {
   // Reset the per-template form state when the user picks a different template
   // or returns to the list.
   useEffect(() => {
-    setAcks({});
-    setSignature('');
+    setValues({});
     setSubmitError(null);
   }, [selectedId]);
 
-  // Required acknowledgments come from the template's `sections` (each section
-  // with isMandatory=true must be ticked before submit). We tolerate several
-  // template shapes since the builder schema has evolved.
-  const requiredSectionIds = useMemo(() => {
-    if (!selected) return [];
-    const sections = selected.content?.sections ?? selected.content?.paragraphs ?? [];
-    return sections.filter((s_) => s_.isMandatory || s_.is_mandatory).map((s_) => s_.id ?? s_.section_id);
-  }, [selected]);
-
-  const allRequiredAcked = requiredSectionIds.every((id) => acks[id] === true);
-  const canSubmitNow     = canSubmit && Boolean(signature) && allRequiredAcked && !submitting;
+  // The consent form is a drag-and-drop form_structure ({ blocks }). Required +
+  // data-bearing fields must be filled before submit.
+  const blocks  = useMemo(() => normalizeConsentBlocks(selected?.content?.blocks), [selected]);
+  const missing = useMemo(() => missingRequired(blocks, values), [blocks, values]);
+  const canSubmitNow = canSubmit && missing.length === 0 && !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmitNow || !selected) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
-      await sponsorConsentSubmissionClient.submit({
+      // Use the first signature field's value as the submission signature (the
+      // backend requires a signature OR an explicit `signed` flag).
+      const sigField = flattenConsentFields(blocks).find((f) => f.type === 'signature');
+      // Signature is uploaded as a file → value is a { url } ref; send its url
+      // (legacy data-URL values pass through unchanged).
+      const sigVal = sigField ? values[sigField.id] : '';
+      const signatureDataUrl = sigVal && typeof sigVal === 'object' ? sigVal.url : (sigVal || '');
+      const saved = await sponsorConsentSubmissionClient.submit({
         consentFormId:    selected.templateId,
         version:          selected.version,
-        signatureDataUrl: signature,
-        acknowledgments:  acks,
+        signatureDataUrl,
+        signed:           true,
+        submittedData:    { responses: values },
         userName:         currentUser?.fullName ?? '',
         userEmail:        currentUser?.email    ?? '',
       });
+      // When the study has consent review disabled the submission is
+      // auto-approved on submit — reflect that in the toast.
+      const autoApproved = saved?.status === 'Approved';
       dispatch(addToast({
         type:    'success',
-        message: `Consent submitted for review (${selected.templateName}).`,
+        message: autoApproved
+          ? `Consent submitted and approved (${selected.templateName}).`
+          : `Consent submitted for review (${selected.templateName}).`,
       }));
       setSelectedId(null);
       load();
@@ -107,10 +148,164 @@ export default function ConsentSubmissionPage() {
     }
   };
 
+  // Download the signed consent agreement (PDF) for one of my submissions.
+  const handleDownloadPdf = async (sub) => {
+    setPdfBusyId(sub.id);
+    try {
+      const blob = await sponsorConsentSubmissionClient.downloadMine(sub.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Consent_${String(sub.id).slice(-6)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      dispatch(addToast({ type: 'error', message: err?.message ?? 'Failed to download consent agreement.' }));
+    } finally {
+      setPdfBusyId(null);
+    }
+  };
+
+  // Viewer mode: download any submission's filled consent PDF (oversight).
+  const handleDownloadAny = async (sub) => {
+    setPdfBusyId(sub.id);
+    try {
+      const blob = await sponsorConsentSubmissionClient.downloadAny(sub.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Consent_${(sub.userName || String(sub.id).slice(-6)).replace(/\s+/g, '_')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      dispatch(addToast({ type: 'error', message: err?.message ?? 'Failed to download consent.' }));
+    } finally {
+      setPdfBusyId(null);
+    }
+  };
+
+  // Download one of the files I uploaded with a submission (private — streamed
+  // through the authenticated route).
+  const handleDownloadDoc = async (doc) => {
+    setDocBusyId(doc.id);
+    try {
+      await downloadProtectedFile(doc.url, doc.name);
+    } catch (err) {
+      dispatch(addToast({ type: 'error', message: err?.message ?? 'Failed to download document.' }));
+    } finally {
+      setDocBusyId(null);
+    }
+  };
+
+  // Download the consent agreement (the form itself) as a PDF. Available to
+  // EVERYONE who can open the consent — submitters and read-only viewers alike.
+  const handleDownloadAgreement = async () => {
+    if (!selected) return;
+    setAgreeBusy(true);
+    try {
+      const blob = await sponsorConsentSubmissionClient.downloadAgreement(selected.templateId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Consent_${(selected.templateName || 'agreement').replace(/\s+/g, '_')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      dispatch(addToast({ type: 'error', message: err?.message ?? 'Failed to download consent agreement.' }));
+    } finally {
+      setAgreeBusy(false);
+    }
+  };
+
+  // ─ Viewer mode (non-site-personnel / sponsor workspace) — oversight list of
+  // ALL submitted consents in the study, each with downloads (docs + PDF). ────
+  if (!isSiteWorkspace) {
+    return (
+      <div className={s.page}>
+        <div className={s.header}>
+          <div>
+            <h1 className={s.title}>Consent Submission</h1>
+            <p className={s.sub}>All consents submitted for this study (read-only).</p>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className={s.loading}><Loader2 size={18} className={s.spin} /> Loading consents…</div>
+        ) : loadError ? (
+          <div className={s.error} role="alert"><AlertCircle size={14} /> {loadError}</div>
+        ) : allSubs.length === 0 ? (
+          <div className={s.emptyCard}>
+            <FileText size={28} className={s.emptyIcon} />
+            <h3 className={s.emptyTitle}>No consents submitted yet</h3>
+            <p className={s.emptyBody}>Submitted consents will appear here once site personnel sign them.</p>
+          </div>
+        ) : (
+          <ul className={s.mineList}>
+            {allSubs.map((sub) => {
+              const status = sub.status ?? 'Pending';
+              const cls =
+                status === 'Approved' ? s.badgeApproved
+                : status === 'Rejected' ? s.badgeRejected
+                : status === 'Withdrawn' || status === 'Expired' ? s.badgeMuted
+                : s.badgePending;
+              return (
+                <li key={sub.id} className={s.mineCard}>
+                  <div className={s.mineCardMain}>
+                    <span className={s.mineName}>
+                      {sub.userName || 'Consent'}
+                      {sub.roleName ? ` · ${sub.roleName}` : ''}
+                      {sub.siteName ? ` · ${sub.siteName}` : ''}
+                    </span>
+                    <span className={`${s.badge} ${cls}`}>{status}</span>
+                  </div>
+                  <p className={s.mineMeta}>
+                    Submitted {sub.submissionDate ? formatDateTime(sub.submissionDate) : '—'}
+                  </p>
+                  <div className={s.mineDownloads}>
+                    {(sub.documents ?? []).map((doc) => (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        className={s.docChip}
+                        onClick={() => handleDownloadDoc(doc)}
+                        disabled={docBusyId === doc.id}
+                        title={`Download ${doc.name}`}
+                      >
+                        {docBusyId === doc.id
+                          ? <Loader2 size={13} className={s.spin} />
+                          : <Paperclip size={13} />}
+                        <span className={s.docChipName}>{doc.name}</span>
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className={s.pdfBtn}
+                      onClick={() => handleDownloadAny(sub)}
+                      disabled={pdfBusyId === sub.id}
+                      title="Download the consent agreement (PDF)"
+                    >
+                      {pdfBusyId === sub.id
+                        ? <><Loader2 size={13} className={s.spin} /> Preparing…</>
+                        : <><Download size={13} /> Consent agreement (PDF)</>}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
   // ─ Detail view (a single template selected) ───────────────────────────────
   if (selected) {
-    const sections = selected.content?.sections ?? selected.content?.paragraphs ?? [];
-    const fields   = selected.content?.fields ?? [];
     return (
       <div className={s.page}>
         <div className={s.detailHeader}>
@@ -120,68 +315,36 @@ export default function ConsentSubmissionPage() {
           <div>
             <h1 className={s.title}>{selected.templateName}</h1>
             <p className={s.sub}>
-              Version {selected.version}
-              {selected.language ? ` · ${selected.language}` : ''}
-              {selected.updatedAt ? ` · Updated ${formatDateTime(selected.updatedAt)}` : ''}
+              {[selected.language, selected.updatedAt ? `Updated ${formatDateTime(selected.updatedAt)}` : null]
+                .filter(Boolean).join(' · ')}
             </p>
           </div>
+          {/* Anyone who can open the consent can download the agreement as PDF. */}
+          <button
+            type="button"
+            className={s.agreementBtn}
+            onClick={handleDownloadAgreement}
+            disabled={agreeBusy || blocks.length === 0}
+            title="Download the consent agreement (PDF)"
+          >
+            {agreeBusy
+              ? <><Loader2 size={14} className={s.spin} /> Preparing…</>
+              : <><Download size={14} /> Consent agreement (PDF)</>}
+          </button>
         </div>
 
         <div className={s.detailBody}>
-          {/* Template content */}
-          {sections.length === 0 ? (
-            <p className={s.empty}>This consent template has no content yet.</p>
+          {/* Consent form_structure (drag-and-drop builder) — read + fill + sign. */}
+          {blocks.length === 0 ? (
+            <p className={s.empty}>This consent form has no content yet.</p>
           ) : (
-            sections.map((sec) => {
-              const id    = sec.id ?? sec.section_id;
-              const title = sec.title ?? sec.section_title ?? sec.heading ?? 'Section';
-              const body  = sec.content ?? sec.body ?? '';
-              const mandatory = sec.isMandatory ?? sec.is_mandatory ?? false;
-              return (
-                <section key={id} className={s.section}>
-                  <h3 className={s.sectionTitle}>
-                    {title}
-                    {mandatory && <span className={s.mandatoryDot} title="Mandatory">*</span>}
-                  </h3>
-                  {body && <div className={s.sectionBody} dangerouslySetInnerHTML={{ __html: body }} />}
-                  <label className={s.ackRow}>
-                    <input
-                      type="checkbox"
-                      checked={!!acks[id]}
-                      onChange={(e) => setAcks((prev) => ({ ...prev, [id]: e.target.checked }))}
-                    />
-                    <span>
-                      I have read and understood this section
-                      {mandatory ? ' (required)' : ''}.
-                    </span>
-                  </label>
-                </section>
-              );
-            })
+            <ConsentFormFill
+              blocks={blocks}
+              values={values}
+              disabled={!canSubmit}
+              onChange={(id, v) => setValues((prev) => ({ ...prev, [id]: v }))}
+            />
           )}
-
-          {/* Optional fields the builder added — render labels only; the page
-              isn't a generic CRF runtime, just a sign-and-submit surface. */}
-          {fields.length > 0 && (
-            <section className={s.section}>
-              <h3 className={s.sectionTitle}>Additional fields</h3>
-              <ul className={s.fieldsList}>
-                {fields.map((f) => (
-                  <li key={f.id ?? f.label}>{f.label ?? f.id}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          {/* Signature */}
-          <section className={s.section}>
-            <h3 className={s.sectionTitle}>Your signature</h3>
-            <p className={s.signatureNote}>
-              Draw your signature below. Submission will record the date, time,
-              and signature image.
-            </p>
-            <SignaturePad value={signature} onChange={setSignature} disabled={!canSubmit} />
-          </section>
 
           {submitError && (
             <div className={s.error} role="alert">
@@ -191,7 +354,7 @@ export default function ConsentSubmissionPage() {
 
           <div className={s.detailFooter}>
             <button type="button" className={s.cancelBtn} onClick={() => setSelectedId(null)} disabled={submitting}>
-              Cancel
+              {canSubmit ? 'Cancel' : 'Back'}
             </button>
             {canSubmit ? (
               <button
@@ -200,8 +363,7 @@ export default function ConsentSubmissionPage() {
                 onClick={handleSubmit}
                 disabled={!canSubmitNow}
                 title={
-                  !signature ? 'Please sign before submitting'
-                  : !allRequiredAcked ? 'Acknowledge every mandatory section first'
+                  missing.length > 0 ? 'Fill every required field before submitting'
                   : 'Submit for review'
                 }
               >
@@ -224,7 +386,11 @@ export default function ConsentSubmissionPage() {
       <div className={s.header}>
         <div>
           <h1 className={s.title}>Consent Submission</h1>
-          <p className={s.sub}>Sign and submit the consents you need to complete for this study.</p>
+          <p className={s.sub}>
+            {canSubmit
+              ? 'Sign and submit the consents you need to complete for this study.'
+              : 'View the consent form for this study (read-only).'}
+          </p>
         </div>
       </div>
 
@@ -238,9 +404,19 @@ export default function ConsentSubmissionPage() {
         </div>
       ) : items.length === 0 ? (
         <div className={s.emptyCard}>
-          <CheckCircle2 size={28} className={s.emptyIcon} />
-          <h3 className={s.emptyTitle}>You're all caught up</h3>
-          <p className={s.emptyBody}>No consents are waiting for your signature right now.</p>
+          {canSubmit ? (
+            <>
+              <CheckCircle2 size={28} className={s.emptyIcon} />
+              <h3 className={s.emptyTitle}>You're all caught up</h3>
+              <p className={s.emptyBody}>No consents are waiting for your signature right now.</p>
+            </>
+          ) : (
+            <>
+              <FileText size={28} className={s.emptyIcon} />
+              <h3 className={s.emptyTitle}>No consent form</h3>
+              <p className={s.emptyBody}>No published consent form is available for this study yet.</p>
+            </>
+          )}
         </div>
       ) : (
         <ul className={s.list}>
@@ -250,9 +426,8 @@ export default function ConsentSubmissionPage() {
               <div className={s.cardBody}>
                 <h3 className={s.cardTitle}>{it.templateName}</h3>
                 <p className={s.cardMeta}>
-                  Version {it.version}
-                  {it.language ? ` · ${it.language}` : ''}
-                  {it.updatedAt ? ` · Updated ${formatDateTime(it.updatedAt)}` : ''}
+                  {[it.language, it.updatedAt ? `Updated ${formatDateTime(it.updatedAt)}` : null]
+                    .filter(Boolean).join(' · ')}
                 </p>
               </div>
               <button
@@ -260,11 +435,82 @@ export default function ConsentSubmissionPage() {
                 className={s.cardBtn}
                 onClick={() => setSelectedId(it.templateId)}
               >
-                Review &amp; sign →
+                {canSubmit ? 'Review & sign →' : 'View →'}
               </button>
             </li>
           ))}
         </ul>
+      )}
+
+      {/* My consents — status + rejection reason for everything this user has
+          already submitted. Rejected ones also reappear in the list above so
+          they can resubmit; here the reviewer's reason is shown verbatim. */}
+      {mine.length > 0 && (
+        <div className={s.mineSection}>
+          <h2 className={s.mineHeading}>My consents</h2>
+          <ul className={s.mineList}>
+            {mine.map((sub) => {
+              const status = sub.status ?? 'Pending';
+              const cls =
+                status === 'Approved' ? s.badgeApproved
+                : status === 'Rejected' ? s.badgeRejected
+                : status === 'Withdrawn' || status === 'Expired' ? s.badgeMuted
+                : s.badgePending;
+              return (
+                <li key={sub.id} className={s.mineCard}>
+                  <div className={s.mineCardMain}>
+                    <span className={s.mineName}>
+                      {sub.consentFormId ? `Consent ${String(sub.consentFormId).slice(-6)}` : 'Consent'}
+                    </span>
+                    <span className={`${s.badge} ${cls}`}>{status}</span>
+                  </div>
+                  <p className={s.mineMeta}>
+                    Submitted {sub.submissionDate ? formatDateTime(sub.submissionDate) : '—'}
+                  </p>
+
+                  {/* Downloads — my uploaded documents + the signed consent agreement (PDF). */}
+                  <div className={s.mineDownloads}>
+                    {(sub.documents ?? []).map((doc) => (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        className={s.docChip}
+                        onClick={() => handleDownloadDoc(doc)}
+                        disabled={docBusyId === doc.id}
+                        title={`Download ${doc.name}`}
+                      >
+                        {docBusyId === doc.id
+                          ? <Loader2 size={13} className={s.spin} />
+                          : <Paperclip size={13} />}
+                        <span className={s.docChipName}>{doc.name}</span>
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className={s.pdfBtn}
+                      onClick={() => handleDownloadPdf(sub)}
+                      disabled={pdfBusyId === sub.id}
+                      title="Download the signed consent agreement (PDF)"
+                    >
+                      {pdfBusyId === sub.id
+                        ? <><Loader2 size={13} className={s.spin} /> Preparing…</>
+                        : <><Download size={13} /> Consent agreement (PDF)</>}
+                    </button>
+                  </div>
+
+                  {status === 'Rejected' && sub.rejectionDetails && (
+                    <div className={s.rejectBox}>
+                      <strong>Rejection reason:</strong> {sub.rejectionDetails.rejectionReason || '—'}
+                      {sub.rejectionDetails.customMessage && (
+                        <div className={s.rejectMsg}>{sub.rejectionDetails.customMessage}</div>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </div>
   );

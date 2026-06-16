@@ -588,6 +588,14 @@
 }
 .btnSubmit:hover { background: #047857; }
 
+/* End-of-form note shown on the last page in Preview (no Submit here). */
+.previewEndNote {
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  font-style: italic;
+}
+
 /* Page-dots */
 .dots {
   display: inline-flex;

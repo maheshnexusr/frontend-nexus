@@ -43,6 +43,11 @@ export function readConfigFlag(config, ...keys) {
 export function resolveStudyConfig(config) {
   return {
     consentManager:      readConfigFlag(config, 'consentManager',      'consentEnabled'),
+    // Consent review/approval is OPT-IN — default FALSE (not fail-open). The
+    // submission flow exists whenever Consent Manager is on; this only governs
+    // whether a Sponsor/CRO approval step is required.
+    consentApproval:     config?.consentApproval === true
+                          || config?.enable_consent_approval === true,
     queryManager:        readConfigFlag(config, 'queryManager',        'queryEnabled'),
     verificationManager: readConfigFlag(config, 'verificationManager', 'verificationEnabled'),
   };

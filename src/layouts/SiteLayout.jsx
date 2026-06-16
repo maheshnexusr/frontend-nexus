@@ -43,11 +43,13 @@ import Sidebar              from '@/components/layout/Sidebar';
 import WorkspaceHeader      from './WorkspaceHeader';
 import {
   getSiteStudyContext,
+  getSiteStudies,
   hasSiteStudyContext,
   isSiteSession,
   clearSiteStudyContext,
 } from '@/features/site/authStore';
 import { resolveStudyConfig, canViewLeaf } from '@/features/cro/utils/studyConfigGating';
+import { resolveFileUrl } from '@/api/fileUrl';
 import styles from './SponsorLayout.module.css';
 
 const clx = (...a) => a.filter(Boolean).join(' ');
@@ -80,6 +82,12 @@ export default function SiteLayout() {
   if (!hasSiteStudyContext()) return <Navigate to="/site/studies" replace />;
 
   const context = getSiteStudyContext();
+  // Sponsor org logo for the sidebar brand. Prefer the chosen-study context;
+  // fall back to the cached picker list (matched by studyId) so a context saved
+  // before the logo was added still resolves without re-choosing the study.
+  const siteLogo = context?.organizationLogo
+    ?? getSiteStudies().find((st) => (st.studyId ?? st.study_id) === context?.studyId)?.organizationLogo
+    ?? null;
   const scope   = deriveScope(context?.scope);
   const cfg     = resolveStudyConfig(context?.config);
   const perms   = context?.permissions ?? {};
@@ -104,9 +112,14 @@ export default function SiteLayout() {
   //   ? { key: 'screening-report', label: 'Screening Report', icon: ClipboardCheck, path: '/site/screening-report' }
   //   : null;
 
+  // Site personnel SUBMIT consent (consent_submission). Consent Review only
+  // shows when the study requires approval (cfg.consentApproval) AND the site
+  // role is granted consent_review — Sponsor/CRO normally review in their own
+  // workspace. Consent Builder stays a Sponsor/CRO authoring function.
   const consentChildren = [
-    allowed('consent_builder') && { key: 'consent-builder', label: 'Consent Builder',           path: '/site/consent/config' },
-    allowed('consent_review')  && { key: 'consent-review',  label: 'Consent Review & Approval', path: '/site/consent/review' },
+    allowed('consent_builder')    && { key: 'consent-builder',    label: 'Consent Builder',           path: '/site/consent/config' },
+    allowed('consent_submission') && { key: 'consent-submission', label: 'Submit Consent',            path: '/site/consent/submit' },
+    cfg.consentApproval && allowed('consent_review') && { key: 'consent-review', label: 'Consent Review & Approval', path: '/site/consent/review' },
   ].filter(Boolean);
 
   const qualityChildren = [
@@ -214,6 +227,7 @@ export default function SiteLayout() {
         profilePath="/site/profile"
         notificationsPath={null}
         subtitle="Study Workspace"
+        logoUrl={resolveFileUrl(siteLogo) || null}
       />
 
       <div className={clx(styles.body, collapsed && styles.bodyCollapsed)}>

@@ -8,7 +8,7 @@ import {
   Trash2, Copy, GripVertical,
   Type, Hash, Mail, Phone, Calendar, CheckSquare, List, Circle,
   FileUp, PenLine, AlignLeft, ToggleLeft, Clock, Star, Image,
-  Minus, AlignCenter, SlidersHorizontal, Heading,
+  Minus, AlignCenter, SlidersHorizontal, Heading, Table2, Calculator,
   MessageSquare, StickyNote, HelpCircle, Paperclip, BadgeCheck, Eraser,
 } from 'lucide-react';
 import {
@@ -44,6 +44,7 @@ const TYPE_ICON = {
   toggle: ToggleLeft, file: FileUp, signature: PenLine,
   rating: Star, slider: SlidersHorizontal, image: Image,
   h2: AlignCenter, h3: Heading, paragraph: AlignLeft, divider: Minus,
+  table: Table2, formula: Calculator,
 };
 
 export default function SFBCanvas() {
@@ -384,6 +385,24 @@ function FieldPreviewRow({ fld }) {
       return <div className={s.previewParagraph}>{fld.content || fld.label || 'Paragraph text…'}</div>;
     case 'divider':
       return <hr className={s.previewDivider} />;
+    case 'formula':
+      return (
+        <div className={s.previewInput} style={{ fontFamily: 'monospace', fontSize: 12, color: fld.expression ? '#0f766e' : '#94a3b8' }}>
+          {fld.expression ? `= ${fld.expression}` : '= (no formula yet)'}
+        </div>
+      );
+    case 'table': {
+      const cols = (fld.columns || []).filter((c) => !c.hidden);
+      return (
+        <div className={s.previewInput} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', padding: '6px 8px' }}>
+          {cols.length === 0
+            ? <span style={{ fontSize: 11, color: '#94a3b8' }}>No columns yet</span>
+            : cols.map((c) => (
+                <span key={c.key} className={s.optionChip}>{c.label || c.fieldKey}</span>
+              ))}
+        </div>
+      );
+    }
     default:
       return null;
   }
