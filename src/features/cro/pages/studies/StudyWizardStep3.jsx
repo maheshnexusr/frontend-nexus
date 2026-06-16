@@ -25,6 +25,13 @@ const ALL_CONFIGS = [
     scopes:  ['EDC', 'Survey', 'ePRO'],
   },
   {
+    key:       'consentApproval',
+    label:     'Require Consent Review & Approval',
+    info:      'When on, a consent submitted by site personnel must be approved (or rejected, with a reason) by a Sponsor/CRO reviewer. When off, submitted consents are auto-approved.',
+    scopes:    ['EDC', 'Survey', 'ePRO'],
+    dependsOn: 'consentManager',
+  },
+  {
     key:     'queryManager',
     label:   'Enable Query Manager',
     info:    'Enables query raising and resolution workflows.',
@@ -57,6 +64,7 @@ export default function StudyWizardStep3({ onCancel, onNext }) {
 
   const [form, setForm] = useState({
     consentManager:      saved.consentManager      ?? false,
+    consentApproval:     saved.consentApproval     ?? false,
     queryManager:        saved.queryManager        ?? false,
     dataManager:         saved.dataManager         ?? false,
     verificationManager: saved.verificationManager ?? false,
@@ -69,7 +77,16 @@ export default function StudyWizardStep3({ onCancel, onNext }) {
   const [saving, setSaving] = useState(false);
 
   const toggle = (key) =>
-    setForm((prev) => ({ ...prev, [key]: !prev[key] }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      // Turning a parent toggle OFF forces its dependent children OFF too, so a
+      // stale child flag can't be persisted (e.g. consentApproval without
+      // consentManager). The backend also guards this defensively.
+      if (key === 'consentManager' && !next.consentManager) {
+        next.consentApproval = false;
+      }
+      return next;
+    });
 
   const handleSave = async () => {
     dispatch(setStep3({ ...form }));
@@ -125,33 +142,43 @@ export default function StudyWizardStep3({ onCancel, onNext }) {
       )}
 
       <div className={styles.configList}>
-        {visibleConfigs.map((cfg) => (
-          <div key={cfg.key} className={styles.configCard}>
-            <div className={styles.configLeft}>
-              <span className={styles.configLabel}>
-                {cfg.label}
-                {cfg.edcOnly && hasSurveyOrEPRO && (
-                  <span className={styles.badge}>EDC only</span>
-                )}
-              </span>
-              <span className={styles.configInfo}>{cfg.info}</span>
+        {visibleConfigs.map((cfg) => {
+          // Dependent toggles (e.g. consentApproval needs consentManager ON)
+          // are disabled + visually indented until their parent is enabled.
+          const parentOff = cfg.dependsOn && !form[cfg.dependsOn];
+          const disabled  = !canConfigure || parentOff;
+          return (
+            <div
+              key={cfg.key}
+              className={styles.configCard}
+              style={cfg.dependsOn ? { marginLeft: 24, opacity: parentOff ? 0.55 : 1 } : undefined}
+            >
+              <div className={styles.configLeft}>
+                <span className={styles.configLabel}>
+                  {cfg.label}
+                  {cfg.edcOnly && hasSurveyOrEPRO && (
+                    <span className={styles.badge}>EDC only</span>
+                  )}
+                </span>
+                <span className={styles.configInfo}>{cfg.info}</span>
+              </div>
+              <label className={styles.toggle}>
+                <input
+                  type="checkbox"
+                  checked={form[cfg.key]}
+                  onChange={() => toggle(cfg.key)}
+                  disabled={disabled}
+                />
+                <span className={styles.toggleTrack}>
+                  <span className={styles.toggleThumb} />
+                </span>
+                <span className={styles.toggleLabel}>
+                  {form[cfg.key] ? 'ON' : 'OFF'}
+                </span>
+              </label>
             </div>
-            <label className={styles.toggle}>
-              <input
-                type="checkbox"
-                checked={form[cfg.key]}
-                onChange={() => toggle(cfg.key)}
-                disabled={!canConfigure}
-              />
-              <span className={styles.toggleTrack}>
-                <span className={styles.toggleThumb} />
-              </span>
-              <span className={styles.toggleLabel}>
-                {form[cfg.key] ? 'ON' : 'OFF'}
-              </span>
-            </label>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Footer */}

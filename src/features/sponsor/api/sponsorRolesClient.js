@@ -43,6 +43,10 @@ function normalizeRole(raw) {
     createdAt:    raw.created_at    ?? raw.createdAt    ?? '',
     updatedAt:    raw.updated_at    ?? raw.updatedAt    ?? '',
     permissions:  raw.permissions   ?? buildEmptyPermissions(),
+    // When true, personnel created under this role must be assigned a consent
+    // form at invite time.
+    consentRequired:
+      raw.consent_required ?? raw.consentRequired ?? false,
     // Per-role dashboard widget whitelist. null/undefined → use default
     // category-leaf gating; array (possibly empty) → explicit whitelist.
     dashboardWidgetKeys:
@@ -83,6 +87,7 @@ export const sponsorRolesClient = {
       status:       data.status ?? 'Active',
       permissions:  data.permissions,
       dashboard_widget_keys: data.dashboardWidgetKeys ?? null,
+      consent_required: Boolean(data.consentRequired),
     });
     return normalizeRole(res?.item ?? res?.role ?? res?.site_role ?? res?.data ?? res ?? {});
   },
@@ -95,6 +100,7 @@ export const sponsorRolesClient = {
       status:      data.status,
       permissions: data.permissions,
       dashboard_widget_keys: data.dashboardWidgetKeys ?? null,
+      consent_required: Boolean(data.consentRequired),
     });
     return normalizeRole(res?.item ?? res?.role ?? res?.site_role ?? res?.data ?? res ?? {});
   },

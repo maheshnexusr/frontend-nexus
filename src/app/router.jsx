@@ -151,7 +151,9 @@ const SponsorDashboardPage       = lazy(() => import('@/features/sponsor/pages/S
 const CapturePage            = lazy(() => import('@/features/sponsor/pages/CapturePage'));
 const CaptureFormPage        = lazy(() => import('@/features/sponsor/pages/CaptureFormPage'));
 const ScreeningReportPage    = lazy(() => import('@/features/sponsor/pages/ScreeningReportPage'));
-const ConsentConfigPage      = lazy(() => import('@/features/sponsor/pages/ConsentConfigPage'));
+const ConsentListPage        = lazy(() => import('@/features/sponsor/pages/ConsentFormsListPage'));
+const ConsentDetailsPage     = lazy(() => import('@/features/sponsor/pages/ConsentFormFormPage'));
+const ConsentConfigPage      = lazy(() => import('@/features/sponsor/pages/ConsentFormBuilder'));
 const ConsentReviewPage      = lazy(() => import('@/features/sponsor/pages/ConsentReviewPage'));
 const ConsentSubmissionPage  = lazy(() => import('@/features/sponsor/pages/ConsentSubmissionPage'));
 const QueriesPage            = lazy(() => import('@/features/sponsor/pages/QueriesPage'));
@@ -336,8 +338,17 @@ export const router = createBrowserRouter([
           // fail-soft loadData() means even if some site endpoints aren't
           // fully implemented yet the list still renders.
           { path: 'verification',            element: sp(VerificationPage) },
-          { path: 'consent/config',          element: sp(SiteFeaturePlaceholderPage) },
-          { path: 'consent/review',          element: sp(SiteFeaturePlaceholderPage) },
+          // Consent Builder stays a Sponsor/CRO authoring function (sponsor
+          // workspace). Site personnel SUBMIT consent; Sponsor/CRO (and any
+          // site role granted consent_review) review. The submission + review
+          // pages are shared — their API clients pick the site workspace when a
+          // site token is live.
+          { path: 'consent/config',                     element: sp(ConsentListPage) },
+          { path: 'consent/config/new',                 element: sp(ConsentDetailsPage) },
+          { path: 'consent/config/:templateId/edit',    element: sp(ConsentDetailsPage) },
+          { path: 'consent/config/:templateId/design',  element: sp(ConsentConfigPage) },
+          { path: 'consent/submit',          element: sp(ConsentSubmissionPage) },
+          { path: 'consent/review',          element: sp(ConsentReviewPage) },
           { path: 'reports',                 element: sp(SiteFeaturePlaceholderPage) },
           { path: 'sites',                   element: sp(SiteFeaturePlaceholderPage) },
           { path: 'personnel',               element: sp(SitePersonnelPage) },
@@ -496,7 +507,10 @@ export const router = createBrowserRouter([
           // 'capture/form' is registered as a top-level standalone route
           // (see below) so the runner fills the entire viewport, matching
           // the form-builder Preview's full-screen experience.
-          { path: 'consent/config', element: sp(ConsentConfigPage) },
+          { path: 'consent/config',                   element: sp(ConsentListPage) },
+          { path: 'consent/config/new',               element: sp(ConsentDetailsPage) },
+          { path: 'consent/config/:templateId/edit',  element: sp(ConsentDetailsPage) },
+          { path: 'consent/config/:templateId/design', element: sp(ConsentConfigPage) },
           { path: 'consent/submit', element: sp(ConsentSubmissionPage) },
           { path: 'consent/review', element: sp(ConsentReviewPage) },
           { path: 'queries',        element: sp(QueriesPage) },

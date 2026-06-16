@@ -53,6 +53,7 @@ import Sidebar              from '@/components/layout/Sidebar';
 import WorkspaceHeader      from './WorkspaceHeader';
 import ReadOnlySponsorBanner from '@/features/workspace/components/ReadOnlySponsorBanner';
 import { sponsorStudiesService } from '@/services/sponsorAuthService';
+import { resolveFileUrl } from '@/api/fileUrl';
 import { resolveStudyConfig, canViewLeaf } from '@/features/cro/utils/studyConfigGating';
 import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
 import styles               from './SponsorLayout.module.css';
@@ -128,10 +129,13 @@ export default function SponsorLayout() {
 
   /* ── Primary nav: each leaf must be allowed by BOTH study.config AND
         the active user's role permissions. ─────────────────────────────── */
+  // Consent Review & Approval only appears when the study REQUIRES approval
+  // (Step 3 → Require Consent Review & Approval). When off, consents are
+  // auto-approved on submit so there's nothing to review.
   const consentChildren = [
     allowed('consent_builder')    && { key: 'consent-builder',    label: 'Consent Builder',           path: `${base}/consent/config` },
     allowed('consent_submission') && { key: 'consent-submission', label: 'Consent Submission',        path: `${base}/consent/submit` },
-    allowed('consent_review')     && { key: 'consent-review',     label: 'Consent Review & Approval', path: `${base}/consent/review` },
+    cfg.consentApproval && allowed('consent_review') && { key: 'consent-review', label: 'Consent Review & Approval', path: `${base}/consent/review` },
   ].filter(Boolean);
 
   const qualityChildren = [
@@ -254,6 +258,7 @@ export default function SponsorLayout() {
         changePasswordPath={`${base}/change-password`}
         notificationsPath={null}
         subtitle="Sponsor"
+        logoUrl={resolveFileUrl(study?.logo) || null}
       />
 
       <div className={clx(styles.body, collapsed && styles.bodyCollapsed)}>

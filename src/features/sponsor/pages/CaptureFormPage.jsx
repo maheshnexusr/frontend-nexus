@@ -25,6 +25,13 @@ import SubjectContextStrip from '@/features/sponsor/components/capture/SubjectCo
 import PrescriptionUpload from '@/components/capture/PrescriptionUpload';
 import s from './CaptureFormPage.module.css';
 
+// Detect the backend "Reason for Change required" rejection and rethrow a tagged
+// error so the runner shows the RFC dialog (instead of a generic error toast).
+const rethrowIfRfc = (e) => {
+  const d = e?.details ?? e?.raw?.response?.data?.details ?? e?.response?.data?.details;
+  if (d?.reasonRequired) throw Object.assign(new Error('rfc'), { rfcRequired: true, changedFields: d.changedFields });
+};
+
 export default function CaptureFormPage() {
   const { studyId } = useParams();
   const [searchParams] = useSearchParams();
@@ -78,6 +85,7 @@ export default function CaptureFormPage() {
   const [completedPages, setCompletedPages] = useState({});
   // Persisted verification: { fields: { [fieldId]: {...} }, pages: { [pageId]: {...} } }
   const [verification, setVerification] = useState({ fields: {}, pages: {} });
+  const [rfcActive, setRfcActive] = useState(false);
   const currentUser = useSelector(selectCurrentUser);
   const myName = currentUser?.fullName ?? currentUser?.full_name ?? currentUser?.email ?? 'You';
 
@@ -108,7 +116,7 @@ export default function CaptureFormPage() {
             `/api/v1/sponsor/workspace/subjects/${subjectId}/forms/${formId}/data`,
           );
           const row = dataRes?.data ?? null;
-          if (!cancelled) { setDefaults(row?.form_data ?? row?.formData ?? {}); setFormStatus(row?.status ?? 'In Progress'); }
+          if (!cancelled) { setDefaults(row?.form_data ?? row?.formData ?? {}); setFormStatus(row?.status ?? 'In Progress'); setRfcActive(row?.rfc_active === true); }
 
           // Which pages are already Marked Completed → the runner shows a
           // "Page Completed" badge instead of the button. Non-fatal on error.
@@ -167,7 +175,7 @@ export default function CaptureFormPage() {
   }, [subjectId]);
 
   /* ── submit handler ── */
-  const handleSubmit = useCallback(async (formData) => {
+  const handleSubmit = useCallback(async (formData, { reason } = {}) => {
     if (ro.isReadOnly) {
       dispatch(addToast({ type: 'info', message: ro.readOnlyMessage }));
       throw new Error('read-only');
@@ -186,15 +194,17 @@ export default function CaptureFormPage() {
     try {
       await sponsorAxiosClient.post(
         `/api/v1/sponsor/workspace/subjects/${subjectId}/forms/${formId}/data`,
-        { form_data: formData, status: 'Submitted' },
+        { form_data: formData, status: 'Submitted', change_reason: reason },
       );
     } catch (e) {
+      rethrowIfRfc(e);   // surfaces the Reason-for-Change dialog (no error toast)
       dispatch(addToast({ type: 'error', message: e?.response?.data?.message || e?.message || 'Failed to submit form.' }));
       throw e;
     }
     dispatch(addToast({ type: 'success', message: 'Form saved.' }));
     setSubmitted(true);
   }, [formId, subjectId, ro.isReadOnly, ro.readOnlyMessage, canSubmit, dispatch]);
+
 
   // Verify the current page (SDV) — sponsor/CRO verifier. Sends the page's data
   // fields flagged verified; the backend derives the page status.
@@ -376,6 +386,8 @@ export default function CaptureFormPage() {
         submitLabel={isReadOnly ? 'Read-only view' : 'Submit eCRF'}
         readOnly={isReadOnly}
         onBack={() => navigate(-1)}
+        onExcluded={() => navigate(`/sponsor/${studyId}/capture`)}
+        rfcActive={rfcActive}
         topContent={topContent}
       />
 

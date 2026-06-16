@@ -117,6 +117,7 @@ export function setSiteStudyContext(payload) {
     protocolNumber:o.protocolNumber?? o.protocol_number?? '',
     sponsorId:     o.sponsorId     ?? o.sponsor_id     ?? '',
     sponsorName:   o.sponsorName   ?? o.sponsor_name   ?? '',
+    organizationLogo: o.organizationLogo ?? o.organization_logo_path ?? null,
     versionNumber: o.versionNumber ?? o.version_number ?? '',
     scope:         o.scope         ?? { edc: false, survey: false, epro: false },
     permissions:   o.permissions   ?? {},

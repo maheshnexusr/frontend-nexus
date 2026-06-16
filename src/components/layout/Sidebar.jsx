@@ -18,15 +18,19 @@ import styles from "./Sidebar.module.css";
 const clx = (...a) => a.filter(Boolean).join(" ");
 
 // ─── WorkspaceSwitcher (top header) ──────────────────────────────────────────
-function WorkspaceSwitcher({ collapsed, title, subtitle }) {
+function WorkspaceSwitcher({ collapsed, title, subtitle, logoUrl }) {
   return (
     <div className={styles.wsArea}>
       <div className={clx(styles.wsHeader, collapsed && styles.isCollapsed)}>
-        <div className={styles.wsLogo}>
-          <LayoutGrid size={16} strokeWidth={2} />
+        <div className={clx(styles.wsLogo, logoUrl && styles.wsLogoImgBox)}>
+          {logoUrl
+            ? <img src={logoUrl} alt={title || 'Organization'} className={styles.wsLogoImg} />
+            : <LayoutGrid size={16} strokeWidth={2} />}
         </div>
         <div className={clx(styles.wsInfo, collapsed && styles.wsInfoHidden)}>
-          <p className={styles.wsTitle}>{title}</p>
+          {/* With an org logo the brand IS the logo, so the generic title
+              ("Clinical Trials") is dropped — only the workspace subtitle shows. */}
+          {!logoUrl && <p className={styles.wsTitle}>{title}</p>}
           <p className={styles.wsSubtitle}>{subtitle}</p>
         </div>
       </div>
@@ -216,6 +220,7 @@ export default function Sidebar({
   notificationsPath,
   title = "Clinical Trials",
   subtitle = "Admin Dashboard",
+  logoUrl = null,
 }) {
   return (
     <aside
@@ -229,7 +234,7 @@ export default function Sidebar({
         <X size={18} />
       </button>
 
-      <WorkspaceSwitcher collapsed={collapsed} title={title} subtitle={subtitle} />
+      <WorkspaceSwitcher collapsed={collapsed} title={title} subtitle={subtitle} logoUrl={logoUrl} />
 
       <nav className={styles.navScroll}>
         <div className={styles.navSection}>

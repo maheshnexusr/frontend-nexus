@@ -40,6 +40,23 @@ function SubmissionPanel() {
         <Row label="Submit Once"><Toggle value={ctrl.submitOnce} onChange={(v) => up('submitOnce', v)} /><Info>Prevent multiple submissions</Info></Row>
       </Section>
 
+      <Section title="Reason for Change">
+        <Row label="Require reason on edit" top>
+          <select
+            className={s.input}
+            value={ctrl.reasonForChange ?? 'after_submission'}
+            onChange={(e) => up('reasonForChange', e.target.value)}
+          >
+            <option value="never">Never</option>
+            <option value="after_submission">After Form Submission</option>
+            <option value="after_signoff">After Form Sign-Off</option>
+            <option value="after_verification">After Form Verification</option>
+            <option value="always">Always</option>
+          </select>
+          <Info>When a change to previously-entered data needs a reason. The full audit trail is always recorded regardless.</Info>
+        </Row>
+      </Section>
+
       <Section title="Submit Window">
         <Row label="Enable Window"><Toggle value={ctrl.submitWindowEnabled} onChange={(v) => up('submitWindowEnabled', v)} /></Row>
         {ctrl.submitWindowEnabled && (

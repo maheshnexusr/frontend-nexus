@@ -381,11 +381,28 @@
   color: #fff;
 }
 
+/* Org-logo brand: no background/border — just the logo image itself. The dark
+   square (.wsLogo) is only used for the fallback grid icon. */
+.wsLogoImgBox {
+  width: 50px;
+  height: 50px;
+  background: transparent;
+  border: none;
+  overflow: hidden;
+  padding: 0;
+}
+.wsLogoImg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
 .wsInfo        { flex: 1; min-width: 0; }
 .wsInfoHidden  { display: none; }   /* hidden via JS when collapsed */
 
 .wsTitle {
-  font-size: 13px;
+  font-size: 14.5px;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1;
@@ -394,7 +411,7 @@
   text-overflow: ellipsis;
 }
 .wsSubtitle {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 500;
   color: #3b82f6;
   margin-top: 3px;

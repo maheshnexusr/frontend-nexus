@@ -105,42 +105,54 @@ const features = [
     title: "Sponsor eCOA",
     description:
       "Capture patient-reported outcomes with built-in compliance and real-time monitoring capabilities.",
-    gradient: "linear-gradient(135deg, #a5b4fc 0%, #c4b5fd 100%)",
+    iconBg: "#eff6ff",
+    iconBorder: "#dbeafe",
+    accent: "#2563eb",
   },
   {
     icon: "edc",
     title: "EDC System",
     description:
       "Streamline data collection with our intuitive electronic data capture solution designed for clinical excellence.",
-    gradient: "linear-gradient(135deg, #fbcfe8 0%, #fecaca 100%)",
+    iconBg: "#f0fdfa",
+    iconBorder: "#ccfbf1",
+    accent: "#0d9488",
   },
   {
     icon: "iwrs",
     title: "IWRS Platform",
     description:
       "Simplify randomization, drug supply management and site coordination with intelligent workflows.",
-    gradient: "linear-gradient(135deg, #93c5fd 0%, #a5f3fc 100%)",
+    iconBg: "#f0f9ff",
+    iconBorder: "#e0f2fe",
+    accent: "#0284c7",
   },
   {
     icon: "vault",
     title: "Nexus Vault",
     description:
       "Secure, compliant document storage with advanced encryption and audit trail capabilities.",
-    gradient: "linear-gradient(135deg, #86efac 0%, #a7f3d0 100%)",
+    iconBg: "#f1f5f9",
+    iconBorder: "#e2e8f0",
+    accent: "#475569",
   },
   {
     icon: "manager",
     title: "SclinNexus Manager",
     description:
       "Streamline document workflows with advanced SclinNexus functionality and inspection readiness.",
-    gradient: "linear-gradient(135deg, #fda4af 0%, #fde68a 100%)",
+    iconBg: "#ecfeff",
+    iconBorder: "#cffafe",
+    accent: "#0891b2",
   },
   {
     icon: "coding",
     title: "Medical Coding",
     description:
       "Optimize medical coding accuracy with AI-powered suggestions and centralized collaboration.",
-    gradient: "linear-gradient(135deg, #c7d2fe 0%, #ddd6fe 100%)",
+    iconBg: "#eff6ff",
+    iconBorder: "#dbeafe",
+    accent: "#3b82f6",
   },
 ];
 
@@ -751,7 +763,6 @@ export default function LandingPage() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [activePage, setActivePage] = useState("home");
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [hoveredFeature, setHoveredFeature] = useState(null);
   const [hoveredBenefit, setHoveredBenefit] = useState(null);
   const [hoveredSocial, setHoveredSocial] = useState(null);
   const [lang, setLang] = useState(() => {
@@ -852,10 +863,27 @@ export default function LandingPage() {
           to   { opacity: 1; transform: translateY(0); }
         }
         .hero-content-animate { animation: fadeSlide 0.7s ease both; }
-        .feature-card-hover:hover { transform: translateY(-8px); box-shadow: 0 20px 50px rgba(0,0,0,0.1) !important; }
-        .feature-card-hover:hover .card-top-bar { opacity: 1 !important; }
-        .footer-link:hover { color: #0ea5e9 !important; padding-left: 4px !important; }
+        .feature-card-hover:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(15,23,42,0.10) !important; border-color: #cbd5e1 !important; }
+        .feature-card-hover:hover .card-top-bar { transform: scaleX(1) !important; }
+        .feature-card-hover:hover .feature-icon-box { transform: scale(1.04); }
+        .footer-link { position: relative; }
+        .footer-link::before { content: ""; position: absolute; left: 0; bottom: -2px; width: 0; height: 1px; background: linear-gradient(90deg, #38bdf8, #0ea5e9); transition: width 0.3s ease; }
+        .footer-link:hover { color: #e0f2fe !important; transform: translateX(5px); }
+        .footer-link:hover::before { width: 100%; }
+        .footer-social { transition: transform 0.3s ease, background 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease; }
+        .footer-social:hover { transform: translateY(-3px); background: linear-gradient(140deg, #0ea5e9, #0284c7) !important; border-color: rgba(56,189,248,0.6) !important; box-shadow: 0 10px 28px rgba(14,165,233,0.45), 0 0 0 4px rgba(14,165,233,0.12) !important; }
+        .footer-logo-wrap { transition: transform 0.3s ease, box-shadow 0.3s ease; }
+        .footer-logo-wrap:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(14,165,233,0.35) !important; }
         .social-link:hover { background: #0ea5e9 !important; transform: translateY(-2px); }
+        @media (max-width: 1024px) {
+          .footer-grid { grid-template-columns: 1fr 1fr 1fr !important; gap: 2.5rem 2rem !important; }
+          .footer-brand-col { grid-column: 1 / -1 !important; }
+        }
+        @media (max-width: 600px) {
+          .footer-grid { grid-template-columns: 1fr 1fr !important; gap: 2rem 1.5rem !important; }
+          .footer-brand-col { grid-column: 1 / -1 !important; }
+          .footer-bottom { flex-direction: column !important; text-align: center !important; }
+        }
         .carousel-btn:hover { background: rgba(255,255,255,0.25) !important; transform: translateY(-50%) scale(1.1) !important; }
         .testimonial-nav-btn:hover { background: #0ea5e9 !important; border-color: #0ea5e9 !important; color: white !important; }
         .cta-primary-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(14,165,233,0.4) !important; }
@@ -869,6 +897,22 @@ export default function LandingPage() {
         .hero-cta-primary:hover { transform: translateY(-3px); box-shadow: 0 15px 40px rgba(14,165,233,0.45) !important; }
         .hero-cta-secondary:hover { background: rgba(255,255,255,0.2) !important; border-color: rgba(255,255,255,0.5) !important; }
         .cta-main-btn:hover { transform: translateY(-2px); box-shadow: 0 15px 40px rgba(0,0,0,0.3) !important; }
+        @keyframes contactFloat {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          50% { transform: translate(0, -24px) scale(1.06); }
+        }
+        @keyframes contactFloatAlt {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          50% { transform: translate(0, 28px) scale(1.08); }
+        }
+        .contact-glow-1 { animation: contactFloat 9s ease-in-out infinite; }
+        .contact-glow-2 { animation: contactFloatAlt 11s ease-in-out infinite; }
+        .contact-card { transition: transform 0.35s ease, box-shadow 0.35s ease; }
+        .contact-card:hover { transform: translateY(-6px); box-shadow: 0 40px 90px rgba(14,165,233,0.22), 0 12px 32px rgba(15,23,42,0.10) !important; }
+        .contact-icon-wrap { transition: transform 0.35s ease, box-shadow 0.35s ease; }
+        .contact-card:hover .contact-icon-wrap { transform: translateY(-3px) scale(1.04); box-shadow: 0 16px 40px rgba(14,165,233,0.45) !important; }
+        .contact-email { transition: color 0.25s ease, transform 0.25s ease, text-shadow 0.25s ease; }
+        .contact-email:hover { color: ${PRIMARY_DARK} !important; transform: scale(1.02); text-shadow: 0 6px 22px rgba(14,165,233,0.35); }
       `}</style>
 
       <div
@@ -1298,22 +1342,16 @@ export default function LandingPage() {
                   <div
                     key={i}
                     className="feature-card-hover"
-                    onMouseEnter={() => setHoveredFeature(i)}
-                    onMouseLeave={() => setHoveredFeature(null)}
                     style={{
                       background: "#fff",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 20,
-                      padding: "2rem",
-                      transition: "all 0.4s ease",
+                      border: "1px solid #E5E7EB",
+                      borderRadius: 18,
+                      padding: "2rem 1.875rem",
+                      transition:
+                        "transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease",
                       position: "relative",
                       overflow: "hidden",
-                      boxShadow:
-                        hoveredFeature === i
-                          ? "0 20px 50px rgba(0,0,0,0.1)"
-                          : "none",
-                      borderColor:
-                        hoveredFeature === i ? "transparent" : "#e2e8f0",
+                      boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
                     }}
                   >
                     <div
@@ -1323,33 +1361,38 @@ export default function LandingPage() {
                         top: 0,
                         left: 0,
                         right: 0,
-                        height: 4,
-                        background: GRADIENT,
-                        opacity: hoveredFeature === i ? 1 : 0,
-                        transition: "opacity 0.3s ease",
+                        height: 3,
+                        background: PRIMARY,
+                        transform: "scaleX(0.18)",
+                        transformOrigin: "left",
+                        transition: "transform 0.3s ease",
                       }}
                     />
                     <div
+                      className="feature-icon-box"
                       style={{
-                        width: 56,
-                        height: 56,
-                        borderRadius: 14,
+                        width: 52,
+                        height: 52,
+                        borderRadius: 12,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        marginBottom: "1.25rem",
-                        background: f.gradient,
-                        color: "#1e293b",
+                        marginBottom: "1.375rem",
+                        background: f.iconBg,
+                        border: `1px solid ${f.iconBorder}`,
+                        color: f.accent,
+                        transition: "transform 0.25s ease",
                       }}
                     >
-                      <FeatureIcon name={f.icon} size={28} />
+                      <FeatureIcon name={f.icon} size={26} />
                     </div>
                     <h3
                       style={{
-                        fontSize: "1.25rem",
+                        fontSize: "1.1875rem",
                         fontWeight: 700,
-                        color: "#1e293b",
-                        marginBottom: "0.75rem",
+                        color: "#0f172a",
+                        marginBottom: "0.625rem",
+                        letterSpacing: "-0.01em",
                       }}
                     >
                       {f.title}
@@ -1357,8 +1400,8 @@ export default function LandingPage() {
                     <p
                       style={{
                         fontSize: "0.9375rem",
-                        color: "#64748b",
-                        lineHeight: 1.6,
+                        color: "#475569",
+                        lineHeight: 1.65,
                         marginBottom: "1.25rem",
                       }}
                     >
@@ -1646,28 +1689,164 @@ export default function LandingPage() {
             </section>
 
             {/* ── Contact Us ───────────────────────────────────────────────── */}
-            <section id="contact" style={{ padding: "6rem 2rem", background: "#fff" }}>
-              <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-                <div style={{ textAlign: "center", marginBottom: "3rem" }}>
-                  <span style={{ display: "inline-block", padding: "0.375rem 1rem", background: "rgba(14,165,233,0.1)", color: PRIMARY, fontSize: "0.8125rem", fontWeight: 600, borderRadius: 50, marginBottom: "1rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    Contact
-                  </span>
-                  <h2 style={{ fontSize: "clamp(1.75rem, 4vw, 2.5rem)", fontWeight: 800, color: "#1e293b", marginBottom: "0.75rem", letterSpacing: "-0.02em" }}>
-                    Get In Touch
-                  </h2>
-                  <p style={{ fontSize: "1.125rem", color: "#64748b", maxWidth: 560, margin: "0 auto" }}>
-                    Have questions about SclinNexus? Our team is here to help.
-                  </p>
-                </div>
-                <div style={{ display: "flex", justifyContent: "center" }}>
-                  <div style={{ width: "100%", maxWidth: 480, background: "#f8fafc", borderRadius: 16, padding: "2rem", border: "1px solid #e2e8f0", textAlign: "center" }}>
-                    <div style={{ fontSize: 32, marginBottom: "1rem" }}>📧</div>
-                    <p style={{ fontSize: "1.0625rem", color: PRIMARY, fontWeight: 600, marginBottom: "0.5rem" }}>
-                      support@sclinnexus.com
-                    </p>
-                    <p style={{ fontSize: "0.9375rem", color: "#64748b", margin: 0, lineHeight: 1.6 }}>
-                      For platform-related inquiries and assistance, contact our support team.
-                    </p>
+            <section
+              id="contact"
+              style={{
+                position: "relative",
+                padding: "4.5rem 2rem 5rem",
+                background: "linear-gradient(180deg, #f8fbff 0%, #eef5fc 100%)",
+                overflow: "hidden",
+              }}
+            >
+              {/* Abstract healthcare background pattern */}
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  backgroundImage:
+                    "radial-gradient(circle at 1px 1px, rgba(14,165,233,0.10) 1px, transparent 0)",
+                  backgroundSize: "26px 26px",
+                  maskImage:
+                    "radial-gradient(ellipse 70% 60% at 50% 45%, #000 35%, transparent 80%)",
+                  WebkitMaskImage:
+                    "radial-gradient(ellipse 70% 60% at 50% 45%, #000 35%, transparent 80%)",
+                  pointerEvents: "none",
+                }}
+              />
+              {/* Floating glow effects */}
+              <div
+                aria-hidden
+                className="contact-glow-1"
+                style={{
+                  position: "absolute",
+                  top: "8%",
+                  left: "12%",
+                  width: 320,
+                  height: 320,
+                  borderRadius: "50%",
+                  background:
+                    "radial-gradient(circle, rgba(14,165,233,0.22) 0%, transparent 70%)",
+                  filter: "blur(40px)",
+                  pointerEvents: "none",
+                }}
+              />
+              <div
+                aria-hidden
+                className="contact-glow-2"
+                style={{
+                  position: "absolute",
+                  bottom: "6%",
+                  right: "14%",
+                  width: 360,
+                  height: 360,
+                  borderRadius: "50%",
+                  background:
+                    "radial-gradient(circle, rgba(2,132,199,0.18) 0%, transparent 70%)",
+                  filter: "blur(45px)",
+                  pointerEvents: "none",
+                }}
+              />
+
+              <div
+                style={{
+                  position: "relative",
+                  maxWidth: 760,
+                  margin: "0 auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  textAlign: "center",
+                }}
+              >
+                <span style={{ display: "inline-block", padding: "0.375rem 1rem", background: "rgba(14,165,233,0.12)", color: PRIMARY, fontSize: "0.8125rem", fontWeight: 600, borderRadius: 50, marginBottom: "1rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Contact
+                </span>
+                <h2 style={{ fontSize: "clamp(1.875rem, 4vw, 2.75rem)", fontWeight: 800, color: "#0f172a", marginBottom: "0.625rem", letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+                  Get In Touch
+                </h2>
+                <p style={{ fontSize: "1.0625rem", color: "#64748b", maxWidth: 520, margin: "0 auto 2.5rem", lineHeight: 1.6 }}>
+                  Have questions about SclinNexus? Our team is here to help.
+                </p>
+
+                {/* Soft blue gradient halo behind the card */}
+                <div style={{ position: "relative", width: "100%", maxWidth: 520 }}>
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      inset: "-18px",
+                      borderRadius: 32,
+                      background:
+                        "radial-gradient(ellipse at center, rgba(14,165,233,0.28) 0%, transparent 70%)",
+                      filter: "blur(28px)",
+                      pointerEvents: "none",
+                    }}
+                  />
+                  {/* Gradient border wrapper */}
+                  <div
+                    className="contact-card"
+                    style={{
+                      position: "relative",
+                      borderRadius: 24,
+                      padding: 1.5,
+                      background:
+                        "linear-gradient(140deg, rgba(14,165,233,0.55), rgba(255,255,255,0.2) 45%, rgba(2,132,199,0.45))",
+                      boxShadow:
+                        "0 30px 70px rgba(15,23,42,0.12), 0 8px 24px rgba(14,165,233,0.12)",
+                    }}
+                  >
+                    {/* Glassmorphism card */}
+                    <div
+                      style={{
+                        borderRadius: 23,
+                        padding: "3rem 2.5rem",
+                        textAlign: "center",
+                        background:
+                          "linear-gradient(160deg, rgba(255,255,255,0.92) 0%, rgba(248,251,255,0.86) 100%)",
+                        backdropFilter: "blur(18px)",
+                        WebkitBackdropFilter: "blur(18px)",
+                      }}
+                    >
+                      {/* Larger icon container with soft glow */}
+                      <div
+                        className="contact-icon-wrap"
+                        style={{
+                          width: 84,
+                          height: 84,
+                          margin: "0 auto 1.5rem",
+                          borderRadius: 22,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 38,
+                          background:
+                            "linear-gradient(140deg, #0ea5e9 0%, #0284c7 100%)",
+                          boxShadow:
+                            "0 12px 30px rgba(14,165,233,0.40), inset 0 1px 0 rgba(255,255,255,0.4)",
+                        }}
+                      >
+                        <span style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.15))" }}>📧</span>
+                      </div>
+                      <a
+                        href="mailto:support@sclinnexus.com"
+                        className="contact-email"
+                        style={{
+                          display: "inline-block",
+                          fontSize: "1.375rem",
+                          color: PRIMARY,
+                          fontWeight: 700,
+                          letterSpacing: "-0.01em",
+                          marginBottom: "0.75rem",
+                          textDecoration: "none",
+                        }}
+                      >
+                        support@sclinnexus.com
+                      </a>
+                      <p style={{ fontSize: "0.9375rem", color: "#64748b", maxWidth: 380, margin: "0 auto", lineHeight: 1.65 }}>
+                        For platform-related inquiries and assistance, contact our support team.
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1791,50 +1970,99 @@ export default function LandingPage() {
         {/* ── Footer ───────────────────────────────────────────────────────── */}
         <footer
           style={{
-            padding: "4rem 2rem 2rem",
-            background: DARK_BG,
+            position: "relative",
+            padding: "5rem 2rem 2.5rem",
+            background:
+              "linear-gradient(180deg, #0b1222 0%, #0f172a 55%, #0a1120 100%)",
             color: "#fff",
+            overflow: "hidden",
           }}
         >
-          <div style={{ maxWidth: 1400, margin: "0 auto" }}>
+          {/* Subtle mesh gradient glow */}
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "radial-gradient(60% 55% at 15% 0%, rgba(14,165,233,0.16) 0%, transparent 60%), radial-gradient(50% 50% at 85% 10%, rgba(2,132,199,0.14) 0%, transparent 55%), radial-gradient(70% 60% at 50% 120%, rgba(56,189,248,0.10) 0%, transparent 60%)",
+              pointerEvents: "none",
+            }}
+          />
+          {/* Subtle background texture */}
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundImage:
+                "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0)",
+              backgroundSize: "22px 22px",
+              maskImage:
+                "linear-gradient(180deg, rgba(0,0,0,0.5), transparent 70%)",
+              WebkitMaskImage:
+                "linear-gradient(180deg, rgba(0,0,0,0.5), transparent 70%)",
+              pointerEvents: "none",
+            }}
+          />
+          <div style={{ position: "relative", maxWidth: 1400, margin: "0 auto" }}>
             <div
+              className="footer-grid"
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: "3rem",
-                paddingBottom: "3rem",
-                borderBottom: "1px solid rgba(255,255,255,0.1)",
+                gridTemplateColumns: "1.4fr repeat(4, 1fr)",
+                gap: "4rem",
+                paddingBottom: "3.5rem",
                 marginBottom: "2rem",
               }}
             >
               {/* Brand */}
-              <div>
+              <div className="footer-brand-col" style={{ maxWidth: 320 }}>
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: "0.75rem",
-                    marginBottom: "1.25rem",
+                    gap: "0.875rem",
+                    marginBottom: "1.5rem",
                   }}
                 >
-                  <img
-                    src={colorLogo}
-                    alt="SclinNexus Logo"
+                  <span
+                    className="footer-logo-wrap"
                     style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: 10,
-                      background: "#ffffff",
-                      padding: 4,
-                      objectFit: "contain",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: 48,
+                      height: 48,
+                      borderRadius: 14,
+                      background:
+                        "linear-gradient(150deg, #ffffff 0%, #eef5fc 100%)",
+                      padding: 7,
+                      boxShadow:
+                        "0 8px 22px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.6)",
                       flexShrink: 0,
                     }}
-                  />
+                  >
+                    <img
+                      src={colorLogo}
+                      alt="SclinNexus Logo"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                      }}
+                    />
+                  </span>
                   <span
                     style={{
-                      fontSize: "1.375rem",
+                      fontSize: "1.5rem",
                       fontWeight: 800,
-                      color: "#fff",
+                      letterSpacing: "-0.02em",
+                      background:
+                        "linear-gradient(90deg, #ffffff 0%, #cbe6fb 100%)",
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                      backgroundClip: "text",
                     }}
                   >
                     SclinNexus
@@ -1843,32 +2071,32 @@ export default function LandingPage() {
                 <p
                   style={{
                     fontSize: "0.9375rem",
-                    color: "rgba(255,255,255,0.6)",
-                    lineHeight: 1.6,
-                    marginBottom: "1.5rem",
-                    maxWidth: 280,
+                    color: "rgba(226,232,240,0.65)",
+                    lineHeight: 1.7,
+                    marginBottom: "1.75rem",
+                    maxWidth: 300,
                   }}
                 >
                   Empowering clinical research with innovative technology
                   solutions for faster, safer drug development.
                 </p>
                 <div style={{ display: "flex", gap: "0.75rem" }}>
-                  {[<Linkedin size={20} />, <Twitter size={20} />].map(
+                  {[<Linkedin size={19} />, <Twitter size={19} />].map(
                     (Icon, i) => (
                       <a
                         key={i}
-                        className="social-link"
+                        className="footer-social"
                         href="#"
                         style={{
-                          width: 40,
-                          height: 40,
-                          background: "rgba(255,255,255,0.1)",
-                          borderRadius: 10,
+                          width: 42,
+                          height: 42,
+                          background: "rgba(255,255,255,0.06)",
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          borderRadius: 12,
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          color: "#fff",
-                          transition: "all 0.3s ease",
+                          color: "#e2e8f0",
                           textDecoration: "none",
                         }}
                       >
@@ -1910,10 +2138,12 @@ export default function LandingPage() {
                 <div key={ci}>
                   <h4
                     style={{
-                      fontSize: "0.9375rem",
-                      fontWeight: 600,
-                      color: "#fff",
-                      marginBottom: "1.25rem",
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      color: "#7dd3fc",
+                      marginBottom: "1.5rem",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.12em",
                     }}
                   >
                     {col.title}
@@ -1934,16 +2164,16 @@ export default function LandingPage() {
                             }
                           : undefined;
                       return (
-                        <li key={li} style={{ marginBottom: "0.75rem" }}>
+                        <li key={li} style={{ marginBottom: "0.875rem" }}>
                           <a
                             className="footer-link"
                             href={href}
                             onClick={onClick}
                             style={{
-                              color: "rgba(255,255,255,0.6)",
+                              color: "rgba(226,232,240,0.62)",
                               textDecoration: "none",
                               fontSize: "0.9375rem",
-                              transition: "all 0.2s ease",
+                              transition: "color 0.25s ease, transform 0.25s ease",
                               display: "inline-block",
                             }}
                           >
@@ -1957,7 +2187,20 @@ export default function LandingPage() {
               ))}
             </div>
 
+            {/* Gradient divider line */}
             <div
+              aria-hidden
+              style={{
+                height: 1,
+                width: "100%",
+                marginBottom: "2rem",
+                background:
+                  "linear-gradient(90deg, transparent, rgba(56,189,248,0.45) 25%, rgba(56,189,248,0.45) 75%, transparent)",
+              }}
+            />
+
+            <div
+              className="footer-bottom"
               style={{
                 display: "flex",
                 justifyContent: "space-between",
@@ -1969,7 +2212,7 @@ export default function LandingPage() {
               <p
                 style={{
                   fontSize: "0.875rem",
-                  color: "rgba(255,255,255,0.5)",
+                  color: "rgba(226,232,240,0.5)",
                   margin: 0,
                 }}
               >

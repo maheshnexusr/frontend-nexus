@@ -543,6 +543,18 @@ function GeneralTab({ field, up, hasOptions, isLayout }) {
               </div>
             </>
           )}
+
+          {field.type === 'checkboxgroup' && (
+            <>
+              <div className={s.toggleRow}>
+                <span className={s.toggleRowLabel}>Allow additional input per option</span>
+                <Toggle value={field.allowOptionInput ?? false} onChange={(v) => up('allowOptionInput', v)} />
+              </div>
+              {field.allowOptionInput && (
+                <OptionInputEditor options={field.options ?? []} onChange={(opts) => up('options', opts)} />
+              )}
+            </>
+          )}
         </>
       )}
 
@@ -1611,3 +1623,46 @@ function OptionsEditor({ options, onChange }) {
   );
 }
 const optMoveBtn = { fontSize: 7, color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' };
+
+/* Per-option "additional input" config (checkbox group). Each option may turn
+ * on an extra input captured only while that option is selected at runtime. */
+const OPTION_INPUT_TYPES = [
+  { value: 'text',     label: 'Text' },
+  { value: 'number',   label: 'Number' },
+  { value: 'date',     label: 'Date' },
+  { value: 'textarea', label: 'Textarea' },
+];
+function OptionInputEditor({ options, onChange }) {
+  const update = (i, patch) => onChange(options.map((o, j) => (j === i ? { ...o, ...patch } : o)));
+  return (
+    <div className={s.sfield}>
+      <span className={s.sfieldLabel}>Additional input per option</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {(options ?? []).map((opt, i) => (
+          <div key={i} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', background: '#f8fafc' }}>
+            <div className={s.toggleRow} style={{ marginBottom: opt.allowInput ? 8 : 0 }}>
+              <span className={s.toggleRowLabel} style={{ fontWeight: 600 }}>{opt.label || opt.value || `Option ${i + 1}`}</span>
+              <Toggle value={opt.allowInput ?? false} onChange={(v) => update(i, { allowInput: v })} />
+            </div>
+            {opt.allowInput && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <SField label="Input type">
+                  <select className={s.sselect} value={opt.inputType ?? 'text'} onChange={(e) => update(i, { inputType: e.target.value })}>
+                    {OPTION_INPUT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </SField>
+                <SField label="Placeholder">
+                  <input className={s.sinput} value={opt.inputPlaceholder ?? ''} onChange={(e) => update(i, { inputPlaceholder: e.target.value })} placeholder="Please specify" />
+                </SField>
+                <div className={s.toggleRow}>
+                  <span className={s.toggleRowLabel}>Required when selected</span>
+                  <Toggle value={opt.inputRequired ?? false} onChange={(v) => update(i, { inputRequired: v })} />
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

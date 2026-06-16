@@ -42,9 +42,10 @@ export default function SiteRoleFormPage() {
   const isEdit              = !!roleId && !readOnly;
 
   const [form,        setForm]        = useState({
-    roleName:    '',
-    description: '',
-    status:      'Active',
+    roleName:        '',
+    description:     '',
+    status:          'Active',
+    consentRequired: false,
   });
   const [permissions, setPermissions] = useState(buildEmptyPermissions());
   // Per-role dashboard whitelist. null = default (category-leaf gating); array
@@ -63,9 +64,10 @@ export default function SiteRoleFormPage() {
       .then((r) => {
         if (!r) return;
         setForm({
-          roleName:    r.roleName    ?? '',
-          description: r.description ?? '',
-          status:      r.status      ?? 'Active',
+          roleName:        r.roleName    ?? '',
+          description:     r.description ?? '',
+          status:          r.status      ?? 'Active',
+          consentRequired: r.consentRequired === true,
         });
         setPermissions(r.permissions ?? buildEmptyPermissions());
         setWidgetKeys(Array.isArray(r.dashboardWidgetKeys) ? r.dashboardWidgetKeys : null);
@@ -173,6 +175,28 @@ export default function SiteRoleFormPage() {
               error={!!errors.description}
             />
           </FormField>
+        </div>
+
+        {/* Consent Required — when ON, personnel created under this role must be
+            assigned a consent form at invite time. */}
+        <div className={styles.toggleRow}>
+          <div className={styles.toggleText}>
+            <span className={styles.toggleTitle}>Consent Required</span>
+            <span className={styles.toggleHint}>
+              When enabled, site personnel assigned this role must be given a consent
+              form to review, acknowledge, or sign.
+            </span>
+          </div>
+          <label className={styles.toggle}>
+            <input
+              type="checkbox"
+              checked={form.consentRequired}
+              onChange={(e) => set('consentRequired')(e.target.checked)}
+              disabled={readOnly}
+            />
+            <span className={styles.toggleTrack}><span className={styles.toggleThumb} /></span>
+            <span className={styles.toggleLabel}>{form.consentRequired ? 'ON' : 'OFF'}</span>
+          </label>
         </div>
       </div>
 
