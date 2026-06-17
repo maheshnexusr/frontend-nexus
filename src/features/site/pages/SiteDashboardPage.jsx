@@ -120,7 +120,7 @@ export default function SiteDashboardPage() {
                     <span className={styles.cardLogo}>
                       {resolveFileUrl(s.organizationLogo)
                         ? <img src={resolveFileUrl(s.organizationLogo)} alt={s.sponsorName || 'Sponsor'} className={styles.cardLogoImg} />
-                        : <Building2 size={18} strokeWidth={2} />}
+                        : <Building2 size={28} strokeWidth={1.75} />}
                     </span>
                     <span className={styles.cardText}>
                       <span className={styles.studyTitle}>

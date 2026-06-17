@@ -30,7 +30,7 @@ import {
   ShieldAlert, Pencil,
 } from 'lucide-react';
 import RuntimeFieldRenderer from '@/features/cro/components/study-form/runtime/RuntimeFieldRenderer';
-import { evaluateField, evaluateEligibility } from '@/features/cro/components/study-form/runtime/runtimeEngine';
+import { evaluateField, evaluateEligibility, compareOp, dateBounds } from '@/features/cro/components/study-form/runtime/runtimeEngine';
 import { headingStyleToCss } from '@/features/cro/components/study-form/headingStyle';
 import SignatureInput       from './SignatureInput';
 import TableFieldInput       from './TableFieldInput';
@@ -105,6 +105,93 @@ const optInputPlaceholder = (o) => o?.inputPlaceholder ?? o?.input_placeholder ?
 const optInputRequired = (o) => o?.inputRequired ?? o?.input_required ?? false;
 const optInputValue = (arr, optVal) =>
   (Array.isArray(arr) ? arr.find((e) => e?.option === optVal)?.value : undefined) ?? '';
+
+// Option-based CHILD FIELDS (sibling of the per-option additional input). When
+// a parent option (radio / checkbox / dropdown / multi-select) is selected, one
+// or more dependent inputs appear and participate in validation only while
+// visible. Captured values live alongside the form data under the companion key
+// `${fieldId}__child_fields` as an ARRAY of { option, field, value } pairs —
+// all-lowercase keys + codes-as-values so the camelCase→snake_case request
+// interceptor leaves them untouched. Config may be camel- or snake_case
+// depending on whether it came from the designer or the stored structure.
+const childFieldsKey         = (fieldId) => `${fieldId}__child_fields`;
+const enableOptionChildrenOf = (f) => f?.enableOptionChildren ?? f?.enable_option_children ?? false;
+const clearChildOnDeselectOf = (f) => (f?.clearChildOnDeselect ?? f?.clear_child_on_deselect) !== false;
+const optChildFields = (o) => o?.childFields ?? o?.child_fields ?? [];
+const cfId       = (c) => c?.id ?? c?.field_id;
+const cfType     = (c) => c?.type ?? 'text';
+const cfLabel    = (c) => c?.label ?? '';
+const cfRequired = (c) => (c?.required ?? c?.is_required) === true;
+const cfPlaceholder = (c) => c?.placeholder ?? c?.place_holder ?? '';
+const cfHelp     = (c) => c?.helpText ?? c?.help_text ?? '';
+const cfOptions  = (c) => c?.options ?? [];
+const childFieldValue = (arr, optVal, childId) =>
+  (Array.isArray(arr) ? arr.find((e) => e?.option === optVal && e?.field === childId)?.value : undefined);
+const CHILD_PARENT_TYPES = ['radiogroup', 'checkboxgroup', 'select', 'multiselect'];
+// Currently-selected parent option codes: array value → as-is; single → [value].
+const selectedOptionValues = (v) => Array.isArray(v) ? v : (v === '' || v == null ? [] : [v]);
+const isEmptyChildValue = (v) =>
+  v === undefined || v === null || (typeof v === 'string' && v.trim() === '') || (Array.isArray(v) && v.length === 0);
+
+// Conditional AUTO-SELECTION (checkbox group). Each option may carry an
+// `autoRule` that auto-checks / unchecks the option (and optionally forces its
+// child fields required/optional) when a condition over other fields is met.
+// Config may be camel- (designer) or snake_case (stored structure) — accept
+// either. Conditions reuse runtimeEngine.compareOp (same operator vocabulary as
+// Conditional Visibility); rule field ids arrive `fieldId` or `field_id`.
+const enableOptionAutoSelectOf = (f) => f?.enableOptionAutoSelect ?? f?.enable_option_auto_select ?? false;
+const optAutoRule       = (o) => o?.autoRule ?? o?.auto_rule ?? null;
+const autoRuleEnabled   = (r) => r?.enabled === true;
+const autoRuleAction    = (r) => String(r?.action ?? 'select').toLowerCase();
+const autoRuleChildReq  = (r) => String(r?.childRequired ?? r?.child_required ?? 'inherit').toLowerCase();
+const autoCondFieldId   = (c) => c?.fieldId ?? c?.field_id;
+const autoRuleSetField  = (r) => r?.setField ?? r?.set_field ?? null;
+// Grouped conditions: `groups: [{ match:'all'|'any', rules:[…] }]` combined by
+// `groupMatch`. A legacy flat rule ({ match, rules }) is read as a single group.
+const autoRuleGroups    = (r) => (Array.isArray(r?.groups) && r.groups.length ? r.groups : [{ match: r?.match, rules: r?.rules }]);
+const autoGroupMatch    = (r) => String(r?.groupMatch ?? r?.group_match ?? 'all').toLowerCase();
+// One group → true | false | null(no actionable rule). Within-group combine by
+// the group's own match (ALL=AND / ANY=OR).
+const evalAutoGroup = (group, allValues) => {
+  const list = (group?.rules || []).filter((c) => c && autoCondFieldId(c) && c.operator);
+  if (!list.length) return null;
+  const hits = list.map((c) => compareOp(c.operator, allValues?.[autoCondFieldId(c)], c.value));
+  return String(group?.match ?? 'all').toLowerCase() === 'any' ? hits.some(Boolean) : hits.every(Boolean);
+};
+// True when the option's grouped condition holds. Groups are combined by
+// `groupMatch`, giving real two-level grouping e.g. (A OR B) AND C. No
+// actionable rule anywhere → false (nothing to act on).
+const autoRuleMet = (rule, allValues) => {
+  const results = autoRuleGroups(rule).map((g) => evalAutoGroup(g, allValues)).filter((r) => r !== null);
+  if (!results.length) return false;
+  return autoGroupMatch(rule) === 'any' ? results.some(Boolean) : results.every(Boolean);
+};
+// Effective required-ness override for an auto-rule option's child fields while
+// its condition holds: true (force required) | false (force optional) | null
+// (inherit the child's own `required`).
+const optionChildRequiredOverride = (field, option, allValues) => {
+  if (field?.type !== 'checkboxgroup' || !enableOptionAutoSelectOf(field)) return null;
+  const rule = optAutoRule(option);
+  if (!autoRuleEnabled(rule)) return null;
+  const mode = autoRuleChildReq(rule);
+  if (mode !== 'required' && mode !== 'optional') return null;
+  if (!autoRuleMet(rule, allValues)) return null;
+  return mode === 'required';
+};
+
+// Human-readable field NAME for the Reason-for-Change dialog and messages.
+// Prefer the designer's Label, then alternate label/name keys, then the internal
+// field key (camel or snake). Top-level form fields carry NO fieldKey, so a
+// label-less field would otherwise fall through to the opaque nano id — derive a
+// readable name from the key instead, and never show a raw "fld_…" id.
+const fieldDisplayName = (f) => {
+  const fromKey = (k) => String(k || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const label = f?.label ?? f?.field_label ?? f?.fieldLabel ?? f?.name ?? f?.title;
+  if (label && String(label).trim()) return String(label).trim();
+  const key = f?.fieldKey ?? f?.field_key;
+  if (key && String(key).trim() && !/^fld[_-]/i.test(key)) return fromKey(key);
+  return 'this field';
+};
 
 // Inclusion/Exclusion eligibility chip colours.
 const ELIG_STYLE = {
@@ -361,6 +448,11 @@ function StudyFormRunnerInner({
   const [pageIdx,   setPageIdx]   = useState(0);
   const [submitted, setSubmitted] = useState(false);
   const [values,    setValues]    = useState(defaultValues);
+  // Edge tracker for conditional auto-selection (checkbox group). `met` maps
+  // `${fieldId}::${optionValue}` → last-known condition result; the action only
+  // fires on the unmet→met transition. `initialized` gates the very first pass
+  // so loading data doesn't count as a trigger. Re-seeded on data (re)load.
+  const autoSelectStateRef = useRef({ initialized: false, met: {} });
   // Baseline = the values as last persisted/completed. A page is "dirty" when
   // its current values differ from the baseline; a dirty completed page re-offers
   // the "Mark Page Completed" button.
@@ -445,6 +537,9 @@ function StudyFormRunnerInner({
   useEffect(() => {
     setValues(defaultValues || {});
     setBaseline(defaultValues || {});
+    // Re-seed the auto-selection edge tracker so loading data isn't treated as a
+    // fresh condition trigger (would clobber the saved selection on mount).
+    autoSelectStateRef.current = { initialized: false, met: {} };
   }, [defaultValues]);
   useEffect(() => { setCompleted(completedPages || {}); }, [completedPages]);
   useEffect(() => {
@@ -658,11 +753,11 @@ function StudyFormRunnerInner({
             // per-option input → `${id}__opt_inputs`). The backend treats each as
             // a separately-modified field, so collect every changed data key and
             // attribute them all to this one field's reason.
-            const dataKeys = [f.id, `${f.id}__opt_inputs`];
+            const dataKeys = [f.id, `${f.id}__opt_inputs`, `${f.id}__child_fields`];
             const changedKeys = dataKeys.filter((k) =>
               !isEmpty(baseline[k]) && !sameValue(values[k], baseline[k]) && reasons[k] == null);
             if (changedKeys.length) {
-              labels.push(f.label || f.fieldKey || f.field_key || f.id);
+              labels.push(fieldDisplayName(f));
               ids.push(...changedKeys);
             }
           }
@@ -672,6 +767,80 @@ function StudyFormRunnerInner({
     }, 700);
     return () => clearTimeout(timer);
   }, [values, baseline, blocks, rfcActive, readOnly, rfcOpen]);
+
+  // Prune option-based child-field values whose parent option is no longer
+  // selected (when the field opts into clear-on-deselect, the default). Skipped
+  // while viewing read-only/submitted data so historical answers are preserved.
+  useEffect(() => {
+    if (readOnly) return;
+    for (const blk of blocks || []) {
+      for (const pg of blk.pages || []) {
+        for (const f of pg.fields || []) {
+          if (!enableOptionChildrenOf(f) || !clearChildOnDeselectOf(f)) continue;
+          const key = childFieldsKey(f.id);
+          const arr = values[key];
+          if (!Array.isArray(arr) || !arr.length) continue;
+          const selected = selectedOptionValues(values[f.id]);
+          const pruned = arr.filter((e) => selected.includes(e?.option));
+          if (pruned.length !== arr.length) setValue(key, pruned);
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values, blocks, readOnly]);
+
+  // Conditional auto-selection (checkbox group). EDGE-TRIGGERED: when an option's
+  // condition flips from unmet → met, apply its action (check/uncheck the
+  // option) once, then leave the user free to override. The first pass after a
+  // data load only SEEDS the met-state (so loading saved data never re-triggers
+  // and clobbers the stored selection). The resulting selection change flows
+  // through `values` → save → the normal field-level audit, so auto-selections
+  // are recorded in the audit trail like any other change.
+  useEffect(() => {
+    if (readOnly) return;
+    const state = autoSelectStateRef.current;
+    const prevMet = state.met;
+    const nextMet = {};
+    const patch = {};
+    for (const blk of blocks || []) {
+      for (const pg of blk.pages || []) {
+        for (const f of pg.fields || []) {
+          if (f.type !== 'checkboxgroup' || !enableOptionAutoSelectOf(f)) continue;
+          for (const o of f.options || []) {
+            const rule = optAutoRule(o);
+            if (!autoRuleEnabled(rule)) continue;
+            const key = `${f.id}::${o.value}`;
+            const met = autoRuleMet(rule, values);
+            nextMet[key] = met;
+            // Act only on a transition, and only once initialised (the seed pass
+            // never applies, so loading data can't re-trigger).
+            if (!state.initialized || met === prevMet[key]) continue;
+            const action = autoRuleAction(rule);
+            const cur = selectedOptionValues(patch[f.id] ?? values[f.id]);
+            const has = cur.includes(o.value);
+            // toggle = follow the condition both ways; select/deselect act only
+            // on the unmet→met edge (leaving the user free to override after).
+            if (action === 'toggle') {
+              if (met && !has) patch[f.id] = [...cur, o.value];
+              else if (!met && has) patch[f.id] = cur.filter((x) => x !== o.value);
+            } else if (met) {
+              if (action === 'deselect') { if (has) patch[f.id] = cur.filter((x) => x !== o.value); }
+              else if (!has) patch[f.id] = [...cur, o.value];
+            }
+            // "Set field values" — when the option becomes auto-SELECTED, push a
+            // value into another field (edge-triggered; user can override after).
+            const selectingNow = met && (action === 'select' || action === 'toggle');
+            const sf = autoRuleSetField(rule);
+            const sfId = sf && (sf.fieldId ?? sf.field_id);
+            if (selectingNow && sfId) patch[sfId] = sf.value;
+          }
+        }
+      }
+    }
+    autoSelectStateRef.current = { initialized: true, met: nextMet };
+    if (Object.keys(patch).length) setValues((prev) => ({ ...prev, ...patch }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values, blocks, readOnly]);
 
   if (!blocks.length) {
     return (
@@ -826,8 +995,25 @@ function StudyFormRunnerInner({
       optAllowInput(o) && optInputRequired(o) && selected.includes(o.value)
       && String(optInputValue(inputs, o.value)).trim() === '');
   };
+  // A required option-based child field left blank blocks Next/Submit — but only
+  // while its parent option is selected (otherwise the child isn't visible).
+  const optionChildMissing = (f) => {
+    if (!enableOptionChildrenOf(f) || !CHILD_PARENT_TYPES.includes(f.type)) return false;
+    const selected = selectedOptionValues(values[f.id]);
+    if (!selected.length) return false;
+    const arr = values[childFieldsKey(f.id)];
+    return (f.options || []).some((o) => {
+      if (!selected.includes(o.value)) return false;
+      // An auto-rule option may force its children required/optional.
+      const override = optionChildRequiredOverride(f, o, values);
+      return optChildFields(o).some((c) => {
+        const required = override ?? cfRequired(c);
+        return required && isEmptyChildValue(childFieldValue(arr, o.value, cfId(c)));
+      });
+    });
+  };
   const pageMissingRequired = (pg) =>
-    (pg.fields || []).filter(isVisibleData).filter((f) => (isHardReq(f) && !fieldHasValue(f)) || tableInvalid(f) || checkboxOptionInputMissing(f));
+    (pg.fields || []).filter(isVisibleData).filter((f) => (isHardReq(f) && !fieldHasValue(f)) || tableInvalid(f) || checkboxOptionInputMissing(f) || optionChildMissing(f));
   const missingRequiredNow = pageMissingRequired(page);
   const missingRequiredIds = new Set(missingRequiredNow.map((f) => f.id));
 
@@ -1495,6 +1681,8 @@ function StudyFormRunnerInner({
                             showErrors={triedNext}
                             optionInputs={values[optInputsKey(f.id)]}
                             onOptionInputsChange={(next) => setValue(optInputsKey(f.id), next)}
+                            optionChildren={values[childFieldsKey(f.id)]}
+                            onOptionChildrenChange={(next) => setValue(childFieldsKey(f.id), next)}
                           />
                         </fieldset>
                       )}
@@ -1529,7 +1717,15 @@ function StudyFormRunnerInner({
             >
               <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
               <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {missingRequiredNow.map((f) => <span key={f.id}>{hardMsg(f)}</span>)}
+                {/* A table just gets a single plain "please fill" line (no issue
+                    count) — it no longer shows its own in-table error badge. */}
+                {missingRequiredNow.map((f) => (
+                  <span key={f.id}>
+                    {f.type === 'table'
+                      ? `Please fill ${fieldName(f) || 'this table field'}`
+                      : hardMsg(f)}
+                  </span>
+                ))}
               </span>
             </div>
           )}
@@ -2147,13 +2343,157 @@ function FileFieldInput({ field, value, onChange }) {
   );
 }
 
-function FieldInput({ field, value, onChange, allValues, showErrors, optionInputs, onOptionInputsChange }) {
+// Display-only Paragraph field. Content authored in the Form Designer's rich
+// text editor is stored as HTML on field.content and rendered verbatim here
+// (lists, bold/italic/underline, links). Legacy plain-text content (no markup)
+// is rendered with its line breaks preserved. Never participates in validation
+// or conditional logic.
+const PARA_HTML_RE = /<[a-z][\s\S]*>/i;
+function RichParagraph({ field }) {
+  const raw = field.content ?? field.label ?? '';
+  const text = typeof raw === 'string' ? raw : '';
+  if (!text.trim()) return <p className={s.paragraph}>Paragraph text.</p>;
+  if (PARA_HTML_RE.test(text)) {
+    return <div className={s.richParagraph} dangerouslySetInnerHTML={{ __html: text }} />;
+  }
+  return <div className={`${s.richParagraph} ${s.richParagraphPlain}`}>{text}</div>;
+}
+
+// A single dependent child input (text/number/textarea/date + the four choice
+// types). Mirrors the main FieldInput controls but writes a flat value via
+// onChange — the parent OptionChildFields owns the companion-key storage.
+function ChildFieldInput({ child, value, onChange, invalid }) {
+  const v = value ?? '';
+  const errStyle = invalid ? { outline: '2px solid #fca5a5' } : {};
+  const opts = cfOptions(child);
+  switch (cfType(child)) {
+    case 'textarea':
+      return <textarea className={s.textarea} rows={2} style={errStyle} placeholder={cfPlaceholder(child)} value={v} onChange={(e) => onChange(e.target.value)} />;
+    case 'number':
+      return <input type="number" className={s.input} style={errStyle} placeholder={cfPlaceholder(child)} value={v} onChange={(e) => onChange(e.target.value)} />;
+    case 'date':
+      return <input type="date" className={s.input} style={errStyle} value={v} onChange={(e) => onChange(e.target.value)} />;
+    case 'select':
+      return (
+        <select className={s.select} style={errStyle} value={v} onChange={(e) => onChange(e.target.value)}>
+          <option value="">{cfPlaceholder(child) || 'Select an option…'}</option>
+          {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      );
+    case 'multiselect': {
+      const sel = Array.isArray(v) ? v.map(String) : [];
+      return (
+        <select
+          className={s.select}
+          multiple
+          size={Math.min(5, Math.max(3, opts.length))}
+          style={errStyle}
+          value={sel}
+          onChange={(e) => onChange(Array.from(e.target.selectedOptions, (o) => o.value))}
+        >
+          {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      );
+    }
+    case 'radiogroup':
+      return (
+        <div className={s.choiceGroup}>
+          {opts.map((o) => (
+            <label key={o.value} className={`${s.choiceItem} ${v === o.value ? s.choiceItemSelected : ''}`}>
+              <input type="radio" checked={v === o.value} onChange={() => onChange(o.value)} />
+              <span>{o.label}</span>
+            </label>
+          ))}
+        </div>
+      );
+    case 'checkboxgroup': {
+      const sel = Array.isArray(v) ? v : [];
+      return (
+        <div className={s.choiceGroup}>
+          {opts.map((o) => {
+            const on = sel.includes(o.value);
+            return (
+              <label key={o.value} className={`${s.choiceItem} ${on ? s.choiceItemSelected : ''}`}>
+                <input type="checkbox" checked={on} onChange={() => onChange(on ? sel.filter((x) => x !== o.value) : [...sel, o.value])} />
+                <span>{o.label}</span>
+              </label>
+            );
+          })}
+        </div>
+      );
+    }
+    default:
+      return <input type="text" className={s.input} style={errStyle} placeholder={cfPlaceholder(child)} value={v} onChange={(e) => onChange(e.target.value)} />;
+  }
+}
+
+// Renders the per-option child fields below a radio/checkbox/dropdown/multiselect
+// control. For every currently-selected parent option that defines children, a
+// left-bordered group lists its dependent inputs. Values round-trip through the
+// companion key as { option, field, value } pairs (owned by the parent).
+function OptionChildFields({ field, value, allValues, childValues, onChildValuesChange, showErrors }) {
+  if (!enableOptionChildrenOf(field) || !onChildValuesChange) return null;
+  if (!CHILD_PARENT_TYPES.includes(field.type)) return null;
+  const arr = Array.isArray(childValues) ? childValues : [];
+  const selected = selectedOptionValues(value);
+  const groups = (field.options || []).filter((o) => selected.includes(o.value) && optChildFields(o).length);
+  if (!groups.length) return null;
+  const setCV = (optVal, childId, val) => {
+    const rest = arr.filter((e) => !(e?.option === optVal && e?.field === childId));
+    onChildValuesChange(isEmptyChildValue(val) ? rest : [...rest, { option: optVal, field: childId, value: val }]);
+  };
+  return (
+    <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {groups.map((o) => {
+        // An auto-rule option may force its children required/optional.
+        const reqOverride = optionChildRequiredOverride(field, o, allValues);
+        return (
+        <div
+          key={o.value}
+          style={{ borderLeft: '2px solid #c7d2fe', paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 12 }}
+        >
+          {optChildFields(o).map((c) => {
+            const id = cfId(c);
+            const cur = childFieldValue(arr, o.value, id);
+            const required = reqOverride ?? cfRequired(c);
+            const missing = required && isEmptyChildValue(cur);
+            return (
+              <div key={id} style={{ minWidth: 0 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 4 }}>
+                  {cfLabel(c) || 'Field'}{required && <span style={{ color: '#dc2626' }}> *</span>}
+                </label>
+                <ChildFieldInput child={c} value={cur} onChange={(val) => setCV(o.value, id, val)} invalid={missing && showErrors} />
+                {cfHelp(c) && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{cfHelp(c)}</div>}
+              </div>
+            );
+          })}
+        </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FieldInput({ field, value, onChange, allValues, showErrors, optionInputs, onOptionInputsChange, optionChildren, onOptionChildrenChange }) {
   const v = value ?? '';
   // "Other" free-text mode for radio/checkbox groups (allowOther).
   const [otherOpen, setOtherOpen] = useState(false);
   const choiceStyle = field.orientation === 'horizontal'
     ? { flexDirection: 'row', flexWrap: 'wrap' }
     : undefined;
+  // Per-option child fields (radio/checkbox/dropdown/multi-select) — rendered
+  // below the parent control for each currently-selected option that defines
+  // children. Returns null when the field doesn't opt in or nothing is selected.
+  const childPanel = (
+    <OptionChildFields
+      field={field}
+      value={value}
+      allValues={allValues}
+      childValues={optionChildren}
+      onChildValuesChange={onOptionChildrenChange}
+      showErrors={showErrors}
+    />
+  );
 
   switch (field.type) {
     case 'table':
@@ -2193,18 +2533,26 @@ function FieldInput({ field, value, onChange, allValues, showErrors, optionInput
           onChange={(e) => onChange(e.target.value)}
         />
       );
-    case 'date':
+    case 'date': {
       // Fluent-style calendar popover. Returns the same ISO "YYYY-MM-DD" the
       // backend expects; display is always DD-MMM-YYYY (e.g. "12-MAY-2026").
-      return <PlatformDatePicker value={v ?? ''} onChange={onChange} />;
-    case 'datetime':
-      return <input type="datetime-local" className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
+      // Display Settings restrict the selectable range (out-of-range days are
+      // disabled in the calendar; manual entry is validated by runtimeEngine).
+      const { min, max } = dateBounds(field);
+      return <PlatformDatePicker value={v ?? ''} onChange={onChange} min={min ?? undefined} max={max ?? undefined} />;
+    }
+    case 'datetime': {
+      const { min, max } = dateBounds(field);
+      return <input type="datetime-local" className={s.input} value={v} onChange={(e) => onChange(e.target.value)}
+        min={min ? `${min}T00:00` : undefined} max={max ? `${max}T23:59` : undefined} />;
+    }
     case 'time':
       return <input type="time" className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
     case 'select': {
       if (field.multiple) {
         const selected = Array.isArray(v) ? v.map(String) : (v ? [String(v)] : []);
         return (
+          <>
           <select
             className={s.select}
             multiple
@@ -2214,13 +2562,18 @@ function FieldInput({ field, value, onChange, allValues, showErrors, optionInput
           >
             {(field.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
+          {childPanel}
+          </>
         );
       }
       return (
+        <>
         <select className={s.select} value={v} onChange={(e) => onChange(e.target.value)}>
           <option value="">{field.placeholder || 'Select an option…'}</option>
           {(field.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
+        {childPanel}
+        </>
       );
     }
     case 'radiogroup': {
@@ -2228,6 +2581,7 @@ function FieldInput({ field, value, onChange, allValues, showErrors, optionInput
       const isOpt = opts.some((o) => o.value === v);
       const otherSel = field.allowOther && (otherOpen || (v !== '' && v != null && !isOpt));
       return (
+        <>
         <div className={s.choiceGroup} style={choiceStyle}>
           {opts.map((o) => (
             <label key={o.value} className={`${s.choiceItem} ${v === o.value && !otherSel ? s.choiceItemSelected : ''}`}>
@@ -2245,6 +2599,8 @@ function FieldInput({ field, value, onChange, allValues, showErrors, optionInput
             <input className={s.input} style={{ marginTop: 6 }} placeholder="Please specify…" value={isOpt ? '' : v} onChange={(e) => onChange(e.target.value)} />
           )}
         </div>
+        {childPanel}
+        </>
       );
     }
     case 'checkboxgroup': {
@@ -2265,6 +2621,7 @@ function FieldInput({ field, value, onChange, allValues, showErrors, optionInput
         onOptionInputsChange(next);
       };
       return (
+        <>
         <div className={s.choiceGroup} style={choiceStyle}>
           {opts.map((o) => {
             const isChk = checked.includes(o.value);
@@ -2339,6 +2696,8 @@ function FieldInput({ field, value, onChange, allValues, showErrors, optionInput
             />
           )}
         </div>
+        {childPanel}
+        </>
       );
     }
     case 'toggle':
@@ -2402,7 +2761,7 @@ function FieldInput({ field, value, onChange, allValues, showErrors, optionInput
     case 'h3':
       return <h3 className={s.h3} style={headingStyleToCss(field)}>{field.label || 'Sub-heading'}</h3>;
     case 'paragraph':
-      return <p className={s.paragraph}>{field.content || field.label || 'Paragraph text.'}</p>;
+      return <RichParagraph field={field} />;
     case 'divider':
       return <hr className={s.divider} />;
     default:

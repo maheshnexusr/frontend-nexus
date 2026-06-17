@@ -39,6 +39,40 @@ const COND_ACTIONS = [
   { value: 'readonly', label: 'Make read-only when…' },
 ];
 
+/* Per-row column rules — sibling-column-driven behaviour applied independently
+ * to each row (codes understood by tableEngine.evaluateRowColumn / compareOp). */
+const ROW_RULE_ACTIONS = [
+  { value: 'show',      label: 'Show this column' },
+  { value: 'hide',      label: 'Hide this column' },
+  { value: 'enable',    label: 'Enable this column' },
+  { value: 'disable',   label: 'Disable this column' },
+  { value: 'readonly',  label: 'Make read-only' },
+  { value: 'editable',  label: 'Make editable' },
+  { value: 'require',   label: 'Make required' },
+  { value: 'unrequire', label: 'Make optional' },
+  { value: 'clear',     label: 'Clear value' },
+  { value: 'setvalue',  label: 'Set value' },
+];
+const ROW_OP_LABELS = {
+  equals: 'Equals', not_equals: 'Not equals', contains: 'Contains', does_not_contain: 'Does not contain',
+  greater_than: 'Greater than', less_than: 'Less than', gte: '≥', lte: '≤',
+  is_empty: 'Is empty', is_not_empty: 'Is not empty', checked: 'Is checked', unchecked: 'Is not checked',
+  before: 'Before', after: 'After',
+};
+const NO_VAL_ROW_OPS = new Set(['is_empty', 'is_not_empty', 'checked', 'unchecked']);
+const rowOp = (...keys) => keys.map((k) => ({ value: k, label: ROW_OP_LABELS[k] }));
+function opsForColType(type) {
+  switch (type) {
+    case 'checkbox':    return rowOp('checked', 'unchecked');
+    case 'number': case 'currency': case 'rating':
+      return rowOp('equals', 'not_equals', 'greater_than', 'less_than', 'gte', 'lte', 'is_empty', 'is_not_empty');
+    case 'select': case 'radiogroup': return rowOp('equals', 'not_equals', 'is_empty', 'is_not_empty');
+    case 'multiselect': return rowOp('contains', 'does_not_contain', 'is_empty', 'is_not_empty');
+    case 'date': case 'datetime': return rowOp('equals', 'before', 'after', 'is_empty', 'is_not_empty');
+    default: return rowOp('equals', 'not_equals', 'contains', 'does_not_contain', 'is_empty', 'is_not_empty');
+  }
+}
+
 /* ── Column type catalogue ──────────────────────────────────────────────── */
 export const COLUMN_TYPES = [
   { value: 'text',        label: 'Text' },
@@ -369,6 +403,99 @@ function ColumnEditor({ col, onPatch, columns, selfId }) {
       )}
 
       <ColumnConditionEditor condition={col.condition} selfId={selfId} onChange={(condition) => onPatch({ condition })} />
+
+      <ColumnRowRulesEditor columns={columns} selfKey={colKey(col)} rowRules={col.rowRules} onChange={(rowRules) => onPatch({ rowRules })} />
+    </>
+  );
+}
+
+/* ── Per-row column behaviour (sibling-column driven, per-row) ───────────────
+ * Each rule targets THIS column and fires per row when its `when` conditions
+ * (over SIBLING columns in the same row) are met. Supports the full action set;
+ * "Set value" carries a literal. Mirrors tableEngine.evaluateRowColumn. */
+function ColumnRowRulesEditor({ columns, selfKey, rowRules, onChange }) {
+  const siblings = (columns || []).filter((c) => colKey(c) && colKey(c) !== selfKey);
+  const rules = rowRules || [];
+  const newWhen = () => ({ col: colKey(siblings[0]) || '', operator: opsForColType(siblings[0]?.type)[0]?.value || 'equals', value: '' });
+  const addRule = () => onChange([...rules, { match: 'all', when: [newWhen()], action: 'readonly', setValue: '' }]);
+  const updRule = (ri, patch) => onChange(rules.map((r, i) => (i === ri ? { ...r, ...patch } : r)));
+  const delRule = (ri) => onChange(rules.filter((_, i) => i !== ri));
+  const setWhen = (ri, next) => updRule(ri, { when: next });
+  const addWhen = (ri) => setWhen(ri, [...(rules[ri].when || []), newWhen()]);
+  const updWhen = (ri, wi, patch) => setWhen(ri, (rules[ri].when || []).map((w, i) => (i === wi ? { ...w, ...patch } : w)));
+  const delWhen = (ri, wi) => setWhen(ri, (rules[ri].when || []).filter((_, i) => i !== wi));
+
+  return (
+    <>
+      <p className={s.subSectionLabel} style={{ marginTop: 8 }}>Row behaviour (same-row columns)</p>
+      {siblings.length === 0
+        ? <p className={s.hintText}>Add other columns to drive this one within a row.</p>
+        : (
+          <>
+            {rules.map((rule, ri) => {
+              const action = rule.action || 'readonly';
+              const when = rule.when || [];
+              return (
+                <div key={ri} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 8, marginBottom: 8, background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>Rule {ri + 1}</span>
+                    <button type="button" className={s.optDel} onClick={() => delRule(ri)} aria-label="Remove rule">×</button>
+                  </div>
+                  <SField label="Then this column">
+                    <select className={s.sselect} value={action} onChange={(e) => updRule(ri, { action: e.target.value })}>
+                      {ROW_RULE_ACTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+                    </select>
+                  </SField>
+                  {action === 'setvalue' && (
+                    <SField label="Value to set">
+                      <input className={s.sinput} value={rule.setValue ?? ''} onChange={(e) => updRule(ri, { setValue: e.target.value })} placeholder="Value" />
+                    </SField>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className={s.sfieldLabel} style={{ margin: 0 }}>When (same row)</span>
+                    {when.length > 1 && (
+                      <select className={s.sselect} style={{ width: 120 }} value={rule.match || 'all'} onChange={(e) => updRule(ri, { match: e.target.value })}>
+                        <option value="all">Match ALL</option>
+                        <option value="any">Match ANY</option>
+                      </select>
+                    )}
+                  </div>
+                  {when.map((w, wi) => {
+                    const src = siblings.find((c) => colKey(c) === w.col);
+                    const ops = opsForColType(src?.type);
+                    const noVal = NO_VAL_ROW_OPS.has(w.operator);
+                    const srcOpts = HAS_OPTIONS.includes(src?.type) ? (src?.options || []) : [];
+                    return (
+                      <div key={wi} style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: 6, background: '#fff', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          <button type="button" className={s.optDel} onClick={() => delWhen(ri, wi)} aria-label="Remove condition">×</button>
+                        </div>
+                        <select className={s.sselect} value={w.col || ''}
+                          onChange={(e) => { const sc = siblings.find((c) => colKey(c) === e.target.value); updWhen(ri, wi, { col: e.target.value, operator: opsForColType(sc?.type)[0]?.value || 'equals', value: '' }); }}>
+                          <option value="">Column…</option>
+                          {siblings.map((c) => <option key={c.key} value={colKey(c)}>{c.label || colKey(c)}</option>)}
+                        </select>
+                        <select className={s.sselect} value={w.operator || 'equals'} onChange={(e) => updWhen(ri, wi, { operator: e.target.value })} disabled={!w.col}>
+                          {ops.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                        {noVal ? null : srcOpts.length ? (
+                          <select className={s.sselect} value={w.value ?? ''} onChange={(e) => updWhen(ri, wi, { value: e.target.value })} disabled={!w.col}>
+                            <option value="">Value…</option>
+                            {srcOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          </select>
+                        ) : (
+                          <input className={s.sinput} value={w.value ?? ''} onChange={(e) => updWhen(ri, wi, { value: e.target.value })} placeholder="Value" disabled={!w.col} />
+                        )}
+                      </div>
+                    );
+                  })}
+                  <button className={s.addBtn} type="button" onClick={() => addWhen(ri)}><Plus size={12} /> Add condition</button>
+                </div>
+              );
+            })}
+            <button className={s.addBtn} type="button" onClick={addRule}><Plus size={12} /> Add row rule</button>
+          </>
+        )}
     </>
   );
 }
