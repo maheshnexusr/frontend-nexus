@@ -14,7 +14,7 @@ import { ShieldCheck, Loader2, AlertCircle, Clock } from 'lucide-react';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
 import { getSiteStudyContext } from '@/features/site/authStore';
 import { addToast } from '@/app/notificationSlice';
-import ConsentFormFill, { flattenConsentFields, missingRequired } from '@/features/sponsor/components/consent/ConsentFormFill';
+import ConsentFormFill, { flattenConsentFields, missingRequired, scrollToConsentField } from '@/features/sponsor/components/consent/ConsentFormFill';
 import { normalizeConsentContent } from '@/utils/consentContent';
 
 // One field of the drag-and-drop consent form, rendered READ-ONLY (the gate is
@@ -101,6 +101,7 @@ export default function ConsentGate({ children }) {
   const [consent, setConsent] = useState(null);
   const [agreeing, setAgreeing] = useState(false);
   const [values, setValues] = useState({}); // filled-in answers, keyed by field id
+  const [invalidIds, setInvalidIds] = useState([]); // required fields flagged empty on Agree
 
   const check = useCallback(async () => {
     if (!studyKey) { setPhase('clear'); return; }
@@ -120,7 +121,11 @@ export default function ConsentGate({ children }) {
 
   useEffect(() => { check(); }, [check]);
 
-  const handleChange = (fieldId, v) => setValues((prev) => ({ ...prev, [fieldId]: v }));
+  const handleChange = (fieldId, v) => {
+    setValues((prev) => ({ ...prev, [fieldId]: v }));
+    // Clear the missing-field flag once the user starts filling it in.
+    setInvalidIds((prev) => (prev.includes(fieldId) ? prev.filter((id) => id !== fieldId) : prev));
+  };
 
   const handleAgree = async () => {
     if (!consent) return;
@@ -132,9 +137,12 @@ export default function ConsentGate({ children }) {
       // The user must complete every required field (incl. signature) before agreeing.
       const missing = missingRequired(blocks, values);
       if (missing.length) {
+        setInvalidIds(missing);
+        scrollToConsentField(missing[0]);
         dispatch(addToast({ type: 'error', message: 'Please complete all required fields before agreeing.' }));
         return;
       }
+      setInvalidIds([]);
       const sigField = flattenConsentFields(blocks).find((f) => f.type === 'signature');
       // The signature is now uploaded as a file → its value is a { url } ref.
       // Send the url string (legacy data-URL values pass through unchanged).
@@ -244,6 +252,7 @@ export default function ConsentGate({ children }) {
                   values={values}
                   onChange={handleChange}
                   disabled={agreeing}
+                  invalidIds={invalidIds}
                 />
               ) : (
                 <div style={{ fontSize: 13.5, lineHeight: 1.6, color: '#0f172a' }}>

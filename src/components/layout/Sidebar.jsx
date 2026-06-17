@@ -18,10 +18,10 @@ import styles from "./Sidebar.module.css";
 const clx = (...a) => a.filter(Boolean).join(" ");
 
 // ─── WorkspaceSwitcher (top header) ──────────────────────────────────────────
-function WorkspaceSwitcher({ collapsed, title, subtitle, logoUrl }) {
+function WorkspaceSwitcher({ collapsed, title, subtitle, logoUrl, bigLogo }) {
   return (
     <div className={styles.wsArea}>
-      <div className={clx(styles.wsHeader, collapsed && styles.isCollapsed)}>
+      <div className={clx(styles.wsHeader, collapsed && styles.isCollapsed, bigLogo && logoUrl && !collapsed && styles.hasLogo)}>
         <div className={clx(styles.wsLogo, logoUrl && styles.wsLogoImgBox)}>
           {logoUrl
             ? <img src={logoUrl} alt={title || 'Organization'} className={styles.wsLogoImg} />
@@ -221,6 +221,7 @@ export default function Sidebar({
   title = "Clinical Trials",
   subtitle = "Admin Dashboard",
   logoUrl = null,
+  bigLogo = false,
 }) {
   return (
     <aside
@@ -234,7 +235,7 @@ export default function Sidebar({
         <X size={18} />
       </button>
 
-      <WorkspaceSwitcher collapsed={collapsed} title={title} subtitle={subtitle} logoUrl={logoUrl} />
+      <WorkspaceSwitcher collapsed={collapsed} title={title} subtitle={subtitle} logoUrl={logoUrl} bigLogo={bigLogo} />
 
       <nav className={styles.navScroll}>
         <div className={styles.navSection}>

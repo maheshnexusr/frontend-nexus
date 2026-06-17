@@ -32,8 +32,8 @@ function operatorsForType(type) {
     case 'text': case 'textarea': return opItems('equals', 'not_equals', 'contains', 'does_not_contain', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty');
     case 'email': return opItems('equals', 'contains', 'ends_with', 'is_empty', 'is_not_empty');
     case 'phone': return opItems('equals', 'contains', 'starts_with', 'is_empty', 'is_not_empty');
-    case 'number': case 'calculated': return opItems('equals', 'not_equals', 'greater_than', 'less_than', 'gte', 'lte', 'between', 'is_empty');
-    case 'slider': return opItems('equals', 'greater_than', 'less_than', 'between');
+    case 'number': case 'calculated': case 'formula': case 'derived': return opItems('equals', 'not_equals', 'greater_than', 'less_than', 'gte', 'lte', 'between', 'is_empty');
+    case 'slider': return opItems('equals', 'not_equals', 'greater_than', 'less_than', 'gte', 'lte', 'between');
     case 'date': case 'datetime': return opItems('equals', 'before', 'after', 'between', 'is_empty');
     case 'time': return opItems('equals', 'before', 'after', 'between');
     case 'select': case 'dropdown': return opItems('equals', 'not_equals', 'in_list', 'not_in_list', 'is_empty');
@@ -98,6 +98,9 @@ export default function EligibilityCriteriaModal({ onClose }) {
           Define eligibility criteria. The subject is auto-evaluated as <strong style={{ color: '#15803d' }}>Included</strong> /
           <strong style={{ color: '#b91c1c' }}> Excluded</strong> / <strong style={{ color: '#b45309' }}>Pending Review</strong> /
           Screen&nbsp;Failed. <em>Exclusion criteria take priority over inclusion.</em>
+          <br />
+          <strong>AND / OR</strong> joins a criterion to the <strong>next one of the same type</strong> (Inclusion or Exclusion),
+          applied top-to-bottom. The connector on the last criterion of each type is ignored.
         </p>
 
         {rows.length === 0 ? (

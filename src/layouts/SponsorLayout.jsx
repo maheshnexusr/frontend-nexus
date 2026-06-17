@@ -259,6 +259,7 @@ export default function SponsorLayout() {
         notificationsPath={null}
         subtitle="Sponsor"
         logoUrl={resolveFileUrl(study?.logo) || null}
+        bigLogo
       />
 
       <div className={clx(styles.body, collapsed && styles.bodyCollapsed)}>

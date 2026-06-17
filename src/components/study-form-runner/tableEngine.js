@@ -7,6 +7,7 @@
  * Column shape comes from studyFormSlice.makeColumn().
  */
 import { evaluateExpression } from '@/features/cro/components/study-form/formulaEngine';
+import { compareOp } from '@/features/cro/components/study-form/runtime/runtimeEngine';
 
 /* ── Small numeric helpers ──────────────────────────────────────────────── */
 
@@ -85,6 +86,82 @@ export function grandTotal(col, allRows = [], columns = []) {
       : row?.[colKey(col)];
     return acc + toNum(v);
   }, 0);
+}
+
+/* ── Per-row column conditional behaviour ───────────────────────────────────
+ * A column's `rowRules` reference SIBLING columns in the SAME row (by their
+ * storage key) and act on THIS column's cell in that row, evaluated
+ * independently per row. Source value lookup is `row[when.col]` (rules store the
+ * sibling's colKey, matching how the row is keyed). Reuses runtimeEngine's
+ * compareOp so the operator vocabulary matches the rest of the platform. */
+
+// Resolve a `when.col` reference to its cell value in the row. Rules store the
+// sibling's designer fieldKey, but the row is keyed by `colKey` — and in the
+// capture runtime the structure is snake_case, so `fieldKey` is absent and
+// colKey falls back to the column's uid `key`. So a direct `row[when.col]` only
+// works in the camelCase draft (preview). Map the reference through the columns
+// (fieldKey / field_key / key / colKey) to the actual storage key in either
+// casing. See [[form-structure-snake-camel-runtime]].
+function resolveCellValue(key, row, columns) {
+  if (!row) return undefined;
+  if (key in row) return row[key];                       // camel draft: direct hit
+  const c = (columns || []).find(
+    (cc) => cc && (cc.fieldKey === key || cc.field_key === key || cc.key === key || colKey(cc) === key),
+  );
+  return c ? row[colKey(c)] : row[key];
+}
+
+// One rule's `when` conditions against a single row → boolean.
+function rowRuleMet(rule, row, columns) {
+  const when = (rule?.when || []).filter((w) => w && w.col && w.operator);
+  if (!when.length) return false;
+  const hits = when.map((w) => compareOp(w.operator, resolveCellValue(w.col, row, columns), w.value));
+  return String(rule?.match ?? 'all').toLowerCase() === 'any' ? hits.some(Boolean) : hits.every(Boolean);
+}
+
+/**
+ * Effective per-row state for a column's cell, layering its `rowRules` over the
+ * static column flags. Returns { hidden, disabled, readOnly, required,
+ * clearValue, setValue }. Config keys may be camel- or snake_case (stored
+ * structure casing). `setValue` is undefined unless a set-value rule is active.
+ * `columns` is needed to resolve `when.col` references across casings.
+ */
+export function evaluateRowColumn(col, row, columns) {
+  const eff = {
+    hidden: !!col?.hidden, disabled: false, readOnly: !!col?.readOnly,
+    required: !!col?.required, clearValue: false, setValue: undefined,
+  };
+  const rules = col?.rowRules ?? col?.row_rules ?? [];
+  for (const rule of rules) {
+    if (!rowRuleMet(rule, row, columns)) continue;
+    switch (String(rule?.action || '').toLowerCase()) {
+      case 'show':      eff.hidden = false; break;
+      case 'hide':      eff.hidden = true; break;
+      case 'enable':    eff.disabled = false; break;
+      case 'disable':   eff.disabled = true; break;
+      case 'readonly':  eff.readOnly = true; break;
+      case 'editable':  eff.readOnly = false; break;
+      case 'require':   eff.required = true; break;
+      case 'unrequire': eff.required = false; break;
+      case 'clear':     eff.clearValue = true; break;
+      case 'setvalue':  eff.setValue = rule.setValue ?? rule.set_value ?? ''; break;
+      default: break;
+    }
+  }
+  return eff;
+}
+
+// True when the column has any setvalue/clear rule active for this row (drives
+// the edge-triggered value writer in TableFieldInput).
+export function rowColumnValueAction(col, row, columns) {
+  const rules = col?.rowRules ?? col?.row_rules ?? [];
+  for (const rule of rules) {
+    const action = String(rule?.action || '').toLowerCase();
+    if ((action === 'clear' || action === 'setvalue') && rowRuleMet(rule, row, columns)) {
+      return { action, setValue: rule.setValue ?? rule.set_value ?? '' };
+    }
+  }
+  return null;
 }
 
 /* ── Validation engine ──────────────────────────────────────────────────── */

@@ -78,6 +78,7 @@ export default function StudyEditPage() {
 
       dispatch(setStep3({
         consentManager:      study.consentManager      ?? false,
+        consentApproval:     study.consentApproval      ?? false,
         queryManager:        study.queryManager        ?? false,
         dataManager:         study.dataManager         ?? false,
         verificationManager: study.verificationManager ?? false,

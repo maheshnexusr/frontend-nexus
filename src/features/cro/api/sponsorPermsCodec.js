@@ -36,11 +36,22 @@ const ALL_ACTION_KEYS = (() => {
   return [...set];
 })();
 
+// Action keys whose backend can_* column is NOT simply `can_<key>`. Mirrors the
+// special cases in backend permissionsView.ACTION_TO_COLUMN — without this, an
+// action like `subject_data_capture` (the "Data Capture" / open-form gate) would
+// be written/read as the non-existent `can_subject_data_capture` and silently
+// reset to OFF on every save, because the backend stores it in `can_data_capture`.
+const ACTION_COLUMN_OVERRIDES = {
+  subject_data_capture: 'can_data_capture',
+  screenshot:           'can_snapshot',
+};
+const actionColumn = (key) => ACTION_COLUMN_OVERRIDES[key] || `can_${key}`;
+
 function rowToActionMap(p) {
   const am = {};
   for (const key of ALL_ACTION_KEYS) {
-    const snake     = `can_${key}`;
-    const camel     = `can${key.charAt(0).toUpperCase()}${key.slice(1).replace(/_([a-z])/g, (_, c) => c.toUpperCase())}`;
+    const snake     = actionColumn(key);
+    const camel     = snake.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
     const lowercase = snake.toLowerCase();
     am[key] = Boolean(p[snake] ?? p[camel] ?? p[lowercase] ?? false);
   }
@@ -75,7 +86,10 @@ export function nestedPermsToApi(permsObj) {
       const fp  = permsObj?.[group.key]?.[feature.key] ?? {};
       const row = { feature_name: feature.key };
       for (const key of ALL_ACTION_KEYS) {
-        row[`can_${key}`] = Boolean(fp[key]);
+        const col = actionColumn(key);
+        // OR-combine: distinct action keys may share one column (e.g.
+        // subject_data_capture + data_capture → can_data_capture).
+        row[col] = Boolean(row[col]) || Boolean(fp[key]);
       }
       result.push(row);
     }

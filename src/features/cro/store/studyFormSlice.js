@@ -43,7 +43,14 @@ export const makeColumn = (type = 'text', idx = 1) => ({
   validation: { minLength: '', maxLength: '', min: '', max: '', pattern: '', patternPreset: '', unique: false, customMessage: '' },
   formula: { enabled: type === 'formula', expr: '', grandTotal: false },
   // Column-level conditional behaviour (Show / Hide / Required), mirrors field.condition.
+  // References OTHER FORM FIELDS, evaluated table-wide (same for every row).
   condition: { enabled: false, logic: 'AND', rules: [] },
+  // Per-ROW conditional behaviour: rules whose conditions reference SIBLING
+  // COLUMNS in the SAME row and act on THIS column's cell in that row.
+  // `rowRules = [{ match:'all'|'any', when:[{col:<siblingColKey>, operator, value}],
+  //   action:'show'|'hide'|'enable'|'disable'|'readonly'|'editable'|'require'
+  //          |'unrequire'|'clear'|'setvalue', setValue }]`. See tableEngine.evaluateRowColumn.
+  rowRules: [],
 });
 
 // Default config block for a Table / Grid field. Spread into makeField only for
@@ -98,6 +105,25 @@ export const makeField = (type = 'text') => ({
   // Captured values are stored under the companion key `${field.id}__optInputs`
   // = { [optionValue]: enteredValue } so the selection array stays intact.
   allowOptionInput: false,
+  // Option-based CHILD FIELDS — show one or more dependent inputs when a
+  // specific option is selected. Applies to radiogroup / checkboxgroup /
+  // select / multiselect. Per-option config lives on the option object as
+  // `opt.childFields = [{ id, label, type, required, placeholder, helpText,
+  // options }]`. Captured values are stored under the companion key
+  // `${field.id}__child_fields` = [{ option, field, value }] so the parent
+  // selection (string or array) stays intact. `clearChildOnDeselect` (default
+  // true) drops captured child values once their option is deselected.
+  enableOptionChildren: false,
+  clearChildOnDeselect: true,
+  // Conditional AUTO-SELECTION (checkbox group) — each option may carry an
+  // `autoRule` that auto-selects / auto-deselects that option (and optionally
+  // forces its child fields required/optional) when a condition over other
+  // fields is met. Per-option config: `opt.autoRule = { enabled, action:
+  // 'select'|'deselect', childRequired: 'inherit'|'required'|'optional',
+  // match: 'all'|'any', rules: [{ blockId, pageId, fieldId, operator, value }] }`.
+  // Edge-triggered at runtime (applied when the condition flips to met) so the
+  // user can still override; the resulting selection is audited like any value.
+  enableOptionAutoSelect: false,
   defaultValues: [],           // checkbox group default selection
   minSelections: '',           // checkbox group
   maxSelections: '',           // checkbox group
@@ -108,6 +134,10 @@ export const makeField = (type = 'text') => ({
   trackChanges: true,
   condition: { enabled: false, logic: 'AND', rules: [] },
   comments: [],
+  // Date "Display Settings" — restrict selectable dates (only meaningful for
+  // date/datetime). mode ∈ none|past_current|future_only|current_future|custom;
+  // custom resolves min/max from relative bounds. See runtimeEngine.dateBounds.
+  dateDisplay: { mode: 'none', min: { type: 'none' }, max: { type: 'none' }, message: '' },
   // Table / Grid config (columns + row settings). Only meaningful for type 'table'.
   ...(type === 'table' ? tableDefaults() : {}),
   // Formula (calculated) field config. Only meaningful for type 'formula'.
@@ -119,6 +149,23 @@ export const makeField = (type = 'text') => ({
     dependencies: [],         // [fieldKey,…] derived from the expression
     readOnly: true,
   } : {}),
+});
+
+// A single per-option child field (the dependent input revealed when a parent
+// option is selected). The `id` is the stable key used in the companion-value
+// pairs (`${parentFieldId}__child_fields` → [{ option, field: id, value }]).
+// Supported types: text | number | textarea | date | radiogroup |
+// checkboxgroup | select | multiselect.
+export const makeChildField = (type = 'text') => ({
+  id: uid('cf'),
+  label: '',
+  type,
+  required: false,
+  placeholder: '',
+  helpText: '',
+  options: ['select', 'multiselect', 'radiogroup', 'checkboxgroup'].includes(type)
+    ? [{ label: 'Option 1', value: 'opt_1' }, { label: 'Option 2', value: 'opt_2' }]
+    : undefined,
 });
 
 export const makePage = (idx = 1) => ({

@@ -18,6 +18,54 @@
  * Multiple rules supported by passing field.logicRules = [logic1, logic2, …].
  */
 
+/* ── Date display restrictions (selectable-date min/max) ───────────────────── */
+// A date field's "Display Settings" constrain which dates are selectable:
+//   mode = 'none' | 'past_current' | 'future_only' | 'current_future' | 'custom'
+// Custom mode resolves min/max from relative bounds:
+//   { type:'none'|'static'|'current'|'minus_days'|'minus_months'|'minus_years'
+//          |'plus_days'|'plus_months'|'plus_years', date, amount }
+// Config lives on `field.dateDisplay` (camelCase in builder, `date_display`
+// snake_case in the stored/published structure — accept either).
+
+const pad2 = (n) => String(n).padStart(2, '0');
+const toIsoDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const todayStart = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+
+// Resolve one bound config against `today` → ISO 'YYYY-MM-DD' | null (unbounded).
+function resolveDateBound(b, today) {
+  if (!b || !b.type || b.type === 'none') return null;
+  if (b.type === 'static') return b.date || null;
+  if (b.type === 'current') return toIsoDate(today);
+  const amt = Number(b.amount);
+  if (!Number.isFinite(amt)) return null;
+  const d = new Date(today);
+  switch (b.type) {
+    case 'minus_days':   d.setDate(d.getDate() - amt); break;
+    case 'minus_months': d.setMonth(d.getMonth() - amt); break;
+    case 'minus_years':  d.setFullYear(d.getFullYear() - amt); break;
+    case 'plus_days':    d.setDate(d.getDate() + amt); break;
+    case 'plus_months':  d.setMonth(d.getMonth() + amt); break;
+    case 'plus_years':   d.setFullYear(d.getFullYear() + amt); break;
+    default: return null;
+  }
+  return toIsoDate(d);
+}
+
+// Effective { min, max } ISO selectable-date bounds from a date field's Display
+// Settings (nulls when unbounded). Drives both the calendar and validation.
+export function dateBounds(field) {
+  const cfg = field?.dateDisplay ?? field?.date_display ?? null;
+  const mode = cfg?.mode ?? 'none';
+  const today = todayStart();
+  switch (mode) {
+    case 'past_current':   return { min: null, max: toIsoDate(today) };
+    case 'future_only': {  const d = new Date(today); d.setDate(d.getDate() + 1); return { min: toIsoDate(d), max: null }; }
+    case 'current_future': return { min: toIsoDate(today), max: null };
+    case 'custom':         return { min: resolveDateBound(cfg.min, today), max: resolveDateBound(cfg.max, today) };
+    default:               return { min: null, max: null };
+  }
+}
+
 /* ── Validation ───────────────────────────────────────────────────────────── */
 
 export function validateField(field, value) {
@@ -111,6 +159,16 @@ export function validateField(field, value) {
       const today = new Date(); today.setHours(0, 0, 0, 0);
       if (field.disablePast   && d < today) return 'Past dates are not allowed.';
       if (field.disableFuture && d > today) return 'Future dates are not allowed.';
+      // Display Settings — selectable-date range. Compare by date only (the
+      // value is ISO "YYYY-MM-DD" / "YYYY-MM-DDTHH:mm"), so lexical compare works.
+      const { min, max } = dateBounds(field);
+      if (min || max) {
+        const cfg = field?.dateDisplay ?? field?.date_display;
+        const msg = (cfg?.message ?? '').trim();
+        const vIso = String(v).slice(0, 10);
+        if (min && vIso < min) return msg || `Please select a date on or after ${min}.`;
+        if (max && vIso > max) return msg || `Please select a date on or before ${max}.`;
+      }
       return null;
     }
 
@@ -329,6 +387,12 @@ export function evaluateField(field, allValues) {
 // the subject's eligibility { status, reason }. Mirrors the backend
 // eligibilityEval.js. Exclusion takes priority. Returns status:null when no
 // criteria are configured (so the UI shows no badge).
+//
+// AND/OR: each criterion's `logic` ('AND' default | 'OR') connects it to the
+// NEXT criterion WITHIN its group (inclusion or exclusion), folded left-to-right
+// with 3-valued (Kleene) logic so an OR can resolve true (or an AND resolve
+// false) even when a sibling field is still empty. Keep in lock-step with the
+// backend evaluator.
 export function evaluateEligibility(criteria, values = {}) {
   const fid   = (c) => c?.fieldId ?? c?.field_id;
   // Human label for the reason text — fieldLabel arrives snake_case in the
@@ -336,27 +400,45 @@ export function evaluateEligibility(criteria, values = {}) {
   // resort so the exclusion popup never shows a raw field id.
   const flabel = (c) => c?.fieldLabel ?? c?.field_label ?? fid(c);
   const ctype = (c) => String(c?.type ?? c?.criteria_type ?? 'inclusion').toLowerCase();
+  const clogic = (c) => (String(c?.logic ?? 'AND').toUpperCase() === 'OR' ? 'OR' : 'AND');
+  // One criterion → true | false | null(unknown: its source field is empty).
+  const evalCrit = (c) => {
+    const fv = values[fid(c)];
+    if (isEmptyVal(fv)) return null;
+    return compareOp(c.operator, fv, c.value) ? true : false;
+  };
+  // Fold a group with each row's logic as the connector to the next (3-valued).
+  const combineGroup = (group) => {
+    if (!group.length) return null;
+    let acc = evalCrit(group[0]);
+    for (let i = 1; i < group.length; i++) {
+      const op = clogic(group[i - 1]);
+      const cur = evalCrit(group[i]);
+      if (op === 'OR') {
+        acc = acc === true || cur === true ? true : acc === null || cur === null ? null : false;
+      } else {
+        acc = acc === false || cur === false ? false : acc === null || cur === null ? null : true;
+      }
+    }
+    return acc;
+  };
+
   const rules = (criteria || []).filter((c) => c && fid(c) && c.operator);
   if (!rules.length) return { status: null, reason: null };
 
   const exclusion = rules.filter((c) => ctype(c) === 'exclusion');
   const inclusion = rules.filter((c) => ctype(c) !== 'exclusion');
 
-  for (const c of exclusion) {
-    const fv = values[fid(c)];
-    if (isEmptyVal(fv)) continue;
-    if (compareOp(c.operator, fv, c.value)) {
-      return { status: 'Excluded', reason: `Exclusion met: ${flabel(c)}` };
-    }
+  const exResult = exclusion.length ? combineGroup(exclusion) : false;
+  if (exResult === true) {
+    const hit = exclusion.find((c) => evalCrit(c) === true);
+    return { status: 'Excluded', reason: `Exclusion met: ${flabel(hit ?? exclusion[0])}` };
   }
-  if (rules.some((c) => isEmptyVal(values[fid(c)]))) {
-    return { status: 'Pending Review', reason: null };
-  }
-  if (inclusion.length) {
-    const failed = inclusion.filter((c) => !compareOp(c.operator, values[fid(c)], c.value));
-    if (failed.length) {
-      return { status: 'Screen Failed', reason: `Inclusion not met: ${failed.map((c) => flabel(c)).join(', ')}` };
-    }
-  }
-  return { status: 'Included', reason: null };
+  if (exResult === null) return { status: 'Pending Review', reason: null };
+
+  const inResult = inclusion.length ? combineGroup(inclusion) : true;
+  if (inResult === null) return { status: 'Pending Review', reason: null };
+  if (inResult === true) return { status: 'Included', reason: null };
+  const failed = inclusion.filter((c) => evalCrit(c) === false);
+  return { status: 'Screen Failed', reason: `Inclusion not met: ${failed.map((c) => flabel(c)).join(', ')}` };
 }

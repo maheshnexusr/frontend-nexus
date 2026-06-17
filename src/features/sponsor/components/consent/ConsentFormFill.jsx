@@ -205,6 +205,16 @@ export function missingRequired(blocks, values) {
     .map((f) => f.id);
 }
 
+// The message shown when a required field is left empty. Mirrors the data-capture
+// runtime: prefer the field's configured Hard/Required message, else a default,
+// with the {Field Name} token filled from the field label.
+function requiredMessage(field) {
+  const hm = field.hardMessage ?? field.hard_message;
+  const rm = field.requiredMessage ?? field.required_message;
+  const msg = (hm && hm.trim()) || (rm && rm.trim()) || '{Field Name} is required.';
+  return msg.replace(/\{Field Name\}/g, field.label || 'This field');
+}
+
 function inputType(t) {
   if (t === 'datetime') return 'datetime-local';
   if (t === 'number') return 'number';
@@ -218,7 +228,7 @@ function inputType(t) {
 // (SFBPreview.module.css `sp` + headingStyleToCss), so the user / reviewer see
 // exactly the form that was designed — but with WORKING inputs (the builder
 // preview's file/signature are non-functional placeholders).
-function FieldRow({ field, value, onChange, disabled }) {
+function FieldRow({ field, value, onChange, disabled, invalid }) {
   const { type, label, helpText, placeholder, options = [], required } = field;
 
   // Layout/content fields — rendered exactly like the builder.
@@ -335,10 +345,16 @@ function FieldRow({ field, value, onChange, disabled }) {
   }
 
   return (
-    <div className={s.fieldRow} data-field-id={field.id}>
+    <div
+      className={s.fieldRow}
+      data-field-id={field.id}
+      style={invalid ? { boxShadow: '0 0 0 2px #fecaca', borderRadius: 8, padding: 8, scrollMarginTop: 80 } : { scrollMarginTop: 80 }}
+    >
       <span className={s.label}>{label || 'Field'}{required && <span className={s.req}>*</span>}</span>
       {control}
-      {helpText && <span className={s.help}>{helpText}</span>}
+      {invalid
+        ? <span style={{ fontSize: 12, color: '#dc2626', marginTop: 4, display: 'block' }}>{requiredMessage(field)}</span>
+        : helpText && <span className={s.help}>{helpText}</span>}
     </div>
   );
 }
@@ -355,7 +371,7 @@ function buildPages(blocks) {
 }
 
 /** One field cell — layout fields span full width, data fields honour fieldWidth. */
-function FieldCell({ field, value, onChange, disabled }) {
+function FieldCell({ field, value, onChange, disabled, invalid }) {
   const isLayout = LAYOUT_TYPES.has(field.type);
   return (
     <div
@@ -363,9 +379,19 @@ function FieldCell({ field, value, onChange, disabled }) {
       className={isLayout ? sp.fieldWrapLayout : undefined}
       style={isLayout ? undefined : { minWidth: 0, gridColumn: widthToColumn(field.fieldWidth) }}
     >
-      <FieldRow field={field} value={value} onChange={onChange} disabled={disabled} />
+      <FieldRow field={field} value={value} onChange={onChange} disabled={disabled} invalid={invalid} />
     </div>
   );
+}
+
+// Scroll to (and centre) the first invalid field by id, after the highlight has
+// rendered. Mirrors the data-capture runner's jump-to-missing-field behaviour.
+export function scrollToConsentField(fieldId) {
+  if (!fieldId || typeof document === 'undefined') return;
+  requestAnimationFrame(() => {
+    const node = document.querySelector(`[data-field-id="${fieldId}"]`);
+    if (node?.scrollIntoView) node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
 }
 
 /**
@@ -374,7 +400,7 @@ function FieldCell({ field, value, onChange, disabled }) {
  * but WITHOUT the outline sidebar. `footerSlot` is shown on the last page in
  * place of "Next" (the gate puts its "I Agree" button there).
  */
-function PagedConsentForm({ blocks, values, onChange, disabled, footerSlot }) {
+function PagedConsentForm({ blocks, values, onChange, disabled, footerSlot, invalidSet }) {
   const pages = buildPages(blocks);
   const [idx, setIdx] = useState(0);
   if (pages.length === 0) return <div className={sp.noFields}>No consent content.</div>;
@@ -402,7 +428,7 @@ function PagedConsentForm({ blocks, values, onChange, disabled, footerSlot }) {
           ? <div className={sp.noFields}>This page has no content.</div>
           : fields.map((f) => (
               <FieldCell key={f.id} field={f} value={values[f.id]} disabled={disabled}
-                onChange={(v) => onChange(f.id, v)} />
+                invalid={invalidSet?.has(f.id)} onChange={(v) => onChange(f.id, v)} />
             ))}
       </div>
 
@@ -428,7 +454,9 @@ function PagedConsentForm({ blocks, values, onChange, disabled, footerSlot }) {
   );
 }
 
-export default function ConsentFormFill({ blocks, values, onChange, disabled, paged = false, footerSlot = null }) {
+export default function ConsentFormFill({ blocks, values, onChange, disabled, paged = false, footerSlot = null, invalidIds = [] }) {
+  // `invalidIds` highlights required fields a Submit/Agree flagged as empty.
+  const invalidSet = invalidIds instanceof Set ? invalidIds : new Set(invalidIds);
   // Paged mode mirrors the builder preview (one page at a time, no sidebar) —
   // used by the site consent gate. Stacked mode (default) is used by the sponsor
   // review modal / submission page where the whole form is read at once.
@@ -436,7 +464,7 @@ export default function ConsentFormFill({ blocks, values, onChange, disabled, pa
     return (
       <PagedConsentForm
         blocks={blocks} values={values} onChange={onChange}
-        disabled={disabled} footerSlot={footerSlot}
+        disabled={disabled} footerSlot={footerSlot} invalidSet={invalidSet}
       />
     );
   }
@@ -453,7 +481,7 @@ export default function ConsentFormFill({ blocks, values, onChange, disabled, pa
                 {(page.fields ?? []).map((f) => (
                   <div key={f.id} style={{ minWidth: 0, gridColumn: widthToColumn(f.fieldWidth) }}>
                     <FieldRow field={f} value={values[f.id]} disabled={disabled}
-                      onChange={(v) => onChange(f.id, v)} />
+                      invalid={invalidSet.has(f.id)} onChange={(v) => onChange(f.id, v)} />
                   </div>
                 ))}
               </div>

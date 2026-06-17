@@ -5,12 +5,14 @@
  */
 import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
 import { X, Trash2, Copy, Plus, ChevronDown, ChevronUp, Minus, Settings, LayoutGrid, Eye, EyeOff, Lock, FilePen, Check, MessageSquare, StickyNote, HelpCircle, Paperclip, BadgeCheck, Eraser, Type, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 import {
   selectActiveBlock, selectActivePage, selectActiveField, selectAllFields,
   selectBlocks,
   updateField, removeField, duplicateField, deselectField,
-  updatePage, updateBlock,
+  updatePage, updateBlock, makeChildField,
 } from '@/features/cro/store/studyFormSlice';
 import { selectStep3 } from '@/features/cro/store/studyWizardSlice';
 import { REGEX_PRESETS } from '@/features/form-builder/lib/fieldSchema';
@@ -24,6 +26,19 @@ import ConfirmDialog from '@/components/feedback/ConfirmDialog';
 import { activityLogService } from '@/services/activityLogService';
 import { usePermissions } from '@/features/auth/usePermissions';
 import s from './SFBRight.module.css';
+
+/* Rich-text Paragraph editor (display-only field). Toolbar is scoped to the
+   spec: bold / italic / underline, bulleted + numbered lists, and hyperlink.
+   Output is stored as HTML on field.content and rendered verbatim at runtime. */
+const PARA_QUILL_MODULES = {
+  toolbar: [
+    ['bold', 'italic', 'underline'],
+    [{ list: 'ordered' }, { list: 'bullet' }],
+    ['link'],
+    ['clean'],
+  ],
+};
+const PARA_QUILL_FORMATS = ['bold', 'italic', 'underline', 'list', 'bullet', 'link'];
 
 /* Accepted-file presets for file/image fields. The picker is multi-select;
    the chosen presets compose into field.accept (the native input accept attr)
@@ -324,7 +339,28 @@ function GeneralTab({ field, up, hasOptions, isLayout }) {
     );
   }
 
-  if (isH || isPara) {
+  if (isPara) {
+    // Rich-text paragraph — Quill editor; HTML stored on field.content. An empty
+    // editor serialises to '<p><br></p>', which we normalise back to '' so the
+    // runtime falls back to placeholder text.
+    return (
+      <div className={s.accordionBodyInner}>
+        <SField label="Content">
+          <div className={s.paraQuillWrap}>
+            <ReactQuill
+              theme="snow"
+              value={field.content ?? ''}
+              onChange={(html) => up('content', html === '<p><br></p>' ? '' : html)}
+              modules={PARA_QUILL_MODULES}
+              formats={PARA_QUILL_FORMATS}
+              placeholder="Paragraph text…"
+            />
+          </div>
+        </SField>
+      </div>
+    );
+  }
+  if (isH) {
     return (
       <div className={s.accordionBodyInner}>
         <SField label="Content">
@@ -332,8 +368,8 @@ function GeneralTab({ field, up, hasOptions, isLayout }) {
             className={s.stextarea}
             rows={3}
             value={field.content ?? field.label}
-            onChange={(e) => up(isH ? 'label' : 'content', e.target.value)}
-            placeholder={isH ? (field.type === 'h3' ? 'Sub-heading…' : 'Section title…') : 'Paragraph text…'}
+            onChange={(e) => up('label', e.target.value)}
+            placeholder={field.type === 'h3' ? 'Sub-heading…' : 'Section title…'}
           />
         </SField>
       </div>
@@ -558,6 +594,43 @@ function GeneralTab({ field, up, hasOptions, isLayout }) {
         </>
       )}
 
+      {/* Option-based child fields — reveal dependent inputs when an option is
+          selected. Available on radio / checkbox / dropdown / multi-select. */}
+      {['radiogroup','checkboxgroup','select','multiselect'].includes(field.type) && (
+        <>
+          <div className={s.subSectionLabel}>Child Fields</div>
+          <div className={s.toggleRow}>
+            <span className={s.toggleRowLabel}>Enable child fields per option</span>
+            <Toggle value={field.enableOptionChildren ?? false} onChange={(v) => up('enableOptionChildren', v)} />
+          </div>
+          {field.enableOptionChildren && (
+            <>
+              <div className={s.toggleRow}>
+                <span className={s.toggleRowLabel}>Clear child values when option deselected</span>
+                <Toggle value={field.clearChildOnDeselect !== false} onChange={(v) => up('clearChildOnDeselect', v)} />
+              </div>
+              <OptionChildEditor options={field.options ?? []} onChange={(opts) => up('options', opts)} />
+            </>
+          )}
+        </>
+      )}
+
+      {/* Conditional auto-selection — auto check/uncheck an option (and force its
+          child fields required/optional) when a condition over other fields is
+          met. Checkbox group only. */}
+      {field.type === 'checkboxgroup' && (
+        <>
+          <div className={s.subSectionLabel}>Auto-Selection</div>
+          <div className={s.toggleRow}>
+            <span className={s.toggleRowLabel}>Enable auto-selection rules</span>
+            <Toggle value={field.enableOptionAutoSelect ?? false} onChange={(v) => up('enableOptionAutoSelect', v)} />
+          </div>
+          {field.enableOptionAutoSelect && (
+            <OptionAutoSelectEditor options={field.options ?? []} currentFieldId={field.id} onChange={(opts) => up('options', opts)} />
+          )}
+        </>
+      )}
+
       {/* Checkbox group — advanced + audit */}
       {field.type === 'checkboxgroup' && (
         <>
@@ -770,10 +843,99 @@ function ValidationTab({ field, up, upV, isText, isNum }) {
         </div>
       )}
 
-      {!isText && !isNum && field.type !== 'checkboxgroup' && (
+      {/* Date / datetime: selectable-date Display Settings */}
+      {(field.type === 'date' || field.type === 'datetime') && (
+        <DateDisplaySettings field={field} up={up} />
+      )}
+
+      {!isText && !isNum && field.type !== 'checkboxgroup' && field.type !== 'date' && field.type !== 'datetime' && (
         <p className={s.hintText}>No additional validation for this field type.</p>
       )}
     </div>
+  );
+}
+
+/* ── Date "Display Settings" — restrict which dates are selectable ──────────*/
+const DATE_MODES = [
+  { value: 'none',           label: 'No restrictions (any date)' },
+  { value: 'past_current',   label: 'Past and current dates' },
+  { value: 'future_only',    label: 'Future dates only' },
+  { value: 'current_future', label: 'Current and future dates' },
+  { value: 'custom',         label: 'Custom date range' },
+];
+const DATE_MIN_TYPES = [
+  { value: 'none',         label: 'No minimum' },
+  { value: 'static',       label: 'Static date' },
+  { value: 'current',      label: 'Current date' },
+  { value: 'minus_days',   label: 'Current date − X days' },
+  { value: 'minus_months', label: 'Current date − X months' },
+  { value: 'minus_years',  label: 'Current date − X years' },
+];
+const DATE_MAX_TYPES = [
+  { value: 'none',        label: 'No maximum' },
+  { value: 'static',      label: 'Static date' },
+  { value: 'current',     label: 'Current date' },
+  { value: 'plus_days',   label: 'Current date + X days' },
+  { value: 'plus_months', label: 'Current date + X months' },
+  { value: 'plus_years',  label: 'Current date + X years' },
+];
+function DateDisplaySettings({ field, up }) {
+  const dd = field.dateDisplay ?? { mode: 'none' };
+  const setDD  = (patch) => up('dateDisplay', { ...dd, ...patch });
+  const setMin = (patch) => setDD({ min: { ...(dd.min ?? { type: 'none' }), ...patch } });
+  const setMax = (patch) => setDD({ max: { ...(dd.max ?? { type: 'none' }), ...patch } });
+  const min = dd.min ?? { type: 'none' };
+  const max = dd.max ?? { type: 'none' };
+  const minAmt = ['minus_days', 'minus_months', 'minus_years'].includes(min.type);
+  const maxAmt = ['plus_days', 'plus_months', 'plus_years'].includes(max.type);
+  return (
+    <>
+      <div className={s.subSectionLabel}>Display Settings</div>
+      <SField label="Selectable dates">
+        <select className={s.sselect} value={dd.mode ?? 'none'} onChange={(e) => setDD({ mode: e.target.value })}>
+          {DATE_MODES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+        </select>
+      </SField>
+      {dd.mode === 'custom' && (
+        <>
+          <SField label="Minimum date">
+            <select className={s.sselect} value={min.type ?? 'none'} onChange={(e) => setMin({ type: e.target.value })}>
+              {DATE_MIN_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </SField>
+          {min.type === 'static' && (
+            <SField label="Minimum (static date)">
+              <input type="date" className={s.sinput} value={min.date ?? ''} onChange={(e) => setMin({ date: e.target.value })} />
+            </SField>
+          )}
+          {minAmt && (
+            <SField label="Days / Months / Years">
+              <input type="number" min={0} className={s.sinput} value={min.amount ?? ''} onChange={(e) => setMin({ amount: e.target.value })} placeholder="e.g. 6" />
+            </SField>
+          )}
+          <SField label="Maximum date">
+            <select className={s.sselect} value={max.type ?? 'none'} onChange={(e) => setMax({ type: e.target.value })}>
+              {DATE_MAX_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </SField>
+          {max.type === 'static' && (
+            <SField label="Maximum (static date)">
+              <input type="date" className={s.sinput} value={max.date ?? ''} onChange={(e) => setMax({ date: e.target.value })} />
+            </SField>
+          )}
+          {maxAmt && (
+            <SField label="Days / Months / Years">
+              <input type="number" min={0} className={s.sinput} value={max.amount ?? ''} onChange={(e) => setMax({ amount: e.target.value })} placeholder="e.g. 6" />
+            </SField>
+          )}
+        </>
+      )}
+      {dd.mode !== 'none' && (
+        <SField label="Validation message (optional)">
+          <input className={s.sinput} value={dd.message ?? ''} onChange={(e) => setDD({ message: e.target.value })} placeholder="Please select a date within the last 6 months." />
+        </SField>
+      )}
+    </>
   );
 }
 
@@ -949,10 +1111,10 @@ function operatorsForType(type) {
       return opItems('equals', 'contains', 'ends_with', 'is_empty', 'is_not_empty');
     case 'phone':
       return opItems('equals', 'contains', 'starts_with', 'is_empty', 'is_not_empty');
-    case 'number': case 'calculated':
+    case 'number': case 'calculated': case 'formula': case 'derived':
       return opItems('equals', 'not_equals', 'greater_than', 'less_than', 'gte', 'lte', 'between', 'is_empty');
     case 'slider':
-      return opItems('equals', 'greater_than', 'less_than', 'between');
+      return opItems('equals', 'not_equals', 'greater_than', 'less_than', 'gte', 'lte', 'between');
     case 'date': case 'datetime':
       return opItems('equals', 'before', 'after', 'between', 'is_empty');
     case 'time':
@@ -1662,6 +1824,285 @@ function OptionInputEditor({ options, onChange }) {
             )}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* Per-option CHILD FIELDS config (radio/checkbox/dropdown/multi-select). Each
+ * option owns a list of dependent fields shown only when that option is
+ * selected at data entry. Choice-type children carry their own option list. */
+const CHILD_FIELD_TYPES = [
+  { value: 'text',          label: 'Text' },
+  { value: 'number',        label: 'Number' },
+  { value: 'textarea',      label: 'Text Area' },
+  { value: 'date',          label: 'Date' },
+  { value: 'radiogroup',    label: 'Radio' },
+  { value: 'checkboxgroup', label: 'Checkbox' },
+  { value: 'select',        label: 'Dropdown' },
+  { value: 'multiselect',   label: 'Multi Select' },
+];
+const CHILD_TYPE_HAS_OPTIONS = (t) => ['radiogroup', 'checkboxgroup', 'select', 'multiselect'].includes(t);
+
+function OptionChildEditor({ options, onChange }) {
+  // Patch one option in place (immutably).
+  const patchOpt = (i, patch) => onChange(options.map((o, j) => (j === i ? { ...o, ...patch } : o)));
+  const setChildren = (i, children) => patchOpt(i, { childFields: children });
+
+  const addChild = (i) => {
+    const kids = options[i]?.childFields ?? [];
+    setChildren(i, [...kids, makeChildField('text')]);
+  };
+  const updateChild = (i, ci, patch) => {
+    const kids = (options[i]?.childFields ?? []).map((c, k) => {
+      if (k !== ci) return c;
+      const next = { ...c, ...patch };
+      // Switching to a choice type seeds default options; leaving one drops them.
+      if (patch.type !== undefined) {
+        if (CHILD_TYPE_HAS_OPTIONS(patch.type) && !Array.isArray(next.options)) {
+          next.options = [{ label: 'Option 1', value: 'opt_1' }, { label: 'Option 2', value: 'opt_2' }];
+        } else if (!CHILD_TYPE_HAS_OPTIONS(patch.type)) {
+          next.options = undefined;
+        }
+      }
+      return next;
+    });
+    setChildren(i, kids);
+  };
+  const removeChild = (i, ci) => setChildren(i, (options[i]?.childFields ?? []).filter((_, k) => k !== ci));
+
+  return (
+    <div className={s.sfield}>
+      <span className={s.sfieldLabel}>Child fields per option</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {(options ?? []).map((opt, i) => {
+          const kids = opt.childFields ?? [];
+          return (
+            <div key={i} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', background: '#f8fafc' }}>
+              <div className={s.toggleRow} style={{ marginBottom: kids.length ? 8 : 4 }}>
+                <span className={s.toggleRowLabel} style={{ fontWeight: 600 }}>{opt.label || opt.value || `Option ${i + 1}`}</span>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>{kids.length} field{kids.length === 1 ? '' : 's'}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {kids.map((c, ci) => (
+                  <div key={c.id ?? ci} style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: '8px', background: '#fff' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b' }}>Field {ci + 1}</span>
+                      <button type="button" className={s.optDel} onClick={() => removeChild(i, ci)} aria-label="Remove field">×</button>
+                    </div>
+                    <SField label="Label">
+                      <input className={s.sinput} value={c.label ?? ''} onChange={(e) => updateChild(i, ci, { label: e.target.value })} placeholder="Field label" />
+                    </SField>
+                    <SField label="Type">
+                      <select className={s.sselect} value={c.type ?? 'text'} onChange={(e) => updateChild(i, ci, { type: e.target.value })}>
+                        {CHILD_FIELD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                    </SField>
+                    {!CHILD_TYPE_HAS_OPTIONS(c.type) && (
+                      <SField label="Placeholder">
+                        <input className={s.sinput} value={c.placeholder ?? ''} onChange={(e) => updateChild(i, ci, { placeholder: e.target.value })} placeholder="Placeholder" />
+                      </SField>
+                    )}
+                    {CHILD_TYPE_HAS_OPTIONS(c.type) && (
+                      <div className={s.sfield}>
+                        <span className={s.sfieldLabel}>Options</span>
+                        <OptionsEditor options={c.options ?? []} onChange={(opts) => updateChild(i, ci, { options: opts })} />
+                      </div>
+                    )}
+                    <div className={s.toggleRow}>
+                      <span className={s.toggleRowLabel}>Required</span>
+                      <Toggle value={c.required ?? false} onChange={(v) => updateChild(i, ci, { required: v })} />
+                    </div>
+                  </div>
+                ))}
+                <button className={s.addBtn} type="button" onClick={() => addChild(i)}><Plus size={12} /> Add child field</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* Per-option CONDITIONAL AUTO-SELECTION config (checkbox group). Each option may
+ * carry an `autoRule` that auto-selects / auto-deselects that option when a
+ * condition over other fields is met, and optionally forces its child fields
+ * required / optional. Conditions reuse the same Block→Page→Field cascade and
+ * operator vocabulary as Conditional Visibility. Stored on the option object as
+ * `opt.autoRule`; evaluated edge-triggered at runtime (see StudyFormRunner). */
+const AUTO_ACTIONS = [
+  { value: 'select',   label: 'Select this option' },
+  { value: 'deselect', label: 'Deselect this option' },
+  { value: 'toggle',   label: 'Toggle — select when met, deselect when not' },
+];
+const AUTO_CHILD_REQ = [
+  { value: 'inherit',  label: 'Keep child fields as configured' },
+  { value: 'required', label: 'Make child fields required' },
+  { value: 'optional', label: 'Make child fields optional' },
+];
+const blankCondition = () => ({ blockId: '', pageId: '', fieldId: '', operator: 'equals', value: '' });
+const blankGroup = () => ({ match: 'all', rules: [blankCondition()] });
+const blankAutoRule = () => ({ enabled: true, action: 'select', childRequired: 'inherit', groupMatch: 'all', groups: [blankGroup()], setField: null });
+// Read the rule's condition groups, upgrading a legacy flat rule ({match,rules})
+// to the grouped shape so old saved rules keep editing cleanly.
+const autoRuleGroupsOf = (rule) =>
+  (Array.isArray(rule?.groups) && rule.groups.length) ? rule.groups
+    : [{ match: rule?.match ?? 'all', rules: rule?.rules ?? [blankCondition()] }];
+
+// One Block→Page→Field + Operator + Value condition row. Shared by every group.
+function AutoConditionRow({ blocks, pagesFor, fieldsFor, r, onChange, onRemove }) {
+  const fields = fieldsFor(r.blockId, r.pageId);
+  const srcField = fields.find((f) => f.id === r.fieldId);
+  const ops = operatorsForType(srcField?.type ?? '');
+  const srcOptions = srcField?.options ?? [];
+  const noVal = NO_VALUE_OPS.has(r.operator);
+  return (
+    <div style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: 6, background: '#fff', display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button type="button" className={s.optDel} onClick={onRemove} aria-label="Remove condition">×</button>
+      </div>
+      <select className={s.sselect} value={r.blockId ?? ''} onChange={(e) => onChange({ blockId: e.target.value, pageId: '', fieldId: '' })}>
+        <option value="">Block…</option>
+        {blocks.map((b) => <option key={b.id} value={b.id}>{b.title || 'Untitled'}</option>)}
+      </select>
+      <select className={s.sselect} value={r.pageId ?? ''} onChange={(e) => onChange({ pageId: e.target.value, fieldId: '' })} disabled={!r.blockId}>
+        <option value="">Page…</option>
+        {pagesFor(r.blockId).map((p) => <option key={p.id} value={p.id}>{p.title || 'Untitled'}</option>)}
+      </select>
+      <select className={s.sselect} value={r.fieldId ?? ''} disabled={!r.pageId}
+        onChange={(e) => {
+          const f = fields.find((x) => x.id === e.target.value);
+          onChange({ fieldId: e.target.value, operator: operatorsForType(f?.type ?? '')[0]?.value ?? 'equals', value: '' });
+        }}>
+        <option value="">Field…</option>
+        {fields.map((f) => <option key={f.id} value={f.id}>{f.label || f.type}</option>)}
+      </select>
+      <select className={s.sselect} value={r.operator ?? 'equals'} onChange={(e) => onChange({ operator: e.target.value })} disabled={!r.fieldId}>
+        {ops.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      {noVal ? null : srcOptions.length ? (
+        <select className={s.sselect} value={r.value ?? ''} onChange={(e) => onChange({ value: e.target.value })} disabled={!r.fieldId}>
+          <option value="">Value…</option>
+          {srcOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      ) : (
+        <input className={s.sinput} value={r.value ?? ''} onChange={(e) => onChange({ value: e.target.value })} placeholder="Value" disabled={!r.fieldId} />
+      )}
+    </div>
+  );
+}
+
+function OptionAutoSelectEditor({ options, currentFieldId, onChange }) {
+  const blocks = useSelector(selectBlocks);
+  const allFields = useSelector(selectAllFields);
+  const blockById = (id) => blocks.find((b) => b.id === id);
+  const pagesFor  = (bid) => blockById(bid)?.pages ?? [];
+  const LAYOUT = ['h2', 'h3', 'paragraph', 'divider'];
+  const fieldsFor = (bid, pid) => {
+    const p = blockById(bid)?.pages.find((pp) => pp.id === pid);
+    // A checkbox option's auto-rule may reference any field except its own parent.
+    return (p?.fields ?? []).filter((f) => f && f.id !== currentFieldId && !LAYOUT.includes(f.type));
+  };
+  // Targets for "set field value" — any data field except the parent checkbox.
+  const setTargets = (allFields ?? []).filter((f) => f && f.id !== currentFieldId && !LAYOUT.includes(f.type));
+
+  const patchOpt = (i, patch) => onChange(options.map((o, j) => (j === i ? { ...o, ...patch } : o)));
+  const setRule  = (i, patch) => patchOpt(i, { autoRule: { ...(options[i]?.autoRule ?? blankAutoRule()), ...patch } });
+  const setGroups = (i, groups) => setRule(i, { groups });
+  const updGroup  = (i, gi, patch) => setGroups(i, autoRuleGroupsOf(options[i]?.autoRule).map((g, k) => (k === gi ? { ...g, ...patch } : g)));
+  const addGroup  = (i) => setGroups(i, [...autoRuleGroupsOf(options[i]?.autoRule), blankGroup()]);
+  const delGroup  = (i, gi) => setGroups(i, autoRuleGroupsOf(options[i]?.autoRule).filter((_, k) => k !== gi));
+  const setRules  = (i, gi, rules) => updGroup(i, gi, { rules });
+  const addCond   = (i, gi) => setRules(i, gi, [...(autoRuleGroupsOf(options[i]?.autoRule)[gi]?.rules ?? []), blankCondition()]);
+  const delCond   = (i, gi, ci) => setRules(i, gi, (autoRuleGroupsOf(options[i]?.autoRule)[gi]?.rules ?? []).filter((_, k) => k !== ci));
+  const updCond   = (i, gi, ci, patch) => setRules(i, gi, (autoRuleGroupsOf(options[i]?.autoRule)[gi]?.rules ?? []).map((r, k) => (k === ci ? { ...r, ...patch } : r)));
+
+  return (
+    <div className={s.sfield}>
+      <span className={s.sfieldLabel}>Auto-selection rules per option</span>
+      <p style={{ fontSize: 11, color: '#94a3b8', margin: '0 0 6px' }}>
+        Auto check/uncheck the option from other fields. Use <strong>Toggle</strong> to keep it in sync both
+        ways, or condition groups for logic like <em>(A OR B) AND C</em>. Every change is recorded in the audit trail.
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {(options ?? []).map((opt, i) => {
+          const rule = opt.autoRule ?? null;
+          const on = rule?.enabled === true;
+          const groups = on ? autoRuleGroupsOf(rule) : [];
+          const sf = rule?.setField ?? null;
+          return (
+            <div key={i} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 10px', background: '#f8fafc' }}>
+              <div className={s.toggleRow} style={{ marginBottom: on ? 8 : 0 }}>
+                <span className={s.toggleRowLabel} style={{ fontWeight: 600 }}>{opt.label || opt.value || `Option ${i + 1}`}</span>
+                <Toggle value={on} onChange={(v) => patchOpt(i, { autoRule: { ...(rule ?? blankAutoRule()), enabled: v } })} />
+              </div>
+              {on && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <SField label="Action when condition is met">
+                    <select className={s.sselect} value={rule.action ?? 'select'} onChange={(e) => setRule(i, { action: e.target.value })}>
+                      {AUTO_ACTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+                    </select>
+                  </SField>
+                  <SField label="Child fields">
+                    <select className={s.sselect} value={rule.childRequired ?? 'inherit'} onChange={(e) => setRule(i, { childRequired: e.target.value })}>
+                      {AUTO_CHILD_REQ.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+                    </select>
+                  </SField>
+
+                  {/* Set field value — additional action fired when the option is auto-selected. */}
+                  <div className={s.toggleRow}>
+                    <span className={s.toggleRowLabel}>Also set another field&apos;s value</span>
+                    <Toggle value={!!sf} onChange={(v) => setRule(i, { setField: v ? { fieldId: '', value: '' } : null })} />
+                  </div>
+                  {sf && (
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: 6, padding: 6, background: '#fff', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <select className={s.sselect} value={sf.fieldId ?? ''} onChange={(e) => setRule(i, { setField: { ...sf, fieldId: e.target.value } })}>
+                        <option value="">Target field…</option>
+                        {setTargets.map((f) => <option key={f.id} value={f.id}>{f.label || f.type}</option>)}
+                      </select>
+                      <input className={s.sinput} value={sf.value ?? ''} onChange={(e) => setRule(i, { setField: { ...sf, value: e.target.value } })} placeholder="Value to set" disabled={!sf.fieldId} />
+                    </div>
+                  )}
+
+                  <div className={s.sfield} style={{ gap: 4 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span className={s.sfieldLabel} style={{ margin: 0 }}>Condition groups</span>
+                      {groups.length > 1 && (
+                        <select className={s.sselect} style={{ width: 130 }} value={rule.groupMatch ?? 'all'} onChange={(e) => setRule(i, { groupMatch: e.target.value })}>
+                          <option value="all">Groups: ALL (AND)</option>
+                          <option value="any">Groups: ANY (OR)</option>
+                        </select>
+                      )}
+                    </div>
+                    {groups.map((g, gi) => (
+                      <div key={gi} style={{ border: '1px dashed #cbd5e1', borderRadius: 6, padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <select className={s.sselect} style={{ width: 130 }} value={g.match ?? 'all'} onChange={(e) => updGroup(i, gi, { match: e.target.value })}>
+                            <option value="all">Match ALL (AND)</option>
+                            <option value="any">Match ANY (OR)</option>
+                          </select>
+                          {groups.length > 1 && (
+                            <button type="button" className={s.optDel} onClick={() => delGroup(i, gi)} aria-label="Remove group">×</button>
+                          )}
+                        </div>
+                        {(g.rules ?? []).map((r, ci) => (
+                          <AutoConditionRow
+                            key={ci} blocks={blocks} pagesFor={pagesFor} fieldsFor={fieldsFor} r={r}
+                            onChange={(patch) => updCond(i, gi, ci, patch)}
+                            onRemove={() => delCond(i, gi, ci)}
+                          />
+                        ))}
+                        <button className={s.addBtn} type="button" onClick={() => addCond(i, gi)}><Plus size={12} /> Add condition</button>
+                      </div>
+                    ))}
+                    <button className={s.addBtn} type="button" onClick={() => addGroup(i)}><Plus size={12} /> Add group</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
