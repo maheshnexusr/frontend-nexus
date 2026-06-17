@@ -535,6 +535,29 @@
   line-height: 1.5;
   margin: 0;
 }
+/* Rich-text paragraph (Quill HTML). Restore list markers + inline formatting
+   that a global CSS reset would otherwise strip, and preserve authored breaks. */
+.richParagraph {
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.5;
+  margin: 0;
+  white-space: normal;
+  word-break: break-word;
+}
+.richParagraph p { margin: 0 0 4px; }
+.richParagraph p:last-child { margin-bottom: 0; }
+.richParagraph ul,
+.richParagraph ol { margin: 4px 0; padding-left: 1.6em; }
+.richParagraph ul { list-style: disc; }
+.richParagraph ol { list-style: decimal; }
+.richParagraph li { margin: 2px 0; }
+.richParagraph a { color: #2563eb; text-decoration: underline; }
+.richParagraph strong, .richParagraph b { font-weight: 700; }
+.richParagraph em, .richParagraph i { font-style: italic; }
+.richParagraph u { text-decoration: underline; }
+/* Plain-text legacy content rendered in the same block keeps its line breaks. */
+.richParagraphPlain { white-space: pre-wrap; }
 .divider {
   border: 0;
   border-top: 1px solid #e2e8f0;

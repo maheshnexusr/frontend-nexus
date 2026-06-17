@@ -28,7 +28,7 @@ import { downloadProtectedFile } from '@/api/protectedFile';
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import { addToast } from '@/app/notificationSlice';
 import { usePermissions } from '@/features/auth/usePermissions';
-import ConsentFormFill, { missingRequired, flattenConsentFields } from '@/features/sponsor/components/consent/ConsentFormFill';
+import ConsentFormFill, { missingRequired, flattenConsentFields, scrollToConsentField } from '@/features/sponsor/components/consent/ConsentFormFill';
 import { normalizeConsentBlocks } from '@/utils/consentContent';
 import { formatDateTime } from '@/utils/formatDate';
 import s from './ConsentSubmissionPage.module.css';
@@ -58,6 +58,7 @@ export default function ConsentSubmissionPage() {
   const [loadError,    setLoadError]    = useState(null);
   const [selectedId,   setSelectedId]   = useState(null);
   const [values,       setValues]       = useState({});
+  const [invalidIds,   setInvalidIds]   = useState([]);
   const [submitting,   setSubmitting]   = useState(false);
   const [submitError,  setSubmitError]  = useState(null);
   const [pdfBusyId,    setPdfBusyId]    = useState(null);   // submission id being PDF-downloaded
@@ -107,10 +108,18 @@ export default function ConsentSubmissionPage() {
   // data-bearing fields must be filled before submit.
   const blocks  = useMemo(() => normalizeConsentBlocks(selected?.content?.blocks), [selected]);
   const missing = useMemo(() => missingRequired(blocks, values), [blocks, values]);
-  const canSubmitNow = canSubmit && missing.length === 0 && !submitting;
 
   const handleSubmit = async () => {
-    if (!canSubmitNow || !selected) return;
+    if (!canSubmit || submitting || !selected) return;
+    // Like the data-capture runner: flag + scroll to the first missing required
+    // field instead of silently doing nothing.
+    if (missing.length) {
+      setInvalidIds(missing);
+      scrollToConsentField(missing[0]);
+      dispatch(addToast({ type: 'error', message: 'Please complete all required fields before submitting.' }));
+      return;
+    }
+    setInvalidIds([]);
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -342,7 +351,11 @@ export default function ConsentSubmissionPage() {
               blocks={blocks}
               values={values}
               disabled={!canSubmit}
-              onChange={(id, v) => setValues((prev) => ({ ...prev, [id]: v }))}
+              invalidIds={invalidIds}
+              onChange={(id, v) => {
+                setValues((prev) => ({ ...prev, [id]: v }));
+                setInvalidIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : prev));
+              }}
             />
           )}
 
@@ -361,7 +374,7 @@ export default function ConsentSubmissionPage() {
                 type="button"
                 className={s.submitBtn}
                 onClick={handleSubmit}
-                disabled={!canSubmitNow}
+                disabled={submitting}
                 title={
                   missing.length > 0 ? 'Fill every required field before submitting'
                   : 'Submit for review'

@@ -1157,3 +1157,12 @@
 .formulaFieldItem code { color: #2563eb; font-weight: 600; font-size: 12px; flex-shrink: 0; }
 .formulaFieldLabel { color: #475569; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .formulaFieldType { color: #94a3b8; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; flex-shrink: 0; }
+
+/* Rich-text Paragraph editor (Quill). Keep the editor compact inside the
+   properties panel and ensure list markers show in the editing surface. */
+.paraQuillWrap :global(.ql-container) { min-height: 96px; font-size: 13px; }
+.paraQuillWrap :global(.ql-editor) { min-height: 96px; }
+.paraQuillWrap :global(.ql-toolbar),
+.paraQuillWrap :global(.ql-container) { border-color: #e2e8f0; }
+.paraQuillWrap :global(.ql-toolbar) { border-top-left-radius: 6px; border-top-right-radius: 6px; }
+.paraQuillWrap :global(.ql-container) { border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; }

@@ -26,6 +26,7 @@ import RuntimeFieldRenderer from './runtime/RuntimeFieldRenderer';
 import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import TableFieldInput from '@/components/study-form-runner/TableFieldInput';
 import { evaluateExpression, coerceOutput } from './formulaEngine';
+import { compareOp, dateBounds } from './runtime/runtimeEngine';
 import s from './SFBPreview.module.css';
 
 /* ── Helpers ──────────────────────────────────────────────────────────── */
@@ -51,6 +52,8 @@ export default function SFBPreview({ onExitPreview }) {
   const [blockIdx,  setBlockIdx]  = useState(0);
   const [pageIdx,   setPageIdx]   = useState(0);
   const [values,    setValues]    = useState({});       // { fieldId: { label, value } }
+  // Edge tracker for conditional auto-selection (checkbox group), see effect below.
+  const autoSelectStateRef = useRef({ initialized: false, met: {} });
 
   // Sidebar — which blocks are currently expanded (show their pages).
   const [expanded,  setExpanded]  = useState({});       // { blockId: true }
@@ -132,6 +135,55 @@ export default function SFBPreview({ onExitPreview }) {
       }
       return changed ? next : prev;
     });
+  }, [values, blocks]);
+
+  // Conditional auto-selection (checkbox group) — mirrors StudyFormRunner.
+  // Edge-triggered: when an option's condition flips unmet→met, auto check/
+  // uncheck the option once. First pass only seeds the met-state.
+  useEffect(() => {
+    const flat = Object.fromEntries(Object.entries(values).map(([k, e]) => [k, e?.value]));
+    const state = autoSelectStateRef.current;
+    const prevMet = state.met; const nextMet = {}; const patch = {};
+    for (const blk of blocks || []) {
+      for (const pg of blk.pages || []) {
+        for (const f of pg.fields || []) {
+          if (f.type !== 'checkboxgroup' || !f.enableOptionAutoSelect) continue;
+          for (const o of f.options || []) {
+            const rule = o.autoRule;
+            if (!rule || rule.enabled !== true) continue;
+            const groups = Array.isArray(rule.groups) && rule.groups.length ? rule.groups : [{ match: rule.match, rules: rule.rules }];
+            const evalGroup = (g) => {
+              const list = (g.rules || []).filter((c) => c && (c.fieldId ?? c.field_id) && c.operator);
+              if (!list.length) return null;
+              const hits = list.map((c) => compareOp(c.operator, flat[c.fieldId ?? c.field_id], c.value));
+              return String(g.match ?? 'all').toLowerCase() === 'any' ? hits.some(Boolean) : hits.every(Boolean);
+            };
+            const results = groups.map(evalGroup).filter((r) => r !== null);
+            if (!results.length) continue;
+            const met = String(rule.groupMatch ?? 'all').toLowerCase() === 'any' ? results.some(Boolean) : results.every(Boolean);
+            const key = `${f.id}::${o.value}`; nextMet[key] = met;
+            if (!state.initialized || met === prevMet[key]) continue;
+            const action = String(rule.action ?? 'select').toLowerCase();
+            const rawCur = (patch[f.id]?.value) ?? flat[f.id];
+            const cur = Array.isArray(rawCur) ? rawCur : (rawCur == null || rawCur === '' ? [] : [rawCur]);
+            const has = cur.includes(o.value);
+            if (action === 'toggle') {
+              if (met && !has) patch[f.id] = { label: f.label, value: [...cur, o.value] };
+              else if (!met && has) patch[f.id] = { label: f.label, value: cur.filter((x) => x !== o.value) };
+            } else if (met) {
+              if (action === 'deselect') { if (has) patch[f.id] = { label: f.label, value: cur.filter((x) => x !== o.value) }; }
+              else if (!has) patch[f.id] = { label: f.label, value: [...cur, o.value] };
+            }
+            const sf = rule.setField;
+            const sfId = sf && (sf.fieldId ?? sf.field_id);
+            if (met && (action === 'select' || action === 'toggle') && sfId) patch[sfId] = { label: patch[sfId]?.label, value: sf.value };
+          }
+        }
+      }
+    }
+    autoSelectStateRef.current = { initialized: true, met: nextMet };
+    if (Object.keys(patch).length) setValues((prev) => ({ ...prev, ...patch }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [values, blocks]);
 
   const toggleSidebarBlock = (id) =>
@@ -495,6 +547,91 @@ function PreviewCheckboxGroup({ field, value, onChange }) {
   );
 }
 
+/* Designer-preview for option-based child fields. Shows the dependent inputs
+ * under each selected parent option; values are local (preview has no record).
+ * Reads camelCase designer state directly. */
+function PreviewOptionChildren({ field, value }) {
+  const [vals, setVals] = useState({}); // `${optionValue}::${childId}` → value
+  if (!field.enableOptionChildren) return null;
+  const selected = Array.isArray(value) ? value : (value === '' || value == null ? [] : [value]);
+  const groups = (field.options ?? []).filter((o) => selected.includes(o.value) && (o.childFields ?? []).length);
+  if (!groups.length) return null;
+  const setVal = (k, val) => setVals((prev) => ({ ...prev, [k]: val }));
+  const renderChild = (c, k) => {
+    const opts = c.options ?? [];
+    const val = vals[k] ?? '';
+    switch (c.type) {
+      case 'textarea': return <textarea className={s.textarea} rows={2} placeholder={c.placeholder} value={val} onChange={(e) => setVal(k, e.target.value)} />;
+      case 'number':   return <input type="number" className={s.input} placeholder={c.placeholder} value={val} onChange={(e) => setVal(k, e.target.value)} />;
+      case 'date':     return <input type="date" className={s.input} value={val} onChange={(e) => setVal(k, e.target.value)} />;
+      case 'select':   return (
+        <select className={s.select} value={val} onChange={(e) => setVal(k, e.target.value)}>
+          <option value="">{c.placeholder || 'Select an option…'}</option>
+          {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>);
+      case 'multiselect': {
+        const sel = Array.isArray(vals[k]) ? vals[k] : [];
+        return (
+          <select className={s.select} multiple size={Math.min(5, Math.max(3, opts.length))} value={sel}
+            onChange={(e) => setVal(k, Array.from(e.target.selectedOptions, (o) => o.value))}>
+            {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>);
+      }
+      case 'radiogroup': return (
+        <div className={s.choiceGroup}>
+          {opts.map((o) => (
+            <label key={o.value} className={`${s.choiceItem} ${val === o.value ? s.choiceItemSelected : ''}`}>
+              <input type="radio" checked={val === o.value} onChange={() => setVal(k, o.value)} /><span>{o.label}</span>
+            </label>))}
+        </div>);
+      case 'checkboxgroup': {
+        const sel = Array.isArray(vals[k]) ? vals[k] : [];
+        return (
+          <div className={s.choiceGroup}>
+            {opts.map((o) => { const on = sel.includes(o.value); return (
+              <label key={o.value} className={`${s.choiceItem} ${on ? s.choiceItemSelected : ''}`}>
+                <input type="checkbox" checked={on} onChange={() => setVal(k, on ? sel.filter((x) => x !== o.value) : [...sel, o.value])} /><span>{o.label}</span>
+              </label>);})}
+          </div>);
+      }
+      default: return <input type="text" className={s.input} placeholder={c.placeholder} value={val} onChange={(e) => setVal(k, e.target.value)} />;
+    }
+  };
+  return (
+    <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {groups.map((o) => (
+        <div key={o.value} style={{ borderLeft: '2px solid #c7d2fe', paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {(o.childFields ?? []).map((c) => {
+            const k = `${o.value}::${c.id}`;
+            return (
+              <div key={c.id} style={{ minWidth: 0 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 4 }}>
+                  {c.label || 'Field'}{c.required && <span style={{ color: '#dc2626' }}> *</span>}
+                </label>
+                {renderChild(c, k)}
+                {c.helpText && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{c.helpText}</div>}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Display-only Paragraph — renders the designer's rich-text HTML verbatim, or
+// legacy plain text with line breaks preserved. Mirrors the runtime renderer.
+const PARA_HTML_RE = /<[a-z][\s\S]*>/i;
+function RichParagraph({ field }) {
+  const raw = field.content ?? field.label ?? '';
+  const text = typeof raw === 'string' ? raw : '';
+  if (!text.trim()) return <p className={s.paragraph}>Paragraph text.</p>;
+  if (PARA_HTML_RE.test(text)) {
+    return <div className={s.richParagraph} dangerouslySetInnerHTML={{ __html: text }} />;
+  }
+  return <div className={`${s.richParagraph} ${s.richParagraphPlain}`}>{text}</div>;
+}
+
 function FieldInput({ field, value, onChange }) {
   const v = value ?? '';
 
@@ -532,13 +669,21 @@ function FieldInput({ field, value, onChange }) {
           onChange={(e) => onChange(e.target.value)}
         />
       );
-    case 'date':     return <PlatformDatePicker value={v ?? ''} onChange={onChange} />;
-    case 'datetime': return <input type="datetime-local" className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
+    case 'date': {
+      const { min, max } = dateBounds(field);
+      return <PlatformDatePicker value={v ?? ''} onChange={onChange} min={min ?? undefined} max={max ?? undefined} />;
+    }
+    case 'datetime': {
+      const { min, max } = dateBounds(field);
+      return <input type="datetime-local" className={s.input} value={v} onChange={(e) => onChange(e.target.value)}
+        min={min ? `${min}T00:00` : undefined} max={max ? `${max}T23:59` : undefined} />;
+    }
     case 'time':     return <input type="time"           className={s.input} value={v} onChange={(e) => onChange(e.target.value)} />;
     case 'select': {
       if (field.multiple) {
         const selected = Array.isArray(v) ? v.map(String) : (v ? [String(v)] : []);
         return (
+          <>
           <select
             className={s.select}
             multiple
@@ -548,17 +693,23 @@ function FieldInput({ field, value, onChange }) {
           >
             {(field.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
+          <PreviewOptionChildren field={field} value={v} />
+          </>
         );
       }
       return (
+        <>
         <select className={s.select} value={v} onChange={(e) => onChange(e.target.value)}>
           <option value="">{field.placeholder || 'Select an option…'}</option>
           {(field.options ?? []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
+        <PreviewOptionChildren field={field} value={v} />
+        </>
       );
     }
     case 'radiogroup':
       return (
+        <>
         <div className={s.choiceGroup}>
           {(field.options ?? []).map((o) => (
             <label key={o.value} className={`${s.choiceItem} ${v === o.value ? s.choiceItemSelected : ''}`}>
@@ -567,9 +718,16 @@ function FieldInput({ field, value, onChange }) {
             </label>
           ))}
         </div>
+        <PreviewOptionChildren field={field} value={v} />
+        </>
       );
     case 'checkboxgroup':
-      return <PreviewCheckboxGroup field={field} value={v} onChange={onChange} />;
+      return (
+        <>
+        <PreviewCheckboxGroup field={field} value={v} onChange={onChange} />
+        <PreviewOptionChildren field={field} value={v} />
+        </>
+      );
     case 'toggle':
       return (
         <div className={s.toggleWrap} onClick={() => onChange(!v)}>
@@ -647,7 +805,7 @@ function FieldInput({ field, value, onChange }) {
     case 'h3':
       return <h3 className={s.h3} style={headingStyleToCss(field)}>{field.label || 'Sub-heading'}</h3>;
     case 'paragraph':
-      return <p className={s.paragraph}>{field.content || field.label || 'Paragraph text.'}</p>;
+      return <RichParagraph field={field} />;
     case 'divider':
       return <hr className={s.divider} />;
     default:

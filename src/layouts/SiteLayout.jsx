@@ -43,11 +43,13 @@ import Sidebar              from '@/components/layout/Sidebar';
 import WorkspaceHeader      from './WorkspaceHeader';
 import {
   getSiteStudyContext,
+  setSiteStudyContext,
   getSiteStudies,
   hasSiteStudyContext,
   isSiteSession,
   clearSiteStudyContext,
 } from '@/features/site/authStore';
+import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
 import { resolveStudyConfig, canViewLeaf } from '@/features/cro/utils/studyConfigGating';
 import { resolveFileUrl } from '@/api/fileUrl';
 import styles from './SponsorLayout.module.css';
@@ -67,6 +69,10 @@ export default function SiteLayout() {
 
   const [collapsed, setCollapsed]   = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Live role permissions, refreshed on entry so menu reflects role-permission
+  // changes without a re-login (the login snapshot can be stale). null until the
+  // refresh resolves — falls back to the cached context permissions meanwhile.
+  const [livePerms, setLivePerms] = useState(null);
 
   // Close mobile drawer at desktop width. Declared up here so the hook order is
   // stable — the early-return Navigates below MUST come after all hooks.
@@ -74,6 +80,26 @@ export default function SiteLayout() {
     const sync = () => { if (window.innerWidth >= 1024) setMobileOpen(false); };
     window.addEventListener('resize', sync);
     return () => window.removeEventListener('resize', sync);
+  }, []);
+
+  // Re-resolve current role permissions on workspace entry and cache them, so a
+  // permission removed from the user's site role (e.g. consent) disappears from
+  // the menu without requiring a sign-out/in.
+  useEffect(() => {
+    if (!isSiteSession() || !hasSiteStudyContext()) return undefined;
+    let alive = true;
+    siteWorkspaceClient.refreshContext()
+      .then((res) => {
+        if (!alive) return;
+        const fresh = res?.permissions;
+        if (fresh && typeof fresh === 'object') {
+          setLivePerms(fresh);
+          const ctx = getSiteStudyContext();
+          if (ctx) setSiteStudyContext({ ...ctx, permissions: fresh });
+        }
+      })
+      .catch(() => { /* best-effort — keep cached permissions on failure */ });
+    return () => { alive = false; };
   }, []);
 
   // No session at all → bounce to sign-in.
@@ -90,7 +116,7 @@ export default function SiteLayout() {
     ?? null;
   const scope   = deriveScope(context?.scope);
   const cfg     = resolveStudyConfig(context?.config);
-  const perms   = context?.permissions ?? {};
+  const perms   = livePerms ?? context?.permissions ?? {};
   const allowed = (leafKey) => canViewLeaf(perms, leafKey);
 
   /* ── Item 2 varies by study scope; gated by data_capture leaf only.
@@ -228,6 +254,7 @@ export default function SiteLayout() {
         notificationsPath={null}
         subtitle="Study Workspace"
         logoUrl={resolveFileUrl(siteLogo) || null}
+        bigLogo
       />
 
       <div className={clx(styles.body, collapsed && styles.bodyCollapsed)}>

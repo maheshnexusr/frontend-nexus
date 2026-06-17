@@ -61,6 +61,7 @@ export default function StudyDesignPage() {
       // designer always sees Query Manager as OFF and can't enable queries.
       dispatch(setStep3({
         consentManager:      s.consentManager      ?? false,
+        consentApproval:     s.consentApproval      ?? false,
         queryManager:        s.queryManager        ?? false,
         dataManager:         s.dataManager         ?? false,
         verificationManager: s.verificationManager ?? false,

@@ -24,6 +24,12 @@ export const siteWorkspaceClient = {
     return siteAxiosClient.get(`${BASE}/consent/pending`);
   },
 
+  /** Re-resolve the user's CURRENT role permissions for the active study, so the
+   *  sidebar menu reflects role-permission changes without a re-login. */
+  async refreshContext() {
+    return siteAxiosClient.get(`${BASE}/context`);
+  },
+
   /** Record agreement to the consent template (logs the activity) and submit the
    *  filled-in answers + signature for Sponsor/CRO review. `extra` carries
    *  { responses, signatureDataUrl, version }. */

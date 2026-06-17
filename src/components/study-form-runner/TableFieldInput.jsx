@@ -20,7 +20,7 @@ import {
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import { evaluateField } from '@/features/cro/components/study-form/runtime/runtimeEngine';
-import { evaluateFormula, grandTotal, validateCell, toNum, colKey } from './tableEngine';
+import { evaluateFormula, grandTotal, toNum, colKey, evaluateRowColumn, rowColumnValueAction } from './tableEngine';
 import s from './TableFieldInput.module.css';
 
 const uid = () => `row_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -63,6 +63,22 @@ export default function TableFieldInput({ field, value, onChange, allValues, loa
     ),
   ])), [columns, allValues]);
   const liveColumns = useMemo(() => columns.filter((c) => !colEffMap[c.key]?.hidden), [columns, colEffMap]);
+
+  /* ── Per-ROW effective state ────────────────────────────────────────────────
+     Merge the table-scope state (form-field col.condition, above) with the
+     per-row rules (sibling-column driven). Computed per (row, col): a checkbox
+     in one row can make sibling cells read-only / hidden / required only in THAT
+     row. Disable folds into read-only for the cell input. */
+  const rowColEff = (col, row) => {
+    const base = colEffMap[col.key] || {};
+    const rr = evaluateRowColumn(col, row, columns);
+    return {
+      hidden:   base.hidden || rr.hidden,
+      readOnly: base.readOnly || rr.readOnly || rr.disabled,
+      required: rr.required,
+      disabled: rr.disabled,
+    };
+  };
 
   /* ── Local UI state ──────────────────────────────────────────────────────── */
   const [search, setSearch] = useState('');
@@ -131,6 +147,39 @@ export default function TableFieldInput({ field, value, onChange, allValues, loa
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rs.defaultRowCount, minRows]);
+
+  /* ── Per-row Clear Value / Set Value (edge-triggered) ───────────────────────
+     Pure show/hide/readonly/required derive at render; Clear/Set mutate data, so
+     they fire only when a rule transitions inactive→active for a given cell
+     (tracked per `${rowId}::${colKey}`). The first time a cell is seen it is only
+     SEEDED (never applied), so loading/submitted data is never rewritten — only a
+     live change to the source cell triggers a clear/set. */
+  const rowRuleEdgeRef = useRef({});
+  useEffect(() => {
+    const edges = rowRuleEdgeRef.current;
+    let changed = false;
+    const next = rows.map((row) => {
+      let r = row;
+      columns.forEach((col) => {
+        const va = rowColumnValueAction(col, r, columns);
+        const key = `${row._rowId}::${col.key}`;
+        const active = !!va;
+        const prev = edges[key];
+        edges[key] = active;
+        if (prev === undefined || prev === active || !active) return; // seed / no inactive→active edge
+        const k = col.fieldKey;
+        const target = va.action === 'clear' ? blankCell(col) : va.setValue;
+        if (JSON.stringify(r[k]) !== JSON.stringify(target)) {
+          if (r === row) r = { ...row, _meta: { ...row._meta, updatedBy: actorName, updatedAt: nowISO() } };
+          r[k] = target;
+          changed = true;
+        }
+      });
+      return r;
+    });
+    if (changed) commit(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, columns]);
 
   /* ── Mutations (operate by _rowId so search/sort/paging stay correct) ────── */
   const setCell = (rowId, key, val) => commit(rows.map((r) =>
@@ -209,23 +258,9 @@ export default function TableFieldInput({ field, value, onChange, allValues, loa
 
   const toggleSort = (key) => setSort((p) => (p.key === key ? { key, dir: -p.dir } : { key, dir: 1 }));
 
-  /* ── Validation (computed once per render; reused by every cell) ───────────
-     "Required & empty" cells are held back until the user tries to submit
-     (showErrors) — matching how the rest of the form defers its mandatory
-     flags. Cells the user actually filled with an invalid value always flag. */
-  const validation = useMemo(() => {
-    const errors = {}; let count = 0;
-    rows.forEach((r) => liveColumns.forEach((c) => {
-      const val = r?.[c.fieldKey];
-      const msg = validateCell(c, val, r, rows);
-      if (!msg) return;
-      const requiredEmpty = c.required && isBlankCell(val);
-      if (requiredEmpty && !showErrors) return;       // defer until submit attempt
-      (errors[r._rowId] ??= {})[c.fieldKey] = msg; count += 1;
-    }));
-    return { errors, count };
-  }, [rows, liveColumns, showErrors]);
-  const errorCount = validation.count;
+  // Cell-level validation is no longer surfaced inside the grid (no red borders /
+  // issue badge per spec) — the parent StudyFormRunner still blocks Submit/Next
+  // via validateTable and shows a single "Please fill <table>" message.
 
   const footerCols = orderedColumns.filter((c) => c.formula?.enabled && c.formula?.grandTotal);
 
@@ -253,7 +288,6 @@ export default function TableFieldInput({ field, value, onChange, allValues, loa
           />
         </div>
         <span className={s.rowCount}>{rows.length} row{rows.length !== 1 ? 's' : ''}</span>
-        {errorCount > 0 && <span className={s.errBadge}>{errorCount} issue{errorCount !== 1 ? 's' : ''}</span>}
         <span className={s.spacer} />
         {allowAdd && (
           <button type="button" className={s.addRowBtn} onClick={addRow} disabled={rows.length >= maxRows}>
@@ -312,17 +346,20 @@ export default function TableFieldInput({ field, value, onChange, allValues, loa
                   <tr key={row._rowId}>
                     {showRowNumbers && <td className={`${s.td} ${s.tdNum}`}>{absIdx + 1}</td>}
                     {orderedColumns.map((col) => {
-                      const eff = colEffMap[col.key] || {};
-                      const err = validation.errors[row._rowId]?.[col.fieldKey];
+                      const eff = rowColEff(col, row);
                       return (
-                        <td key={col.key} className={`${s.td} ${err ? s.tdError : ''}`} title={err || undefined}>
-                          <TableCell
-                            col={col}
-                            name={`${row._rowId}_${col.key}`}
-                            value={row[col.fieldKey]}
-                            readOnly={eff.readOnly || !allowEdit}
-                            onChange={(v) => setCell(row._rowId, col.fieldKey, v)}
-                          />
+                        <td key={col.key} className={s.td}>
+                          {eff.hidden ? (
+                            <span style={{ color: '#cbd5e1' }}>—</span>
+                          ) : (
+                            <TableCell
+                              col={col}
+                              name={`${row._rowId}_${col.key}`}
+                              value={row[col.fieldKey]}
+                              readOnly={eff.readOnly || !allowEdit}
+                              onChange={(v) => setCell(row._rowId, col.fieldKey, v)}
+                            />
+                          )}
                         </td>
                       );
                     })}
