@@ -7,9 +7,10 @@ import {
   ChevronUp, ChevronDown, ChevronsUpDown,
 } from 'lucide-react';
 import { sponsorConsentReviewClient } from '@/features/sponsor/api/sponsorConsentReviewClient';
+import { getSiteStudyContext } from '@/features/site/authStore';
 import { useReadOnlyView }    from '@/features/workspace/hooks/useReadOnlyView';
 import { addToast }          from '@/app/notificationSlice';
-import { formatDateTime }    from '@/utils/formatDate';
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 import PlatformDatePicker    from '@/components/form/PlatformDatePicker';
 import SnapshotButton        from '@/components/feedback/SnapshotButton';
 import { usePermissions }    from '@/features/auth/usePermissions';
@@ -48,7 +49,13 @@ function triggerDownload(blob, filename) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ConsentReviewPage() {
-  const { studyId } = useParams();
+  const params      = useParams();
+  // Consent Review is mounted in BOTH workspaces. The sponsor route is
+  // /sponsor/:studyId/... so studyId is a route param; the SITE route is
+  // /site/consent/review with NO :studyId segment (the study lives in the site
+  // workspace token/context). Without this fallback, studyId is undefined on the
+  // site side and load() bails → a Consent Approver sees an empty screen.
+  const studyId     = params.studyId ?? getSiteStudyContext()?.studyId ?? '';
   const dispatch    = useDispatch();
   const ro          = useReadOnlyView();
 
@@ -216,7 +223,7 @@ export default function ConsentReviewPage() {
     setDownloading(submission.id);
     try {
       const blob = await sponsorConsentReviewClient.download(studyId, submission.id);
-      const name = `Consent_${submission.id}_${submission.userName.replace(/\s+/g,'_')}_${new Date().toISOString().slice(0,10)}.pdf`;
+      const name = `Consent_${(submission.userName || submission.id).replace(/\s+/g,'_')}_${formatDate(submission.submissionDate)}.pdf`;
       triggerDownload(blob, name);
       dispatch(addToast({ type: 'success', message: 'Consent record downloaded successfully.' }));
     } catch {

@@ -30,7 +30,7 @@ import { addToast } from '@/app/notificationSlice';
 import { usePermissions } from '@/features/auth/usePermissions';
 import ConsentFormFill, { missingRequired, flattenConsentFields, scrollToConsentField } from '@/features/sponsor/components/consent/ConsentFormFill';
 import { normalizeConsentBlocks } from '@/utils/consentContent';
-import { formatDateTime } from '@/utils/formatDate';
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 import s from './ConsentSubmissionPage.module.css';
 
 export default function ConsentSubmissionPage() {
@@ -165,7 +165,7 @@ export default function ConsentSubmissionPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Consent_${String(sub.id).slice(-6)}.pdf`;
+      a.download = `Consent_${(sub.userName || String(sub.id).slice(-6)).replace(/\s+/g, '_')}_${formatDate(sub.submissionDate)}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -185,7 +185,7 @@ export default function ConsentSubmissionPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Consent_${(sub.userName || String(sub.id).slice(-6)).replace(/\s+/g, '_')}.pdf`;
+      a.download = `Consent_${(sub.userName || String(sub.id).slice(-6)).replace(/\s+/g, '_')}_${formatDate(sub.submissionDate)}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -473,7 +473,9 @@ export default function ConsentSubmissionPage() {
                 <li key={sub.id} className={s.mineCard}>
                   <div className={s.mineCardMain}>
                     <span className={s.mineName}>
-                      {sub.consentFormId ? `Consent ${String(sub.consentFormId).slice(-6)}` : 'Consent'}
+                      {sub.userName || 'Consent'}
+                      {sub.roleName ? ` · ${sub.roleName}` : ''}
+                      {sub.siteName ? ` · ${sub.siteName}` : ''}
                     </span>
                     <span className={`${s.badge} ${cls}`}>{status}</span>
                   </div>

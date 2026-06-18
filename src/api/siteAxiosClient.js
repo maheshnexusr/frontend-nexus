@@ -195,6 +195,20 @@ siteAxiosClient.interceptors.response.use(
       return Promise.reject(normalizeError(error));
     }
 
+    // Account / access revoked server-side (the person was deleted or removed
+    // from the study while a tab stayed open). This is a forced sign-out — do
+    // NOT attempt a silent token refresh/re-mint, which would just 401 again.
+    const revokeCode = error.response?.data?.details?.code;
+    if (error.response?.status === 401 && (revokeCode === 'ACCOUNT_REVOKED' || revokeCode === 'ACCESS_REVOKED')) {
+      if (revokeCode === 'ACCESS_REVOKED') {
+        // Identity still valid (may be on other studies) → back to the picker.
+        redirectToStudyPicker();
+      } else {
+        redirectToSignIn();
+      }
+      return Promise.reject(normalizeError(error));
+    }
+
     if (error.response?.status === 401 && !original._retry && !isAuthEndpoint) {
       original._retry = true;
 
