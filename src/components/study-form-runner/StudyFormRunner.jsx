@@ -635,26 +635,43 @@ function StudyFormRunnerInner({
   // on a successful submit (or refreshed on the next submit attempt).
   useEffect(() => { setTriedNext(false); }, [blockIdx, pageIdx]);
 
-  // Clear-on-hide (Phase 4) at the FORM level so it works even though hidden
-  // fields are no longer rendered: a field with `clearOnHide` whose condition
-  // currently hides it gets its value wiped (default policy is retain).
+  // Reset Dependent Fields On Parent Change (default ENABLED). At the FORM level
+  // so it works even though hidden fields aren't rendered: any field that its
+  // conditional logic currently HIDES (its dependency is no longer satisfied)
+  // has its value — and its option companions (per-option child fields + inputs)
+  // — wiped, so no stale/invalid data is retained or submitted. A field opts OUT
+  // by setting clear_on_hide explicitly false (then the hidden value is kept).
+  //
+  // Recursion falls out of the deps: this runs on every `values` change, so
+  // clearing a parent re-hides its child → clears it → re-hides the grandchild →
+  // … down the whole dependency chain, settling once every hidden dependent is
+  // empty (no further patch → no re-run). Hidden fields are also excluded from
+  // the required/validation gates, so nothing invalid blocks Submit. Skipped in
+  // read-only/submitted views so historical saved data is never rewritten.
   useEffect(() => {
+    if (readOnly) return;
     const patch = {};
+    const wipe = (id, cur) => {
+      if (cur === undefined) return;
+      const empty = cur === null || cur === '' || (Array.isArray(cur) && cur.length === 0);
+      if (!empty) patch[id] = Array.isArray(cur) ? [] : '';
+    };
     for (const blk of blocks || []) {
       for (const pg of blk.pages || []) {
         for (const f of pg.fields || []) {
-          // `clear_on_hide` (snake) is what the API returns; `clearOnHide` is
-          // the in-builder camelCase — accept either.
-          if (!(f?.clearOnHide ?? f?.clear_on_hide)) continue;
+          // Layout/formula fields hold no user data (formulas recompute anyway).
+          if (LAYOUT_TYPES.includes(f.type) || f.type === 'formula') continue;
+          // Opt-out: clear_on_hide explicitly false RETAINS the hidden value.
+          if ((f?.clearOnHide ?? f?.clear_on_hide) === false) continue;
           if (!evaluateField(f, values).hidden) continue;
-          const v = values[f.id];
-          const empty = v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
-          if (!empty) patch[f.id] = '';
+          wipe(f.id, values[f.id]);
+          wipe(optInputsKey(f.id),  values[optInputsKey(f.id)]);
+          wipe(childFieldsKey(f.id), values[childFieldsKey(f.id)]);
         }
       }
     }
     if (Object.keys(patch).length) setValues((prev) => ({ ...prev, ...patch }));
-  }, [values, blocks]);
+  }, [values, blocks, readOnly]);
 
   // ── Formula recalculation (Formula field type) ──────────────────────────
   // Formulas reference other fields by their Internal Field Name (fieldKey),
@@ -981,7 +998,9 @@ function StudyFormRunnerInner({
   const tableInvalid = (f) => {
     if (f.type !== 'table') return false;
     const list = Array.isArray(values[f.id]) ? values[f.id] : [];
-    const min = Number(f.rowSettings?.minRows) || 0;
+    // rowSettings arrives snake_case in the capture runtime (row_settings/min_rows).
+    const rset = f.rowSettings ?? f.row_settings ?? {};
+    const min = Number(rset.minRows ?? rset.min_rows) || 0;
     if (min && list.length < min) return true;
     return validateTable(f, list).hasErrors;
   };

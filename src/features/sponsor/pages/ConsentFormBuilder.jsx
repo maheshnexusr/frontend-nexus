@@ -127,7 +127,15 @@ export default function ConsentFormBuilder() {
   }
 
   return (
-    <div className={`${s.root} ${maximized ? s.rootMaximized : ''}`}>
+    <div
+      className={`${s.root} ${maximized ? s.rootMaximized : ''}`}
+      // The workspace <main> gives no definite height, so the builder's
+      // height:100% collapses and the canvas can't scroll for long consent
+      // documents. Bound the root to the viewport (minus the workspace header /
+      // page padding) so the internal canvas scroll engages — same behavior as
+      // the CRF/Study Form Builder. Maximized mode pins to the viewport itself.
+      style={maximized ? undefined : { height: 'calc(100vh - 132px)' }}
+    >
       {/* Header — Back, Title/Code/Status, Edit details */}
       {!maximized && (
         <div style={{ padding: '10px 16px', borderBottom: '1px solid #e2e8f0', background: '#fff', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>

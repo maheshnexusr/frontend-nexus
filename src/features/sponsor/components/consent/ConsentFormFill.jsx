@@ -228,13 +228,29 @@ function inputType(t) {
 // (SFBPreview.module.css `sp` + headingStyleToCss), so the user / reviewer see
 // exactly the form that was designed — but with WORKING inputs (the builder
 // preview's file/signature are non-functional placeholders).
+// Display-only Paragraph — renders the designer's rich-text HTML verbatim (the
+// Consent Builder reuses the Study Form Designer's Quill editor, storing HTML on
+// field.content), or legacy plain text with line breaks preserved. Mirrors the
+// builder's RichParagraph (SFBPreview) exactly so Builder / Preview / Published
+// Consent / Participant View all render identically.
+const PARA_HTML_RE = /<[a-z][\s\S]*>/i;
+function ConsentRichParagraph({ field }) {
+  const raw  = field.content ?? field.label ?? '';
+  const text = typeof raw === 'string' ? raw : '';
+  if (!text.trim()) return <p className={sp.paragraph}>Paragraph text.</p>;
+  if (PARA_HTML_RE.test(text)) {
+    return <div className={sp.richParagraph} dangerouslySetInnerHTML={{ __html: text }} />;
+  }
+  return <div className={`${sp.richParagraph} ${sp.richParagraphPlain}`}>{text}</div>;
+}
+
 function FieldRow({ field, value, onChange, disabled, invalid }) {
   const { type, label, helpText, placeholder, options = [], required } = field;
 
   // Layout/content fields — rendered exactly like the builder.
   if (type === 'h2') return <h2 className={sp.h2} style={headingStyleToCss(field)}>{label || 'Section Title'}</h2>;
   if (type === 'h3') return <h3 className={sp.h3} style={headingStyleToCss(field)}>{label || 'Sub-heading'}</h3>;
-  if (type === 'paragraph') return <p className={sp.paragraph}>{field.content || label || ''}</p>;
+  if (type === 'paragraph') return <ConsentRichParagraph field={field} />;
   if (type === 'divider') return <hr className={sp.divider} />;
 
   const v = value ?? '';
@@ -398,7 +414,7 @@ export function scrollToConsentField(fieldId) {
  * Paged renderer — shows ONE page at a time with a Previous/Next footer, styled
  * to match the Consent Builder preview's main column (the dense 2-col field grid)
  * but WITHOUT the outline sidebar. `footerSlot` is shown on the last page in
- * place of "Next" (the gate puts its "I Agree" button there).
+ * place of "Next" (the gate puts its "Submit Service Agreement" button there).
  */
 function PagedConsentForm({ blocks, values, onChange, disabled, footerSlot, invalidSet }) {
   const pages = buildPages(blocks);

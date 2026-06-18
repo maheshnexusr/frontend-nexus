@@ -347,6 +347,16 @@
   color: var(--text-secondary);
   line-height: 1.5;
 }
+/* Rich-text (Quill HTML) rendering inside the canvas paragraph preview. */
+.previewParagraph p { margin: 0 0 4px; }
+.previewParagraph p:last-child { margin-bottom: 0; }
+.previewParagraph ul,
+.previewParagraph ol { margin: 4px 0; padding-left: 1.6em; }
+.previewParagraph ul { list-style: disc; }
+.previewParagraph ol { list-style: decimal; }
+.previewParagraph li { margin: 2px 0; }
+.previewParagraph a { color: #2563eb; text-decoration: underline; }
+.previewParagraph strong, .previewParagraph b { font-weight: 700; }
 .previewDivider {
   border: none;
   border-top: 1px solid var(--border-medium, #e2e8f0);

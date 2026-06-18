@@ -99,7 +99,7 @@ export default function PrescriptionUpload({ subjectId, canUpload, triggerStyle 
   };
 
   const handleRemove = async (presc) => {
-    if (!window.confirm(`Remove prescription "${presc.name}"?`)) return;
+    if (!window.confirm(`Remove attachment "${presc.name}"?`)) return;
     setRemovingId(presc.id);
     try {
       const next = await removePrescription(scope, subjectId, presc.id);
@@ -107,7 +107,7 @@ export default function PrescriptionUpload({ subjectId, canUpload, triggerStyle 
     } catch (err) {
       dispatch(addToast({
         type: 'error',
-        message: err?.response?.data?.message || err?.message || 'Failed to remove prescription.',
+        message: err?.response?.data?.message || err?.message || 'Failed to remove attachment.',
       }));
     } finally {
       setRemovingId(null);
@@ -126,17 +126,17 @@ export default function PrescriptionUpload({ subjectId, canUpload, triggerStyle 
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
         onClick={() => setOpen(true)}
-        title="Prescriptions"
+        title="Attachments"
       >
         <span style={S.triggerIcon}><Paperclip size={13} /></span>
-        Prescriptions
+        Attachments
         <span style={count > 0 ? S.countBadge : S.countBadgeZero}>{count}</span>
       </button>
 
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title="Prescriptions"
+        title="Attachments"
         size="md"
         footer={
           <button type="button" style={S.closeBtn} onClick={() => setOpen(false)}>
@@ -146,7 +146,7 @@ export default function PrescriptionUpload({ subjectId, canUpload, triggerStyle 
       >
         <div style={S.modalHead}>
           <p style={S.modalSub}>
-            The subject&apos;s prescription files — images or PDF, up to {MAX_MB} MB each.
+            The subject&apos;s attachments — images or PDF, up to {MAX_MB} MB each.
           </p>
           {canUpload && (
             <button type="button" style={S.uploadBtn} onClick={handlePick} disabled={uploading}>
@@ -169,7 +169,7 @@ export default function PrescriptionUpload({ subjectId, canUpload, triggerStyle 
         ) : count === 0 ? (
           <div style={S.emptyBox}>
             <FileText size={26} strokeWidth={1.25} style={{ color: '#cbd5e1' }} />
-            <span style={S.emptyText}>No prescriptions uploaded yet.</span>
+            <span style={S.emptyText}>No attachments uploaded yet.</span>
             {canUpload && (
               <button type="button" style={S.uploadGhost} onClick={handlePick} disabled={uploading}>
                 <UploadCloud size={14} /> Upload the first one
@@ -201,8 +201,8 @@ export default function PrescriptionUpload({ subjectId, canUpload, triggerStyle 
                     style={S.removeBtn}
                     onClick={() => handleRemove(p)}
                     disabled={removingId === p.id}
-                    title="Remove prescription"
-                    aria-label="Remove prescription"
+                    title="Remove attachment"
+                    aria-label="Remove attachment"
                   >
                     {removingId === p.id ? <Loader2 size={14} style={S.spin} /> : <Trash2 size={14} />}
                   </button>

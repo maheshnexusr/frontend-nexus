@@ -56,6 +56,10 @@ const EMPTY = {
   assignAllSites: false,
   siteIds:        [],
   status:         'Active',
+  // Per-personnel subject cap (spec 16). '' = unlimited. Once the person has
+  // completed the CRF for this many subjects they are auto-locked out until a
+  // CRO Admin raises it.
+  maxSubjects:    '',
   compensation:   { ...EMPTY_COMP },
 };
 
@@ -71,7 +75,7 @@ const formatSiteLabel = (s) => {
 function ic(s, err) { return err ? `${s.input} ${s.inputError}` : s.input; }
 function asOpt(arr) { return arr.map((v) => ({ value: v, label: v })); }
 
-function validate(form, isEdit, consentRequired) {
+function validate(form, isEdit, consentApplicable) {
   const e = {};
   if (!form.fullName.trim())                                e.fullName = 'Full Name is required.';
   if (!isEdit) {
@@ -79,8 +83,9 @@ function validate(form, isEdit, consentRequired) {
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email    = 'Email Address must be valid.';
   }
   if (!form.role)                                           e.role     = 'Role is required.';
-  // When the selected role requires consent, a consent form must be assigned.
-  if (consentRequired && !form.consentTemplateId)          e.consentTemplateId = 'Please assign a consent form for this role.';
+  // A consent form is only required when the role needs consent AND a form exists
+  // for it; with no form available the assignment is skipped (not a blocker).
+  if (consentApplicable && !form.consentTemplateId)        e.consentTemplateId = 'Please assign a consent form for this role.';
   // Either "All Sites" is chosen OR at least one specific site is selected.
   if (!form.assignAllSites && (!Array.isArray(form.siteIds) || form.siteIds.length === 0)) {
     e.siteIds = 'Pick at least one site, or choose "All Sites".';
@@ -126,6 +131,12 @@ export default function PersonnelFormPage() {
   const consentFormChoices = consentForms.filter(
     (f) => !Array.isArray(f.assignedRoleIds) || f.assignedRoleIds.length === 0 || f.assignedRoleIds.includes(selectedRoleId),
   );
+  // Show + require the Consent Form Assignment ONLY when the role requires consent
+  // AND there is at least one published consent form available for that role.
+  // If the role has Consent Required on but no form exists for it yet, we don't
+  // block creation — the section is hidden and no form is required, so the user
+  // can still be created (consent_template_id stays null).
+  const consentApplicable = consentRequired && consentFormChoices.length > 0;
 
   // ── Load active sites + Site Roles master ─────────────────────────────────
   // Both use the auth-only lookup endpoints — populating these dropdowns must
@@ -223,7 +234,7 @@ export default function PersonnelFormPage() {
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    const errs = validate(form, isEdit, consentRequired);
+    const errs = validate(form, isEdit, consentApplicable);
     if (Object.keys(errs).length) { setErrors(errs); return; }
     setApiError('');
     setSaving(true);
@@ -236,7 +247,7 @@ export default function PersonnelFormPage() {
     const payload = {
       ...form,
       siteIds: resolvedSiteIds,
-      consentTemplateId: consentRequired ? form.consentTemplateId : '',
+      consentTemplateId: consentApplicable ? form.consentTemplateId : '',
     };
     try {
       if (isEdit) {
@@ -392,11 +403,39 @@ export default function PersonnelFormPage() {
             />
           )}
         </FormField>
+
+        {/* Subject limit (spec 16) — once the person completes the CRF for this
+            many subjects they're auto-locked out until a CRO Admin raises it.
+            Blank = unlimited. */}
+        <div style={{ marginTop: 16 }}>
+          <FormField
+            label="Max Subjects (CRF completion limit)"
+            name="maxSubjects"
+            helpText="Leave blank for unlimited. The person is auto-locked once they complete the CRF for this many subjects; raising it here unlocks them."
+          >
+            <input
+              id="maxSubjects"
+              type="number"
+              min={0}
+              className={styles.input}
+              value={form.maxSubjects ?? ''}
+              onChange={(e) => set('maxSubjects')(e.target.value)}
+              placeholder="Unlimited"
+            />
+            {isEdit && form.autoLocked && (
+              <p style={{ margin: '6px 0 0', fontSize: 12.5, color: '#b45309' }}>
+                This person is currently <strong>auto-locked</strong> (reached their subject limit). Increase the limit to unlock them.
+              </p>
+            )}
+          </FormField>
+        </div>
       </section>
 
       {/* ── Consent Form Assignment ──────────────────────────────────────────
-          Shown only when the selected role has "Consent Required" enabled. */}
-      {consentRequired && (
+          Shown only when the role has "Consent Required" enabled AND at least one
+          consent form exists for it. If no form is available, the section is
+          hidden and the person can still be created (no consent assignment). */}
+      {consentApplicable && (
         <section className={styles.card}>
           <h2 className={styles.cardHeading}>Consent Form Assignment (Required)</h2>
           <p className={styles.cardSub}>

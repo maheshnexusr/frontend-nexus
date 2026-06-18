@@ -27,8 +27,15 @@ function ConsentField({ field }) {
       return <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', margin: '14px 0 6px' }}>{field.label || ''}</h2>;
     case 'h3':
       return <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', margin: '12px 0 4px' }}>{field.label || ''}</h3>;
-    case 'paragraph':
-      return <p style={{ margin: '6px 0', whiteSpace: 'pre-wrap' }}>{field.content || field.label || ''}</p>;
+    case 'paragraph': {
+      // Render the rich-text HTML (Quill output) verbatim; legacy plain text
+      // (no tags) keeps its line breaks. Matches ConsentFormFill / SFBPreview.
+      const raw = field.content || field.label || '';
+      if (raw.trim() && /<[a-z][\s\S]*>/i.test(raw)) {
+        return <div style={{ margin: '6px 0' }} dangerouslySetInnerHTML={{ __html: raw }} />;
+      }
+      return <p style={{ margin: '6px 0', whiteSpace: 'pre-wrap' }}>{raw}</p>;
+    }
     case 'divider':
       return <hr style={{ border: 0, borderTop: '1px solid #e2e8f0', margin: '12px 0' }} />;
     case 'signature':
@@ -187,7 +194,7 @@ export default function ConsentGate({ children }) {
     const agreeButton = (
       <button style={agreeBtn} onClick={handleAgree} disabled={agreeing}>
         {agreeing ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> : <ShieldCheck size={15} />}
-        {agreeing ? 'Submitting…' : 'I Agree'}
+        {agreeing ? 'Submitting…' : 'Submit Service Agreement'}
       </button>
     );
 
@@ -242,7 +249,7 @@ export default function ConsentGate({ children }) {
               )}
               <p style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px', margin: '0 0 14px' }}>
                 <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
-                Please read the consent, complete all required fields, sign, and click “I Agree” before accessing the study workspace.
+                Please read the consent, complete all required fields, sign, and click “Submit Service Agreement” before accessing the study workspace.
               </p>
               {isForm ? (
                 // Whole form shown at once (no Previous/Next pager) — the "I Agree"

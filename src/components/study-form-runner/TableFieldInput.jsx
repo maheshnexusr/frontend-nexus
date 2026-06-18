@@ -40,17 +40,39 @@ export default function TableFieldInput({ field, value, onChange, allValues, loa
     () => (field.columns || []).map((c) => ({ ...c, fieldKey: colKey(c) })),
     [field.columns],
   );
-  const rows = Array.isArray(value) ? value : [];
+  // Normalise every row to carry a stable `_rowId`. The form-data save path
+  // deep-snake-cases the answer blob, so a persisted `_rowId` comes back as
+  // `_row_id` (and a response camel-pass would make it `RowId`) — i.e. lost. All
+  // mutations, the row-number index and the per-row clear/set edge tracking key
+  // on `_rowId`, so a missing one breaks editing reloaded data. Recover it from
+  // either casing, else mint a fresh one, so saved tables reload fully editable.
+  const rows = useMemo(() => {
+    if (!Array.isArray(value)) return [];
+    return value.map((r) => {
+      if (!r || typeof r !== 'object') return { _rowId: uid() };
+      if (r._rowId) return r;
+      const recovered = r._row_id ?? r.RowId ?? r.rowId;
+      return { ...r, _rowId: recovered || uid() };
+    });
+  }, [value]);
 
-  const rs = field.rowSettings || {};
-  const minRows = Number(rs.minRows) || 0;
-  const maxRows = rs.maxRows === '' || rs.maxRows == null ? Infinity : Number(rs.maxRows);
-  const allowAdd       = field.allowAddRow !== false;
-  const allowDelete    = field.allowDeleteRow !== false;
-  const allowDuplicate = field.allowDuplicateRow !== false;
-  const allowEdit      = field.allowEditRow !== false;     // false → existing cells are read-only
-  const showRowNumbers = field.rowNumbering !== false;
-  const compact        = field.density === 'compact';
+  // The capture runtime serves the form structure SNAKE_CASE (row_settings /
+  // min_rows / allow_add_row …) while the builder authors camelCase — so every
+  // table-config prop must be read in BOTH casings or it silently falls back to
+  // its default (e.g. Minimum Row = 1 was ignored → no row seeded). See
+  // [[form-structure-snake-camel-runtime]].
+  const fp = (camel, snake) => field[camel] ?? field[snake];
+  const rs = field.rowSettings ?? field.row_settings ?? {};
+  const rsp = (camel, snake) => rs[camel] ?? rs[snake];
+  const minRows = Number(rsp('minRows', 'min_rows')) || 0;
+  const maxRowsRaw = rsp('maxRows', 'max_rows');
+  const maxRows = maxRowsRaw === '' || maxRowsRaw == null ? Infinity : Number(maxRowsRaw);
+  const allowAdd       = fp('allowAddRow', 'allow_add_row') !== false;
+  const allowDelete    = fp('allowDeleteRow', 'allow_delete_row') !== false;
+  const allowDuplicate = fp('allowDuplicateRow', 'allow_duplicate_row') !== false;
+  const allowEdit      = fp('allowEditRow', 'allow_edit_row') !== false;  // false → existing cells read-only
+  const showRowNumbers = fp('rowNumbering', 'row_numbering') !== false;
+  const compact        = fp('density', 'density') === 'compact';
 
   /* ── Per-column effective state (static + col.condition via runtimeEngine) ──
      Memoised into a { colKey: {hidden,readOnly,required} } map so it's computed
@@ -121,7 +143,7 @@ export default function TableFieldInput({ field, value, onChange, allValues, loa
   });
   const commit = (list) => {
     let next = list;
-    if (rs.autoAddEmptyRow && next.length < maxRows) {
+    if (rsp('autoAddEmptyRow', 'auto_add_empty_row') && next.length < maxRows) {
       const last = next[next.length - 1];
       const lastFilled = last && columns.some((c) => !c.formula?.enabled && !isBlankCell(last[c.fieldKey]));
       if (!next.length || lastFilled) next = [...next, makeRow()];
@@ -137,7 +159,7 @@ export default function TableFieldInput({ field, value, onChange, allValues, loa
   const allRowsBlank = (list) => list.every((r) =>
     columns.every((c) => c.formula?.enabled || isBlankCell(r?.[c.fieldKey])));
   useEffect(() => {
-    const desired = Math.max(Number(rs.defaultRowCount) || 0, minRows);
+    const desired = Math.max(Number(rsp('defaultRowCount', 'default_row_count')) || 0, minRows);
     if (value == null) {
       if (desired > 0) onChange(recompute(Array.from({ length: desired }, makeRow)));
       return;
@@ -250,8 +272,9 @@ export default function TableFieldInput({ field, value, onChange, allValues, loa
     });
   }, [filtered, sort, columns]);
 
-  const pgEnabled = !!field.pagination?.enabled;
-  const pageSize  = Math.max(1, Number(field.pagination?.pageSize) || 25);
+  const pagination = field.pagination ?? {};
+  const pgEnabled = !!pagination.enabled;
+  const pageSize  = Math.max(1, Number(pagination.pageSize ?? pagination.page_size) || 25);
   const pageCount = pgEnabled ? Math.max(1, Math.ceil(sorted.length / pageSize)) : 1;
   const curPage   = Math.min(pageIdx, pageCount - 1);
   const pageRows  = pgEnabled ? sorted.slice(curPage * pageSize, curPage * pageSize + pageSize) : sorted;
