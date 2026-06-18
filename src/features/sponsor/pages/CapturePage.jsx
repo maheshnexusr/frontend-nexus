@@ -432,8 +432,8 @@ export default function CapturePage() {
         <table className={css.table}>
           <thead>
             <tr>
-              <th className={css.th}>Subject</th>
               <th className={css.th}>Site</th>
+              <th className={css.th}>Subject</th>
               <th className={css.th}>Responsible By</th>
               <th className={css.th}>Status</th>
               <th className={css.th}>Enrollment Date</th>
@@ -463,18 +463,23 @@ export default function CapturePage() {
               pageData.map((subject) => {
                 return (
                   <tr key={subject.id} className={css.row}>
+                    {/* Site — code (primary) over name (secondary). First column. */}
+                    <td className={css.td}>
+                      <span className={css.siteCode}>{subject.siteCode || '—'}</span>
+                      {subject.siteName && (
+                        <div className={css.siteName}>{subject.siteName}</div>
+                      )}
+                    </td>
+                    {/* Subject — Subject ID (primary) over initials (secondary). */}
                     <td className={css.td}>
                       <div className={css.subjectCell}>
                         <ClipboardList size={14} className={css.subjectIcon} />
-                        {/* Primary visible identifier is initials per study
-                            convention; the formatted subject_number (S001…)
-                            shows underneath when both exist. */}
                         <div>
                           <span className={css.subjectCode}>
-                            {subject.subjectInitials || subject.subjectCode || '—'}
+                            {subject.subjectCode || subject.subjectInitials || '—'}
                           </span>
                           {subject.subjectInitials && subject.subjectCode && (
-                            <div className={css.subjectSubLabel}>{subject.subjectCode}</div>
+                            <div className={css.subjectSubLabel}>{subject.subjectInitials}</div>
                           )}
                           {subject.eligibilityStatus && (
                             <div style={{ marginTop: 3 }}>
@@ -483,14 +488,6 @@ export default function CapturePage() {
                           )}
                         </div>
                       </div>
-                    </td>
-                    <td className={css.td}>
-                      {/* Site cell stacks code (primary) + name (secondary).
-                          Either may be missing depending on what was captured. */}
-                      <span className={css.siteCode}>{subject.siteCode || '—'}</span>
-                      {subject.siteName && (
-                        <div className={css.siteName}>{subject.siteName}</div>
-                      )}
                     </td>
                     {/* Responsible PI (subject owner). */}
                     <td className={css.td}>

@@ -73,6 +73,10 @@ export default function SiteLayout() {
   // changes without a re-login (the login snapshot can be stale). null until the
   // refresh resolves — falls back to the cached context permissions meanwhile.
   const [livePerms, setLivePerms] = useState(null);
+  // Live Step-3 study-config toggles, refreshed on entry alongside permissions so
+  // optional-module menus (e.g. Consent Review) reflect the study config without
+  // re-picking the study. null until the refresh resolves → cached config.
+  const [liveConfig, setLiveConfig] = useState(null);
 
   // Close mobile drawer at desktop width. Declared up here so the hook order is
   // stable — the early-return Navigates below MUST come after all hooks.
@@ -92,10 +96,16 @@ export default function SiteLayout() {
       .then((res) => {
         if (!alive) return;
         const fresh = res?.permissions;
+        const freshConfig = res?.config;
+        if (freshConfig && typeof freshConfig === 'object') setLiveConfig(freshConfig);
         if (fresh && typeof fresh === 'object') {
           setLivePerms(fresh);
           const ctx = getSiteStudyContext();
-          if (ctx) setSiteStudyContext({ ...ctx, permissions: fresh });
+          if (ctx) setSiteStudyContext({
+            ...ctx,
+            permissions: fresh,
+            config: (freshConfig && typeof freshConfig === 'object') ? freshConfig : ctx.config,
+          });
         }
       })
       .catch(() => { /* best-effort — keep cached permissions on failure */ });
@@ -115,9 +125,18 @@ export default function SiteLayout() {
     ?? getSiteStudies().find((st) => (st.studyId ?? st.study_id) === context?.studyId)?.organizationLogo
     ?? null;
   const scope   = deriveScope(context?.scope);
-  const cfg     = resolveStudyConfig(context?.config);
+  const cfg     = resolveStudyConfig(liveConfig ?? context?.config);
   const perms   = livePerms ?? context?.permissions ?? {};
   const allowed = (leafKey) => canViewLeaf(perms, leafKey);
+  // Show a menu when the role holds ANY of the listed actions on a leaf — not
+  // strictly `.view`. A Consent Approver granted only Approve/Reject (no explicit
+  // View) must still see the Consent Review menu (spec 13.iii). Mirrors
+  // canViewLeaf's fail-open for '*'/null permission trees.
+  const allowedAnyAction = (leafKey, ...actions) => {
+    if (!perms || typeof perms !== 'object') return true;
+    const leaf = perms[leafKey];
+    return !!(leaf && actions.some((a) => leaf[a]));
+  };
 
   /* ── Item 2 varies by study scope; gated by data_capture leaf only.
         The legacy `dataManager` toggle was removed (EDC studies always need
@@ -145,7 +164,7 @@ export default function SiteLayout() {
   const consentChildren = [
     allowed('consent_builder')    && { key: 'consent-builder',    label: 'Consent Builder',           path: '/site/consent/config' },
     allowed('consent_submission') && { key: 'consent-submission', label: 'Submit Consent',            path: '/site/consent/submit' },
-    cfg.consentApproval && allowed('consent_review') && { key: 'consent-review', label: 'Consent Review & Approval', path: '/site/consent/review' },
+    cfg.consentApproval && allowedAnyAction('consent_review', 'view', 'approve', 'reject') && { key: 'consent-review', label: 'Consent Review & Approval', path: '/site/consent/review' },
   ].filter(Boolean);
 
   const qualityChildren = [

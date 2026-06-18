@@ -37,6 +37,8 @@ function normalizePersonnel(raw) {
     consentStatus:       raw.consent_status        ?? raw.consentStatus     ?? 'Pending',
     consentRequired:     raw.consent_required      ?? raw.consentRequired   ?? true,
     consentTemplateId:   raw.consent_template_id   ?? raw.consentTemplateId ?? '',
+    maxSubjects:         raw.max_subjects          ?? raw.maxSubjects       ?? '',
+    autoLocked:          raw.auto_locked           ?? raw.autoLocked        ?? false,
     consentTemplateName: raw.consent_template_name ?? raw.consentTemplateName ?? '',
     invitationSent:      raw.invitation_sent       ?? raw.invitationSent    ?? false,
     invitationOpenedAt:  raw.invitation_opened_at  ?? raw.invitationOpenedAt ?? '',
@@ -186,6 +188,7 @@ export const sponsorPersonnelClient = {
       site_id:        siteIds[0],
       contact_number: data.contactNumber,
       status:         data.status ?? 'Active',
+      max_subjects:   data.maxSubjects === '' || data.maxSubjects == null ? null : Number(data.maxSubjects),
       compensation: data.compensation?.type !== 'None' ? {
         type:                  data.compensation.type,
         amount:                Number(data.compensation.amount),
@@ -211,6 +214,7 @@ export const sponsorPersonnelClient = {
       site_id:        siteIds[0],
       contact_number: data.contactNumber,
       status:         data.status,
+      max_subjects:   data.maxSubjects === '' || data.maxSubjects == null ? null : Number(data.maxSubjects),
       compensation: data.compensation?.type !== 'None' ? {
         type:                  data.compensation.type,
         amount:                Number(data.compensation.amount),

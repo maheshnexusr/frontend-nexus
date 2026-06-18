@@ -374,10 +374,12 @@ export function evaluateField(field, allValues) {
     }
   }
 
-  // Hidden-field data policy (spec: configurable clear vs retain). Default is
-  // RETAIN; a field clears its value when hidden only if it opted in via
-  // `clearOnHide` / `clear_on_hide` in the builder.
-  if (result.hidden && (field.clearOnHide ?? field.clear_on_hide)) result.clearValue = true;
+  // Hidden-field data policy — "Reset Dependent Fields On Parent Change".
+  // Default is now ENABLED: when a field is hidden (its dependency condition is
+  // no longer satisfied), its value is cleared so no stale/invalid data is
+  // retained or submitted. A form may opt a field OUT by setting clearOnHide /
+  // clear_on_hide explicitly to false (then the hidden value is retained).
+  if (result.hidden && (field.clearOnHide ?? field.clear_on_hide) !== false) result.clearValue = true;
 
   return result;
 }

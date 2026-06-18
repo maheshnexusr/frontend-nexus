@@ -11,11 +11,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { Plus, Search, X, RefreshCw, Pencil, Trash2, AlertTriangle, LayoutTemplate } from 'lucide-react';
+import { Plus, Search, X, RefreshCw, Pencil, Trash2, AlertTriangle, LayoutTemplate, Copy } from 'lucide-react';
 
 import { addToast }                  from '@/app/notificationSlice';
 import { sponsorConsentFormsClient } from '../api/sponsorConsentFormsClient';
 import { sponsorRolesClient }        from '../api/sponsorRolesClient';
+import SearchableDropdown            from '@/components/form/SearchableDropdown';
 import ConfirmDialog                 from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }           from '@/features/workspace/hooks/useReadOnlyView';
 import { usePermissions }            from '@/features/auth/usePermissions';
@@ -43,6 +44,8 @@ export default function ConsentFormsListPage() {
   const canCreate   = has('consent_builder', 'create');
   const canEdit     = has('consent_builder', 'edit');
   const canDelete   = has('consent_builder', 'delete');
+  // Spec: Create OR Edit permission may duplicate a consent.
+  const canDuplicate = canCreate || canEdit;
 
   const [forms,      setForms]      = useState([]);
   const [roleNames,  setRoleNames]  = useState({}); // roleId → roleName
@@ -51,6 +54,11 @@ export default function ConsentFormsListPage() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [search,       setSearch]       = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
+  // Duplicate (copy) consent flow.
+  const [dupTarget, setDupTarget] = useState(null);  // the source form being copied
+  const [dupTitle,  setDupTitle]  = useState('');
+  const [dupRoles,  setDupRoles]  = useState([]);
+  const [dupSaving, setDupSaving] = useState(false);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true); else setRefreshing(true);
@@ -95,6 +103,40 @@ export default function ConsentFormsListPage() {
       setDeleteTarget(null);
     }
   }
+
+  function openDuplicate(form) {
+    setDupTarget(form);
+    setDupTitle(`${form.title || 'Consent'} - Copy`);
+    setDupRoles(Array.isArray(form.assignedRoleIds) ? form.assignedRoleIds : []);
+  }
+
+  async function handleDuplicate() {
+    if (!dupTarget) return;
+    if (!dupTitle.trim()) {
+      dispatch(addToast({ type: 'error', message: 'A title for the copy is required.' }));
+      return;
+    }
+    if (!dupRoles.length) {
+      dispatch(addToast({ type: 'error', message: 'Select at least one role for the copy.' }));
+      return;
+    }
+    setDupSaving(true);
+    try {
+      const { templateId: newId } = await sponsorConsentFormsClient.duplicate(dupTarget.templateId, {
+        title: dupTitle.trim(),
+        assignedRoleIds: dupRoles,
+      });
+      dispatch(addToast({ type: 'success', message: 'Consent duplicated successfully.' }));
+      setDupTarget(null);
+      // Redirect to the builder for the newly created Draft consent (spec).
+      navigate(`${consentBase}/${newId}/design`);
+    } catch (e) {
+      dispatch(addToast({ type: 'error', message: e?.response?.data?.message ?? e?.message ?? 'Failed to duplicate consent form.' }));
+      setDupSaving(false);
+    }
+  }
+
+  const dupRoleOpts = Object.entries(roleNames).map(([id, name]) => ({ value: id, label: name }));
 
   return (
     <div className={css.page}>
@@ -239,6 +281,17 @@ export default function ConsentFormsListPage() {
                           <Pencil size={13} />
                         </button>
                       )}
+                      {canDuplicate && (
+                        <button
+                          className={css.actionBtn}
+                          title={ro.isReadOnly ? ro.readOnlyMessage : 'Duplicate'}
+                          disabled={ro.isReadOnly}
+                          aria-disabled={ro.isReadOnly}
+                          onClick={() => !ro.isReadOnly && openDuplicate(f)}
+                        >
+                          <Copy size={13} />
+                        </button>
+                      )}
                       {canDelete && (
                         <button
                           className={`${css.actionBtn} ${css.actionDelete}`}
@@ -258,6 +311,103 @@ export default function ConsentFormsListPage() {
           </tbody>
         </table>
       </div>
+
+      {dupTarget && (
+        <div
+          onClick={() => !dupSaving && setDupTarget(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000,
+            background: 'rgba(15,23,42,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(480px, 100%)', background: '#fff', borderRadius: 12,
+              boxShadow: '0 20px 50px rgba(0,0,0,0.25)', padding: 24,
+            }}
+          >
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>Duplicate Consent</h2>
+            <p style={{ margin: '6px 0 18px', fontSize: 13, color: '#64748b' }}>
+              Source: <strong style={{ color: '#334155' }}>{dupTarget.title || dupTarget.consentCode}</strong>
+            </p>
+
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+              New Consent Title <span style={{ color: '#dc2626' }}>*</span>
+            </label>
+            <input
+              autoFocus
+              value={dupTitle}
+              onChange={(e) => setDupTitle(e.target.value)}
+              placeholder="e.g. Main Study Informed Consent - Copy"
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '9px 12px', fontSize: 14,
+                border: '1px solid #cbd5e1', borderRadius: 8, marginBottom: 14, outline: 'none',
+              }}
+            />
+
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+              Consent Code
+            </label>
+            <input
+              value="Auto Generated"
+              disabled
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '9px 12px', fontSize: 14,
+                border: '1px solid #e2e8f0', borderRadius: 8, marginBottom: 14,
+                background: '#f8fafc', color: '#94a3b8',
+              }}
+            />
+
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 6 }}>
+              Assigned Roles <span style={{ color: '#dc2626' }}>*</span>
+            </label>
+            <div style={{ marginBottom: 18 }}>
+              <SearchableDropdown
+                multiple
+                options={dupRoleOpts}
+                value={dupRoles}
+                onChange={setDupRoles}
+                placeholder={dupRoleOpts.length === 0 ? 'No site roles' : 'Select roles…'}
+                searchPlaceholder="Search roles…"
+              />
+            </div>
+
+            <p style={{ margin: '0 0 18px', fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>
+              The full design — pages, fields, conditional logic, validation, signatures and settings —
+              is copied into a new <strong>Draft</strong> consent. Collected submissions, approvals and
+              history are not copied.
+            </p>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setDupTarget(null)}
+                disabled={dupSaving}
+                style={{
+                  padding: '9px 16px', fontSize: 14, fontWeight: 500, borderRadius: 8,
+                  border: '1px solid #cbd5e1', background: '#fff', color: '#334155', cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDuplicate}
+                disabled={dupSaving}
+                style={{
+                  padding: '9px 16px', fontSize: 14, fontWeight: 600, borderRadius: 8,
+                  border: 'none', background: '#2563eb', color: '#fff',
+                  cursor: dupSaving ? 'default' : 'pointer', opacity: dupSaving ? 0.7 : 1,
+                }}
+              >
+                {dupSaving ? 'Creating…' : 'Create Copy'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {deleteTarget && (
         <ConfirmDialog

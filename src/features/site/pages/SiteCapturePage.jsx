@@ -58,6 +58,8 @@ function normalize(raw) {
     visitsCompleted: raw.visits_completed  ?? raw.visitsCompleted ?? 0,
     lastEntryAt:     raw.last_activity_at  ?? raw.last_entry_at   ?? raw.lastEntryAt,
     siteId:          raw.site_id           ?? raw.siteId,
+    siteCode:        raw.site_code          ?? raw.site_number ?? raw.siteCode ?? '',
+    siteName:        raw.site_name          ?? raw.siteName ?? '',
     // Responsible PI (subject owner); falls back to created_by for legacy rows.
     ownerId:         raw.owner_id          ?? raw.ownerId   ?? raw.created_by ?? raw.createdBy ?? '',
     ownerName:       raw.owner_name        ?? raw.ownerName ?? raw.created_by_name ?? raw.createdByName ?? '',
@@ -165,7 +167,9 @@ export default function SiteCapturePage() {
         const matchQ = !q
           || String(s.subjectCode).toLowerCase().includes(q)
           || s.subjectName.toLowerCase().includes(q)
-          || s.subjectInitials.toLowerCase().includes(q);
+          || s.subjectInitials.toLowerCase().includes(q)
+          || String(s.siteCode).toLowerCase().includes(q)
+          || String(s.siteName).toLowerCase().includes(q);
         const matchStat = statusFilter === 'All' || s.status === statusFilter;
         return matchQ && matchStat;
       })
@@ -315,8 +319,8 @@ export default function SiteCapturePage() {
         <table className={css.table}>
           <thead>
             <tr>
-              <th className={css.th}>Subject ID</th>
-              <th className={css.th}>Initials</th>
+              <th className={css.th}>Site</th>
+              <th className={css.th}>Subject</th>
               <th className={css.th}>Responsible By</th>
               <th className={css.th}>Status</th>
               <th className={css.th}>Enrolled</th>
@@ -347,11 +351,24 @@ export default function SiteCapturePage() {
                 const meta = STATUS_META[subject.status] ?? STATUS_META.Pending;
                 return (
                   <tr key={subject.id} className={css.row}>
+                    {/* Site — code (primary) over name (secondary) */}
+                    <td className={css.td}>
+                      <div>
+                        <span className={css.subjectCode}>{subject.siteCode || '—'}</span>
+                        {subject.siteName && (
+                          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{subject.siteName}</div>
+                        )}
+                      </div>
+                    </td>
+                    {/* Subject — ID (primary) over initials (secondary) */}
                     <td className={css.td}>
                       <div className={css.subjectCell}>
                         <ClipboardList size={14} className={css.subjectIcon} />
                         <div>
                           <span className={css.subjectCode}>{subject.subjectCode}</span>
+                          {subject.subjectInitials && (
+                            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{subject.subjectInitials}</div>
+                          )}
                           {subject.eligibilityStatus && (
                             <div style={{ marginTop: 3 }}>
                               <EligibilityBadge status={subject.eligibilityStatus} reason={subject.eligibilityReason} />
@@ -360,7 +377,6 @@ export default function SiteCapturePage() {
                         </div>
                       </div>
                     </td>
-                    <td className={css.td}>{subject.subjectInitials || '—'}</td>
                     <td className={css.td}>
                       {subject.ownerName
                         ? <span className={css.subjectCode}>{subject.ownerName}</span>

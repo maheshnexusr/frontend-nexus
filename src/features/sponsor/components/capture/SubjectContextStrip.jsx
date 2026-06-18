@@ -92,14 +92,15 @@ export default function SubjectContextStrip({ studyId, subjectId }) {
     ?? '';
   const initials =
        subject?.subjectInitials ?? subject?.subject_initials
-    ?? '—';
+    ?? '';
 
-  // Each cell stacks a PRIMARY identifier over a SECONDARY descriptor:
-  //   Protocol Number → Study Title · Site Code → Site Name · Initials → Subject No.
+  // Each cell stacks a PRIMARY identifier (the CODE — emphasised) over a
+  // SECONDARY descriptor (the name/initials — de-emphasised):
+  //   Protocol Code → Study Title · Site Code → Site Name · Subject Code → Initials.
   const cells = [
-    { label: 'Protocol Number', primary: protocolNumber, secondary: studyTitle },
-    { label: 'Site',            primary: siteCode,        secondary: siteName },
-    { label: 'Subject',         primary: initials,        secondary: subjectNumber },
+    { label: 'Protocol', primary: protocolNumber,    secondary: studyTitle },
+    { label: 'Site',     primary: siteCode,          secondary: siteName },
+    { label: 'Subject',  primary: subjectNumber || '—', secondary: initials },
   ];
 
   return (
@@ -130,8 +131,12 @@ const CELL_FIRST = { ...CELL, paddingLeft: 0, borderLeft: 'none' };
 const CELL_LABEL = {
   fontSize: 10, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: '#94a3b8',
 };
+// PRIMARY identifier (Protocol/Site/Subject CODE): the strongest element in the
+// cell — bold + larger — but NORMAL text colour, not blue. The emphasis comes
+// from weight/size, not a highlight colour, so the code reads as the primary
+// identifier without the descriptive values looking more prominent.
 const CELL_PRIMARY = {
-  fontSize: 14, fontWeight: 700, color: '#1d4ed8', lineHeight: 1.25,
+  fontSize: 14, fontWeight: 700, color: '#0f172a', lineHeight: 1.25,
   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
 };
 const CELL_SECONDARY = {
