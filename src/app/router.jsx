@@ -101,6 +101,7 @@ const CookiePolicyPage    = lazy(() => import('@/features/public/pages/CookiePol
 const AuthLayout               = lazy(() => import('@/layouts/AuthLayout'));
 const SignInPage               = lazy(() => import('@/features/auth/pages/SignInPage'));
 const ForgotPasswordPage       = lazy(() => import('@/features/auth/pages/ForgotPasswordPage'));
+const ResetPasswordPage        = lazy(() => import('@/features/auth/pages/ResetPasswordPage'));
 const AccountActivationPage    = lazy(() => import('@/features/auth/pages/AccountActivationPage'));
 const SponsorActivationPage    = lazy(() => import('@/features/auth/pages/SponsorActivationPage'));
 const SignUpPage               = lazy(() => import('@/features/auth/pages/SignUpPage'));
@@ -293,6 +294,7 @@ export const router = createBrowserRouter([
           // { path: 'signup',            element: sp(SignUpPage) },  // self-service sign-up temporarily disabled
 
           { path: 'forgot-password',   element: sp(ForgotPasswordPage) },
+          { path: 'reset-password',    element: sp(ResetPasswordPage) },
           { path: 'activate',          element: sp(AccountActivationPage) },
           // Sponsor activation — the invite email links here. Static path
           // outranks the protected /sponsor/:studyId route in React Router.

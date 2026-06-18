@@ -614,13 +614,20 @@ export const chooseIdentityAsync = createAsyncThunk(
       });
       return await persistMintedSession(loginRes, 'choose-identity', rejectWithValue);
     } catch (err) {
-      // choice_token expired (401) or identity_id not in the token's
-      // identity claim (403) — both mean the user must restart sign-in.
-      const status = err?.status ?? err?.response?.status;
-      if (status === 401 || status === 403) {
+      const status    = err?.status ?? err?.response?.status;
+      const serverMsg = err?.response?.data?.message ?? err?.message;
+      // 401 = the 2-minute choice_token genuinely expired → restart sign-in.
+      if (status === 401) {
         return rejectWithValue('Your sign-in selection expired. Please sign in again.');
       }
-      return rejectWithValue(err.message ?? 'Failed to switch identity.');
+      // 403 = an ACCESS issue, not a timeout — most often the picked identity is
+      // now Inactive (role/site/personnel/CRO membership deactivated). Surface
+      // the server's specific message ("You don't have access… contact your
+      // administrator.") instead of the misleading "selection expired".
+      if (status === 403) {
+        return rejectWithValue(serverMsg || "You don't have access to this workspace. Please contact your administrator.");
+      }
+      return rejectWithValue(serverMsg ?? 'Failed to switch identity.');
     }
   },
 );

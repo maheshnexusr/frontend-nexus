@@ -67,6 +67,16 @@ export const sponsorConsentFormsClient = {
     return sponsorAxiosClient.patch(`${BASE}/${templateId}`, body);
   },
 
+  /** POST duplicate → { templateId, consentCode }. Copies the full design into a
+   *  new Draft consent; optional { title, assignedRoleIds } override. */
+  async duplicate(templateId, { title, assignedRoleIds } = {}) {
+    const body = {};
+    if (title          !== undefined) body.template_name     = title;
+    if (assignedRoleIds !== undefined) body.assigned_role_ids = assignedRoleIds;
+    const res = await sponsorAxiosClient.post(`${BASE}/${templateId}/duplicate`, body);
+    return { templateId: res?.templateId ?? res?.template_id ?? '', consentCode: res?.consentCode ?? res?.consent_code ?? '' };
+  },
+
   async remove(templateId) {
     return sponsorAxiosClient.delete(`${BASE}/${templateId}`);
   },

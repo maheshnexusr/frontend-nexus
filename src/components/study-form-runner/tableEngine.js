@@ -238,13 +238,25 @@ export function validateCell(col, value, row, allRows = []) {
  * Returns { errors: { [rowId]: { [colKey]: msg } }, hasErrors, count }.
  */
 export function validateTable(field, rows = []) {
-  const cols = (field?.columns || []).filter((c) => !c.hidden);
+  const allCols = field?.columns || [];
   const errors = {};
   let count = 0;
   rows.forEach((row) => {
     const rowId = row?._rowId || rows.indexOf(row);
-    cols.forEach((col) => {
-      const msg = validateCell(col, row?.[colKey(col)], row, rows);
+    allCols.forEach((col) => {
+      // Per-row effective state: a sibling-driven rule can hide / unrequire a
+      // cell in THIS row only. A cell that is hidden, or that a rule is actively
+      // CLEARING (e.g. Status = "On Going" → clear End Date), must NOT raise a
+      // validation error — the value was intentionally removed, so requiring it
+      // would be contradictory. This keeps the page/Submit gate in sync with the
+      // clear-on-selection behaviour. Static-hidden columns are skipped too.
+      if (col.hidden) return;
+      const eff = evaluateRowColumn(col, row, allCols);
+      if (eff.hidden) return;
+      if (rowColumnValueAction(col, row, allCols)?.action === 'clear') return;
+      // Apply the per-row required override (a rule may require/unrequire here).
+      const effCol = eff.required === !!col.required ? col : { ...col, required: eff.required };
+      const msg = validateCell(effCol, row?.[colKey(col)], row, rows);
       if (msg) {
         (errors[rowId] ??= {})[colKey(col)] = msg;
         count += 1;

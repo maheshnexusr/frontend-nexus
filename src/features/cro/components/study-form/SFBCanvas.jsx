@@ -381,8 +381,17 @@ function FieldPreviewRow({ fld }) {
       return <div className={s.previewH2} style={headingStyleToCss(fld)}>{fld.label || 'Section Title'}</div>;
     case 'h3':
       return <div className={s.previewH3} style={headingStyleToCss(fld)}>{fld.label || 'Sub-heading'}</div>;
-    case 'paragraph':
-      return <div className={s.previewParagraph}>{fld.content || fld.label || 'Paragraph text…'}</div>;
+    case 'paragraph': {
+      // Render the rich-text HTML (Quill output stored on fld.content) verbatim
+      // so the canvas shows the designed formatting; legacy plain text (no tags)
+      // falls back to text. Mirrors RichParagraph in the preview/runtime.
+      const para = fld.content || fld.label || '';
+      if (!para.trim()) return <div className={s.previewParagraph}>Paragraph text…</div>;
+      if (/<[a-z][\s\S]*>/i.test(para)) {
+        return <div className={s.previewParagraph} dangerouslySetInnerHTML={{ __html: para }} />;
+      }
+      return <div className={s.previewParagraph}>{para}</div>;
+    }
     case 'divider':
       return <hr className={s.previewDivider} />;
     case 'formula':
