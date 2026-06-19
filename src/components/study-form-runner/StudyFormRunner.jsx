@@ -823,18 +823,38 @@ function StudyFormRunnerInner({
       for (const pg of blk.pages || []) {
         for (const f of pg.fields || []) {
           if (f.type !== 'checkboxgroup' || !enableOptionAutoSelectOf(f)) continue;
+          // A conditionally HIDDEN checkbox group can't hold a value — the
+          // clear-on-hide effect wipes it — so treat its rule as NOT met while
+          // hidden. Revealing the group (hidden→visible) while the condition
+          // still holds then registers as an unmet→met edge and applies the
+          // auto-selection. Fixes "click Yes → boxes open but stay empty" when
+          // the checkbox group is gated behind conditional visibility.
+          const fieldHidden = evaluateField(f, values).hidden;
           for (const o of f.options || []) {
             const rule = optAutoRule(o);
             if (!autoRuleEnabled(rule)) continue;
             const key = `${f.id}::${o.value}`;
-            const met = autoRuleMet(rule, values);
+            const met = autoRuleMet(rule, values) && !fieldHidden;
             nextMet[key] = met;
-            // Act only on a transition, and only once initialised (the seed pass
-            // never applies, so loading data can't re-trigger).
-            if (!state.initialized || met === prevMet[key]) continue;
             const action = autoRuleAction(rule);
             const cur = selectedOptionValues(patch[f.id] ?? values[f.id]);
             const has = cur.includes(o.value);
+            // SEED pass (first run after a data load): never act on a transition
+            // (so reloading data can't re-trigger live actions/setField), BUT for a
+            // select/toggle rule whose condition is ALREADY met, ENSURE the option
+            // is checked. This is purely additive (it never unchecks on load), and
+            // restores the auto-selected state after Save / reopen even if the
+            // stored value was dropped — i.e. "auto-selected values are visible
+            // after form reload". A user's deselection while the condition holds is
+            // re-applied on reload by design (the condition still demands it).
+            if (!state.initialized) {
+              if (met && !has && (action === 'select' || action === 'toggle')) {
+                patch[f.id] = [...cur, o.value];
+              }
+              continue;
+            }
+            // Live runtime: act only on an unmet↔met transition.
+            if (met === prevMet[key]) continue;
             // toggle = follow the condition both ways; select/deselect act only
             // on the unmet→met edge (leaving the user free to override after).
             if (action === 'toggle') {

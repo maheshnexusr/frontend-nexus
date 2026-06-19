@@ -21,6 +21,7 @@ import { selectCurrentUser } from '@/features/auth/authSlice';
 import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import { evaluateField } from '@/features/cro/components/study-form/runtime/runtimeEngine';
 import { evaluateFormula, grandTotal, toNum, colKey, evaluateRowColumn, rowColumnValueAction } from './tableEngine';
+import ConfirmDialog from '@/components/feedback/ConfirmDialog';
 import s from './TableFieldInput.module.css';
 
 const uid = () => `row_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -109,6 +110,7 @@ export default function TableFieldInput({ field, value, onChange, allValues, loa
   const [widths, setWidths] = useState({});           // { colKey: px }
   const [order, setOrder]   = useState(null);          // [colKey,…] reorder override
   const [dragKey, setDragKey] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);  // row pending delete-confirm
 
   // Ordered, visible columns (reorder override applied).
   const orderedColumns = useMemo(() => {
@@ -348,7 +350,11 @@ export default function TableFieldInput({ field, value, onChange, allValues, loa
                     </span>
                   </th>
                 ))}
-                {(allowDelete || allowDuplicate) && <th className={`${s.th} ${s.thActions}`} />}
+                {(allowDelete || allowDuplicate) && (
+                  <th className={`${s.th} ${s.thActions}`}>
+                    <span className={s.thActionsLabel}>Actions</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -388,16 +394,18 @@ export default function TableFieldInput({ field, value, onChange, allValues, loa
                     })}
                     {(allowDelete || allowDuplicate) && (
                       <td className={`${s.td} ${s.tdActions}`}>
-                        {allowDuplicate && (
-                          <button type="button" className={s.rowBtn} title="Duplicate row" onClick={() => duplicateRow(row._rowId)} disabled={rows.length >= maxRows}>
-                            <Copy size={13} />
-                          </button>
-                        )}
-                        {allowDelete && (
-                          <button type="button" className={`${s.rowBtn} ${s.rowBtnDanger}`} title="Delete row" onClick={() => deleteRow(row._rowId)} disabled={rows.length <= minRows}>
-                            <Trash2 size={13} />
-                          </button>
-                        )}
+                        <div className={s.rowActions}>
+                          {allowDuplicate && (
+                            <button type="button" className={s.rowBtn} title="Duplicate row" aria-label="Duplicate row" onClick={() => duplicateRow(row._rowId)} disabled={rows.length >= maxRows}>
+                              <Copy size={16} />
+                            </button>
+                          )}
+                          {allowDelete && (
+                            <button type="button" className={`${s.rowBtn} ${s.rowBtnDanger}`} title="Delete row" aria-label="Delete row" onClick={() => setConfirmDeleteId(row._rowId)} disabled={rows.length <= minRows}>
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -428,6 +436,18 @@ export default function TableFieldInput({ field, value, onChange, allValues, loa
           <button type="button" className={s.pageBtn} disabled={curPage >= pageCount - 1} onClick={() => setPageIdx(curPage + 1)}><ChevronRight size={14} /></button>
         </div>
       )}
+
+      {/* Delete-row confirmation — never drop a row silently. */}
+      <ConfirmDialog
+        open={confirmDeleteId != null}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={() => deleteRow(confirmDeleteId)}
+        title="Delete row?"
+        message="This row and its data will be removed. This action cannot be undone."
+        confirmLabel="Delete row"
+        cancelLabel="Cancel"
+        variant="danger"
+      />
     </div>
   );
 }

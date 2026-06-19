@@ -139,6 +139,14 @@ export default function SiteCapturePage() {
   const [query,        setQuery]        = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [refreshing,   setRefreshing]   = useState(false);
+  // The current person's per-person subject cap + usage (null = unlimited).
+  // Drives the "Create Subject" disabled state + limit-reached banner.
+  const [allowance,    setAllowance]    = useState(null);
+  // Per-person subject cap. The block triggers when the subjects list has
+  // reached the cap (NULL/0 max = unlimited). Driven by the visible list length
+  // so it reflects what's on screen.
+  const subjectCap   = Number(allowance?.max) > 0 ? Number(allowance.max) : null;
+  const limitReached = subjectCap != null && subjects.length >= subjectCap;
 
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 25;
@@ -150,6 +158,7 @@ export default function SiteCapturePage() {
       const res = await siteWorkspaceClient.listSubjects();
       const arr = Array.isArray(res) ? res : (res?.items ?? res?.subjects ?? res?.data ?? []);
       setSubjects(arr.map(normalize));
+      setAllowance(res?.subjectAllowance ?? null);
     } catch {
       if (!silent) dispatch(addToast({ type: 'error', message: 'Failed to load subjects.' }));
     } finally {
@@ -261,7 +270,10 @@ export default function SiteCapturePage() {
             <button
               className={pageCss.btnCreate}
               onClick={openCreate}
-              title="Enroll a new subject at your site"
+              disabled={limitReached}
+              title={limitReached
+                ? `You've reached your assigned limit of ${subjectCap} subject(s). Contact your CRO administrator to raise it.`
+                : 'Enroll a new subject at your site'}
             >
               <Plus size={14} /> Create Subject
             </button>
@@ -276,6 +288,24 @@ export default function SiteCapturePage() {
           </button>
         </div>
       </div>
+
+      {canCreateSubject && limitReached && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8,
+            padding: '10px 12px', fontSize: 13, color: '#991b1b',
+            margin: '4px 0 12px', lineHeight: 1.5,
+          }}
+        >
+          <AlertCircle size={15} style={{ flexShrink: 0 }} />
+          <span>
+            You've reached your assigned limit of <strong>{subjectCap}</strong> subject(s)
+            ({subjects.length} enrolled). Contact your CRO administrator to raise it before enrolling more.
+          </span>
+        </div>
+      )}
 
       {subjects.length > 0 && (
         <div className={css.kpiRow}>
