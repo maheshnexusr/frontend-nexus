@@ -128,7 +128,11 @@ export default function SiteDashboardPage() {
                       </span>
                       <span className={styles.studyMeta}>
                         {s.protocolNumber} · {s.environment} · {s.roleName || 'Site personnel'}
-                        {s.siteName ? ` · ${s.siteName}` : ''}
+                        {/* All-sites person → no site label (it's everything);
+                            a specific subset → list the assigned site names. */}
+                        {!s.allSites && (s.siteNames?.length || s.siteName)
+                          ? ` · ${(s.siteNames?.length ? s.siteNames : [s.siteName]).join(', ')}`
+                          : ''}
                       </span>
                       {!s.isPublished && (
                         <span className={styles.studyMeta}>Not published yet</span>

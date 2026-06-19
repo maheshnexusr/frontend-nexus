@@ -409,9 +409,9 @@ export default function PersonnelFormPage() {
             Blank = unlimited. */}
         <div style={{ marginTop: 16 }}>
           <FormField
-            label="Max Subjects (CRF completion limit)"
+            label="Max Subjects"
             name="maxSubjects"
-            helpText="Leave blank for unlimited. The person is auto-locked once they complete the CRF for this many subjects; raising it here unlocks them."
+            helpText="Leave blank for unlimited. The person cannot enrol more than this many subjects, and is auto-locked once they complete the CRF for all of them; raising it here unlocks them."
           >
             <input
               id="maxSubjects"
