@@ -43,7 +43,7 @@
 
 /* ── Scroller + table ────────────────────────────────────────────────────── */
 .scroller { max-height: 460px; overflow: auto; }
-.table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+.table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12px; }
 
 .th {
   position: sticky; top: 0; z-index: 2;
@@ -67,7 +67,8 @@
 .resizeHandle { position: absolute; right: 0; top: 0; height: 100%; width: 6px; cursor: col-resize; }
 .resizeHandle:hover { background: #bfdbfe; }
 .thNum { width: 40px; text-align: center; }
-.thActions { width: 72px; }
+.thActions { width: 96px; text-align: center; }
+.thActionsLabel { display: block; padding: 7px 8px; }
 
 .td {
   border-bottom: 1px solid #f1f5f9;
@@ -89,8 +90,8 @@ tbody tr:hover .td { background: #f8fafc; }
    and padding that matches the platform's standard form controls. */
 .cellInput, .cellTextarea {
   width: 100%; box-sizing: border-box;
-  min-height: 34px;
-  padding: 7px 10px; font-size: 13px;
+  min-height: 30px;
+  padding: 5px 8px; font-size: 12px;
   border: 1px solid #cbd5e1; border-radius: 6px;
   background: #fff; outline: none; color: #0f172a;
 }
@@ -105,7 +106,7 @@ tbody tr:hover .td { background: #f8fafc; }
 .cellFormula { display: inline-block; padding: 4px 6px; font-weight: 600; color: #0f766e; font-variant-numeric: tabular-nums; }
 
 .cellChoices { display: inline-flex; flex-wrap: wrap; gap: 8px; }
-.cellRadio { display: inline-flex; align-items: center; gap: 3px; font-size: 12.5px; }
+.cellRadio { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; }
 .cellCheckbox { width: 16px; height: 16px; }
 .cellStars { display: inline-flex; gap: 1px; }
 .starIcon { flex-shrink: 0; }
@@ -121,17 +122,20 @@ tbody tr:hover .td { background: #f8fafc; }
 .fileX { background: none; border: 0; cursor: pointer; color: #64748b; display: inline-flex; padding: 0; }
 
 /* ── Row action buttons ──────────────────────────────────────────────────── */
+.rowActions { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .rowBtn {
-  background: none; border: 0; cursor: pointer; color: #94a3b8;
-  padding: 4px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: 0; cursor: pointer; color: #64748b;
+  width: 28px; height: 28px; padding: 0; border-radius: 6px;
 }
-.rowBtn:hover { background: #f1f5f9; color: #475569; }
+.rowBtn:hover { background: #f1f5f9; color: #334155; }
+.rowBtnDanger { color: #ef4444; }
 .rowBtnDanger:hover { background: #fee2e2; color: #dc2626; }
 .rowBtn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── Density ─────────────────────────────────────────────────────────────── */
 .compact .td { padding: 2px 4px; }
-.compact .cellInput, .compact .cellTextarea { min-height: 28px; padding: 4px 7px; font-size: 12.5px; }
+.compact .cellInput, .compact .cellTextarea { min-height: 26px; padding: 3px 6px; font-size: 11.5px; }
 .compact .thInner { padding: 4px 8px; }
 
 /* ── Empty + loading ─────────────────────────────────────────────────────── */

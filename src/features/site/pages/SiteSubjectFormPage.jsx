@@ -90,10 +90,13 @@ export default function SiteSubjectFormPage() {
   // from the loaded record.
   const [form,     setForm]     = useState(() =>
     isEdit ? EMPTY : { ...EMPTY, enrollmentDate: todayIso() });
-  const [errors,   setErrors]   = useState({});
-  const [loading,  setLoading]  = useState(isEdit);
-  const [saving,   setSaving]   = useState(false);
-  const [apiError, setApiError] = useState('');
+  const [errors,    setErrors]    = useState({});
+  const [loading,   setLoading]   = useState(isEdit);
+  const [saving,    setSaving]    = useState(false);
+  const [apiError,  setApiError]  = useState('');
+  // Per-person subject cap (create mode only): block enrolling once reached.
+  const [allowance, setAllowance] = useState(null);
+  const limitReached = !isEdit && !!allowance?.limitReached;
 
   // Load existing subject in edit mode.
   useEffect(() => {
@@ -111,8 +114,20 @@ export default function SiteSubjectFormPage() {
     return () => { cancelled = true; };
   }, [isEdit, subjectId, dispatch]);
 
+  // Create mode: fetch the current person's subject allowance so we can block
+  // enrolment before the user fills the form (the backend also rejects with 409).
+  useEffect(() => {
+    if (isEdit) return;
+    let cancelled = false;
+    siteWorkspaceClient.listSubjects()
+      .then((res) => { if (!cancelled) setAllowance(res?.subjectAllowance ?? null); })
+      .catch(() => { /* non-fatal — backend still enforces the cap on submit */ });
+    return () => { cancelled = true; };
+  }, [isEdit]);
+
   const handleSubmit = useCallback(async (e) => {
     e?.preventDefault?.();
+    if (limitReached) return;          // cap reached — enrolment is blocked
     const next = validate(form);
     setErrors(next);
     if (Object.keys(next).length > 0) return;
@@ -138,7 +153,7 @@ export default function SiteSubjectFormPage() {
     } finally {
       setSaving(false);
     }
-  }, [form, isEdit, subjectId, dispatch, navigate]);
+  }, [form, isEdit, subjectId, dispatch, navigate, limitReached]);
 
   if (loading) {
     return (
@@ -165,6 +180,20 @@ export default function SiteSubjectFormPage() {
       </div>
 
       {apiError && <div className={styles.apiError}>{apiError}</div>}
+
+      {limitReached && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8,
+            padding: '10px 12px', fontSize: 13, color: '#991b1b', lineHeight: 1.5,
+          }}
+        >
+          You've reached your assigned limit of <strong>{allowance.max}</strong> subject(s)
+          ({allowance.owned} enrolled). Contact your CRO administrator to raise it before enrolling more.
+        </div>
+      )}
 
       <div className={styles.card}>
         <div className={styles.row2}>
@@ -246,7 +275,14 @@ export default function SiteSubjectFormPage() {
         >
           Cancel
         </button>
-        <button type="submit" className={styles.btnSave} disabled={saving}>
+        <button
+          type="submit"
+          className={styles.btnSave}
+          disabled={saving || limitReached}
+          title={limitReached
+            ? `You've reached your assigned limit of ${allowance.max} subject(s).`
+            : undefined}
+        >
           {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Subject'}
         </button>
       </div>
