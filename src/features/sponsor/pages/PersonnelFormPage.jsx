@@ -21,6 +21,8 @@ import { sponsorPersonnelClient } from '@/features/sponsor/api/sponsorPersonnelC
 import { sponsorSitesClient }     from '@/features/sponsor/api/sponsorSitesClient';
 import { sponsorRolesClient }     from '@/features/sponsor/api/sponsorRolesClient';
 import { addToast }               from '@/app/notificationSlice';
+import { useAppSelector }         from '@/app/hooks';
+import { selectActiveStudy }      from '@/features/workspace/store/workspaceSlice';
 
 import styles from './PersonnelFormPage.module.css';
 
@@ -107,6 +109,10 @@ export default function PersonnelFormPage() {
   const location                 = useLocation();
   const readOnly                 = location.pathname.endsWith('/view');
   const isEdit                   = !!personnelId && !readOnly;
+  // Survey studies have no subject enrolment, so the per-person Max Subjects cap
+  // is meaningless and is hidden (the person stays unlimited).
+  const activeStudy              = useAppSelector(selectActiveStudy);
+  const isSurvey                 = (activeStudy?.scope ?? '').toUpperCase() === 'SURVEY';
 
   const [form,       setForm]       = useState(EMPTY);
   const [errors,     setErrors]     = useState({});
@@ -406,7 +412,8 @@ export default function PersonnelFormPage() {
 
         {/* Subject limit (spec 16) — once the person completes the CRF for this
             many subjects they're auto-locked out until a CRO Admin raises it.
-            Blank = unlimited. */}
+            Blank = unlimited. Hidden for Survey studies (no subject enrolment). */}
+        {!isSurvey && (
         <div style={{ marginTop: 16 }}>
           <FormField
             label="Max Subjects"
@@ -429,6 +436,7 @@ export default function PersonnelFormPage() {
             )}
           </FormField>
         </div>
+        )}
       </section>
 
       {/* ── Consent Form Assignment ──────────────────────────────────────────

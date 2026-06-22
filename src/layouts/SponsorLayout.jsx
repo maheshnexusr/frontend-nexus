@@ -6,8 +6,10 @@
  *
  *   study.scope   ∈ { 'EDC' | 'ePRO' | 'Survey' }
  *     EDC    → item 2 = "Data Capture"           (+ Site Management enabled)
- *     ePRO   → item 2 = "My Diary"               (Site Management hidden)
- *     Survey → item 2 = "Take Survey"            (Site Management hidden)
+ *     ePRO   → item 2 = "Data Capture"           (Site Management hidden)
+ *     Survey → item 2 = "Survey Responses"       (+ Site Management enabled)
+ *   Sponsor/CRO always see "Data Capture" — they REVIEW captured data. The
+ *   participant-facing "Take Survey" / "My Diary" labels are site-only (SiteLayout).
  *
  *   study.config  — Step-3 module toggles from the study wizard
  *     consentManager      (legacy: consentEnabled)     → Consent Management section
@@ -28,7 +30,6 @@ import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import {
   LayoutDashboard,
   Database,
-  Notebook,
   ClipboardList,
   ClipboardCheck,
   FileCheck,
@@ -112,12 +113,16 @@ export default function SponsorLayout() {
         The legacy `dataManager` step-3 toggle was removed in studyConfigGating
         (EDC studies always need data capture), so `cfg.dataManager` is now
         always undefined and would otherwise short-circuit this to null. ─── */
+  // Sponsor/CRO REVIEW captured data — for a Survey study they review all PIs'
+  // submitted responses ("Survey Responses"); otherwise it's "Data Capture".
+  // The participant-facing "Survey Submission" label is site-only (SiteLayout).
   const captureItem = allowed('data_capture')
-    ? (scope === 'EPRO'
-        ? { key: 'diary',   label: 'My Diary',    icon: Notebook,      path: `${base}/capture` }
-        : scope === 'SURVEY'
-        ? { key: 'survey',  label: 'Take Survey', icon: ClipboardList, path: `${base}/capture` }
-        : { key: 'capture', label: 'Data Capture', icon: Database,     path: `${base}/capture` })
+    ? {
+        key:   'capture',
+        label: scope === 'SURVEY' ? 'Survey Responses' : 'Data Capture',
+        icon:  scope === 'SURVEY' ? ClipboardList : Database,
+        path:  `${base}/capture`,
+      }
     : null;
 
   /* ── Screening Report — Inclusion/Exclusion overview. HIDDEN from the nav
@@ -184,8 +189,8 @@ export default function SponsorLayout() {
       children: qualityChildren,
     },
 
-    /* 5 — Site Management (EDC scope, gated by per-leaf perms) */
-    scope === 'EDC' && siteMgmtChildren.length > 0 && {
+    /* 5 — Site Management (site-based scopes: EDC + Survey; gated by per-leaf perms) */
+    (scope === 'EDC' || scope === 'SURVEY') && siteMgmtChildren.length > 0 && {
       key:   'sites',
       label: 'Site Management',
       icon:  MapPin,

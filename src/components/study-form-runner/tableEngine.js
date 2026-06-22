@@ -23,6 +23,65 @@ export const toNum = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+/* ── Rating-matrix helpers ───────────────────────────────────────────────────
+ * The Table field has two modes (field.matrixMode): 'standard' (the repeating
+ * spreadsheet) and 'rating' (a fixed survey/Likert grid). In rating mode the
+ * designer defines ROWS (items to rate) and OPTIONS (the scale), and each row
+ * allows exactly one selection. The stored value is an OBJECT keyed by row key:
+ *   { [rowKey]: optionValue }   e.g. { headache: 'mild', fatigue: 'moderate' }
+ * Config props arrive camelCase from the builder but snake_case from the capture
+ * runtime (deep-snake save path), so read BOTH casings — see
+ * [[form-structure-snake-camel-runtime]]. */
+const mProp = (field, camel, snake) => (field ? (field[camel] ?? field[snake]) : undefined);
+
+export const MATRIX_NA_VALUE = '__na__';
+
+export const isRatingMatrix = (field) =>
+  (mProp(field, 'matrixMode', 'matrix_mode') || 'standard') === 'rating';
+
+// Each row needs a stable key for storage. Prefer the authored key, else a
+// label-derived/index fallback so an un-keyed row still round-trips.
+export const matrixRowKey = (row, idx) =>
+  (row && (row.key || row.fieldKey || row.field_key)) || `row_${idx + 1}`;
+
+export const matrixRows = (field) => {
+  const rows = mProp(field, 'matrixRows', 'matrix_rows');
+  return Array.isArray(rows) ? rows : [];
+};
+export const matrixOptions = (field) => {
+  const opts = mProp(field, 'matrixOptions', 'matrix_options');
+  return Array.isArray(opts) ? opts : [];
+};
+export const matrixAllowNA   = (field) => mProp(field, 'matrixAllowNA', 'matrix_allow_na') === true;
+export const matrixNALabel   = (field) => mProp(field, 'matrixNALabel', 'matrix_na_label') || 'N/A';
+export const matrixRequireAll = (field) => mProp(field, 'matrixRequireAll', 'matrix_require_all') === true;
+
+// Normalise a stored rating-matrix value to a plain object map.
+export const matrixValueMap = (value) =>
+  (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
+
+/**
+ * Validate a rating matrix. When "Require Response For All Rows" is on, every
+ * defined row must carry a selection. Returns the same shape as validateTable
+ * ({ errors, hasErrors, count }) but errors are keyed by ROW key.
+ */
+export function validateRatingMatrix(field, value) {
+  const errors = {};
+  let count = 0;
+  if (matrixRequireAll(field)) {
+    const map = matrixValueMap(value);
+    matrixRows(field).forEach((row, idx) => {
+      const key = matrixRowKey(row, idx);
+      const sel = map[key];
+      if (sel === undefined || sel === null || sel === '') {
+        errors[key] = 'Please provide a response.';
+        count += 1;
+      }
+    });
+  }
+  return { errors, hasErrors: count > 0, count };
+}
+
 const isBlank = (v) =>
   v === '' || v == null || (Array.isArray(v) && v.length === 0);
 
@@ -238,6 +297,8 @@ export function validateCell(col, value, row, allRows = []) {
  * Returns { errors: { [rowId]: { [colKey]: msg } }, hasErrors, count }.
  */
 export function validateTable(field, rows = []) {
+  // Rating-matrix tables validate per-row (object value), not per-cell.
+  if (isRatingMatrix(field)) return validateRatingMatrix(field, rows);
   const allCols = field?.columns || [];
   const errors = {};
   let count = 0;

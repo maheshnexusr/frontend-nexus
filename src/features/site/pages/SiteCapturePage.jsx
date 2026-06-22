@@ -10,7 +10,7 @@
  * form-fill page is built in a follow-up slice.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
@@ -19,6 +19,7 @@ import {
   Clock, CheckCircle2, PauseCircle, XCircle,
 } from 'lucide-react';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
+import { getSiteStudyContext } from '@/features/site/authStore';
 import { addToast } from '@/app/notificationSlice';
 import { formatDateTime } from '@/utils/formatDate';
 import { usePermissions } from '@/features/auth/usePermissions';
@@ -131,6 +132,12 @@ export default function SiteCapturePage() {
   // PI + reassigns the subject's open queries — a write on the subject).
   const canTransferOwnership = canEditSubject;
 
+  // Survey-scope study → "give the survey on behalf of a respondent" flow
+  // (no manual subject enrolment, own-records-only list). True when the study's
+  // scope includes Survey (a study may also be EDC, but Survey drives this view).
+  const surveyMode = getSiteStudyContext()?.scope?.survey === true;
+
+  const [startingSurvey, setStartingSurvey] = useState(false);
   const [transferSubject, setTransferSubject] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deletingId,   setDeletingId]   = useState(null);
@@ -208,6 +215,40 @@ export default function SiteCapturePage() {
   const openCreate = () => navigate('/site/capture/subjects/new');
   const openEdit   = (subject) => navigate(`/site/capture/subjects/${subject.id}/edit`);
 
+  // Survey-scope studies have no manual enrolment: the site person fills the
+  // survey ON BEHALF of a respondent, and each completed survey is one record
+  // they own. "Start Survey" auto-creates the record (auto-numbered, no subject
+  // form) and drops the user straight into data capture for it. The records
+  // table is owner-scoped server-side, so each person sees only their own.
+  const startSurvey = useCallback(async () => {
+    if (startingSurvey) return;
+    setStartingSurvey(true);
+    try {
+      const res = await siteWorkspaceClient.createSubject({});
+      const newId = res?.subjectId ?? res?.subject_id ?? res?.id;
+      if (!newId) throw new Error('Could not start the survey.');
+      navigate(`/site/capture/form?subjectId=${encodeURIComponent(newId)}`);
+    } catch (err) {
+      dispatch(addToast({
+        type: 'error',
+        message: err?.response?.data?.message || err?.message || 'Failed to start the survey.',
+      }));
+      setStartingSurvey(false);
+    }
+  }, [startingSurvey, navigate, dispatch]);
+
+  // "Survey Submission" should show the FORM directly. When the person has no
+  // response yet, auto-open a fresh survey form (Start Survey) on landing; once
+  // they have one, this page shows their submission(s) in the table instead.
+  // Runs once per mount (ref guard) and only after the list has loaded.
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!surveyMode || loading || !canCreateSubject) return;
+    if (subjects.length > 0 || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    startSurvey();
+  }, [surveyMode, loading, canCreateSubject, subjects.length, startSurvey]);
+
   const confirmDelete = useCallback(async () => {
     const subject = deleteTarget;
     if (!subject) return;
@@ -262,11 +303,17 @@ export default function SiteCapturePage() {
     <div className={css.page}>
       <div className={css.header}>
         <div>
-          <h1 className={css.title}>Data Capture</h1>
-          <p className={css.sub}>Browse subjects enrolled at your site and enter or review visit CRF data.</p>
+          <h1 className={css.title}>{surveyMode ? 'Survey Submission' : 'Data Capture'}</h1>
+          <p className={css.sub}>
+            {surveyMode
+              ? 'Complete the survey questionnaire and review the responses you have submitted.'
+              : 'Browse subjects enrolled at your site and enter or review visit CRF data.'}
+          </p>
         </div>
         <div className={pageCss.headerActions}>
-          {canCreateSubject && (
+          {/* Survey: no manual create button — the menu opens the form directly
+              (auto-started on landing), and only one response is allowed. */}
+          {!surveyMode && canCreateSubject && (
             <button
               className={pageCss.btnCreate}
               onClick={openCreate}
@@ -311,7 +358,7 @@ export default function SiteCapturePage() {
         <div className={css.kpiRow}>
           <div className={css.kpi}>
             <span className={css.kpiVal}>{subjects.length}</span>
-            <span className={css.kpiLabel}>Total Subjects</span>
+            <span className={css.kpiLabel}>{surveyMode ? 'My Responses' : 'Total Subjects'}</span>
           </div>
           {Object.entries(STATUS_META).map(([status, meta]) => {
             const n = counts[status] ?? 0;
@@ -332,7 +379,7 @@ export default function SiteCapturePage() {
             <Search size={14} className={css.searchIcon} />
             <input
               className={css.searchInput}
-              placeholder="Search by subject ID…"
+              placeholder={surveyMode ? 'Search by response ID…' : 'Search by subject ID…'}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -342,43 +389,106 @@ export default function SiteCapturePage() {
           </div>
 
         </div>
-        <span className={css.count}>{filtered.length} of {subjects.length} subject{subjects.length !== 1 ? 's' : ''}</span>
+        <span className={css.count}>
+          {filtered.length} of {subjects.length} {surveyMode
+            ? `response${subjects.length !== 1 ? 's' : ''}`
+            : `subject${subjects.length !== 1 ? 's' : ''}`}
+        </span>
       </div>
 
       <div className={css.tableWrap}>
         <table className={css.table}>
           <thead>
-            <tr>
-              <th className={css.th}>Site</th>
-              <th className={css.th}>Subject</th>
-              <th className={css.th}>Responsible By</th>
-              <th className={css.th}>Status</th>
-              <th className={css.th}>Enrolled</th>
-              <th className={css.thActions}>Actions</th>
-            </tr>
+            {surveyMode ? (
+              <tr>
+                <th className={css.th}>S. No.</th>
+                <th className={css.th}>Site</th>
+                <th className={css.th}>Submitted By</th>
+                <th className={css.thActions}>Actions</th>
+              </tr>
+            ) : (
+              <tr>
+                <th className={css.th}>Site</th>
+                <th className={css.th}>Subject</th>
+                <th className={css.th}>Responsible By</th>
+                <th className={css.th}>Status</th>
+                <th className={css.th}>Enrolled</th>
+                <th className={css.thActions}>Actions</th>
+              </tr>
+            )}
           </thead>
           <tbody>
             {loading ? (
               Array.from({ length: 8 }, (_, i) => <SkeletonRow key={i} />)
             ) : pageData.length === 0 ? (
               <tr>
-                <td colSpan={6} className={css.emptyCell}>
+                <td colSpan={surveyMode ? 4 : 6} className={css.emptyCell}>
                   <div className={css.empty}>
                     <Database size={40} strokeWidth={1.25} className={css.emptyIcon} />
                     <p className={css.emptyTitle}>
-                      {subjects.length === 0 ? 'No subjects enrolled at your site yet' : 'No subjects match your filters'}
+                      {subjects.length === 0
+                        ? (surveyMode ? 'You have not entered any survey responses yet' : 'No subjects enrolled at your site yet')
+                        : (surveyMode ? 'No responses match your filters' : 'No subjects match your filters')}
                     </p>
                     <p className={css.emptySub}>
                       {subjects.length === 0
-                        ? 'Subjects will appear here once they are enrolled at this site.'
+                        ? (surveyMode
+                            ? 'Click “Start Survey” to enter a response on behalf of a respondent.'
+                            : 'Subjects will appear here once they are enrolled at this site.')
                         : 'Try adjusting your search or filter criteria.'}
                     </p>
                   </div>
                 </td>
               </tr>
             ) : (
-              pageData.map((subject) => {
+              pageData.map((subject, idx) => {
                 const meta = STATUS_META[subject.status] ?? STATUS_META.Pending;
+                // Survey table — S. No. | Site | Submitted By (PI) | Actions
+                // (Open Response always; Delete only with delete permission).
+                if (surveyMode) {
+                  const serial = (page - 1) * PAGE_SIZE + idx + 1;
+                  return (
+                    <tr key={subject.id} className={css.row}>
+                      <td className={css.td}>{serial}</td>
+                      <td className={css.td}>
+                        <div>
+                          <span className={css.subjectCode}>{subject.siteCode || '—'}</span>
+                          {subject.siteName && (
+                            <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{subject.siteName}</div>
+                          )}
+                        </div>
+                      </td>
+                      <td className={css.td}>
+                        {subject.ownerName
+                          ? <span className={css.subjectCode}>{subject.ownerName}</span>
+                          : <span className={css.na}>—</span>}
+                      </td>
+                      <td className={css.tdActions}>
+                        {canOpenForm && (
+                          <button
+                            className={pageCss.iconBtn}
+                            onClick={() => openForm(subject)}
+                            title="Open response"
+                            aria-label="Open response"
+                          >
+                            <FileText size={14} />
+                          </button>
+                        )}
+                        {canDeleteSubject && (
+                          <button
+                            className={pageCss.iconBtn}
+                            onClick={() => setDeleteTarget(subject)}
+                            disabled={deletingId === subject.id}
+                            title="Delete response and all its data"
+                            aria-label="Delete response"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                }
                 return (
                   <tr key={subject.id} className={css.row}>
                     {/* Site — code (primary) over name (secondary) */}

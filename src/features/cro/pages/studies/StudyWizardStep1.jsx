@@ -33,11 +33,13 @@ import {
 } from '@/features/cro/constants/sponsorPermissionsSchema';
 import styles from './StudyWizardStep1.module.css';
 
-// Site Management features only exist for EDC studies (see SponsorLayout) —
-// hide + clear them for Survey / ePRO scopes.
-const EDC_ONLY_FEATURES = ['sites', 'site_personnel', 'site_roles'];
+// Site Management features (sites / personnel / roles) exist for studies run at
+// sites by site staff — EDC and Survey (site personnel give the survey). Only
+// ePRO (direct patient reporting) hides + clears them. Keep in sync with
+// SponsorLayout's Site Management gating and the backend scope filter.
+const SITE_MGMT_FEATURES = ['sites', 'site_personnel', 'site_roles'];
 const hiddenForScope = (scope) =>
-  (scope === 'Survey' || scope === 'ePRO') ? EDC_ONLY_FEATURES : [];
+  (scope === 'ePRO') ? SITE_MGMT_FEATURES : [];
 
 // Step 3 module toggles drive whether the corresponding sponsor-permissions
 // leaf is even configurable on Step 1. If a CRO disables Query Manager /

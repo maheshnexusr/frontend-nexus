@@ -161,6 +161,37 @@ function OptionsEditor({ options = [], onChange }) {
   );
 }
 
+/* Slugify a row label into a stable storage key (unique within the matrix). */
+const slugKey = (label, taken = new Set()) => {
+  let base = String(label || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  if (!base) base = 'row';
+  let k = base; let n = 2;
+  while (taken.has(k)) { k = `${base}_${n}`; n += 1; }
+  return k;
+};
+
+/* ── Rating-matrix rows editor (the items / questions down the side) ──────── */
+function MatrixRowsEditor({ rows = [], onChange }) {
+  const update = (i, label) => onChange(rows.map((r, j) => (j === i ? { ...r, label } : r)));
+  const remove = (i) => onChange(rows.filter((_, j) => j !== i));
+  const add = () => {
+    const taken = new Set(rows.map((r) => r.key).filter(Boolean));
+    const label = `Item ${rows.length + 1}`;
+    onChange([...rows, { key: slugKey(label, taken), label }]);
+  };
+  return (
+    <div>
+      {rows.map((row, i) => (
+        <div key={row.key || i} className={s.optRow}>
+          <input className={s.optInput} value={row.label} onChange={(e) => update(i, e.target.value)} placeholder="Item to rate" />
+          <button className={s.optDel} onClick={() => remove(i)} aria-label="Remove row">×</button>
+        </div>
+      ))}
+      <button className={s.addBtn} onClick={add}><Plus size={12} /> Add row</button>
+    </div>
+  );
+}
+
 /* ── Table-level config (behaviour, rows, density, pagination) ──────────── */
 export function TableConfigPanel({ field, up }) {
   const rs = field.rowSettings || {};
@@ -168,9 +199,75 @@ export function TableConfigPanel({ field, up }) {
   const upRS = (k, v) => up('rowSettings', { ...rs, [k]: v });
   const upPG = (k, v) => up('pagination',  { ...pg, [k]: v });
 
+  const matrixMode = field.matrixMode || 'standard';
+  const isRating   = matrixMode === 'rating';
+
+  // Switching INTO rating mode seeds a sensible example (rows + scale) so the
+  // designer sees a working grid immediately; switching back leaves it intact.
+  const setMatrixMode = (mode) => {
+    up('matrixMode', mode);
+    if (mode === 'rating') {
+      if (!(field.matrixRows || []).length) {
+        up('matrixRows', [
+          { key: 'item_1', label: 'Item 1' },
+          { key: 'item_2', label: 'Item 2' },
+        ]);
+      }
+      if (!(field.matrixOptions || []).length) {
+        up('matrixOptions', [
+          { label: 'None', value: 'none' },
+          { label: 'Mild', value: 'mild' },
+          { label: 'Moderate', value: 'moderate' },
+          { label: 'Severe', value: 'severe' },
+        ]);
+      }
+    }
+  };
+
   return (
     <div className={s.accordionBodyInner}>
-      <p className={s.subSectionLabel}>Behaviour</p>
+      <p className={s.subSectionLabel}>Matrix Mode</p>
+      <SField label="Mode">
+        <select className={s.sselect} value={matrixMode} onChange={(e) => setMatrixMode(e.target.value)}>
+          <option value="standard">Standard Matrix (repeating rows)</option>
+          <option value="rating">Rating Matrix (fixed rows, scale columns)</option>
+        </select>
+      </SField>
+
+      {isRating ? (
+        <>
+          <p className={s.hintText} style={{ marginTop: 4 }}>
+            Each row allows one selection across the scale (radio behaviour).
+            Stored as <code>row → rating</code>.
+          </p>
+
+          <p className={s.subSectionLabel} style={{ marginTop: 12 }}>Rows (items to rate)</p>
+          <MatrixRowsEditor rows={field.matrixRows || []} onChange={(v) => up('matrixRows', v)} />
+
+          <p className={s.subSectionLabel} style={{ marginTop: 12 }}>Rating scale (columns)</p>
+          <OptionsEditor options={field.matrixOptions || []} onChange={(v) => up('matrixOptions', v)} />
+
+          <p className={s.subSectionLabel} style={{ marginTop: 12 }}>Options</p>
+          <ToggleRow label="Show table label" value={field.showLabel !== false} onChange={(v) => up('showLabel', v)} />
+          <ToggleRow label="Allow N/A column" value={!!field.matrixAllowNA} onChange={(v) => up('matrixAllowNA', v)} />
+          {field.matrixAllowNA && (
+            <SField label="N/A column label">
+              <input className={s.sinput} value={field.matrixNALabel ?? 'N/A'} onChange={(e) => up('matrixNALabel', e.target.value)} placeholder="N/A" />
+            </SField>
+          )}
+          <ToggleRow label="Require response for all rows" value={!!field.matrixRequireAll} onChange={(v) => up('matrixRequireAll', v)} />
+        </>
+      ) : (
+        <StandardTableSettings field={field} up={up} rs={rs} pg={pg} upRS={upRS} upPG={upPG} />
+      )}
+    </div>
+  );
+}
+
+function StandardTableSettings({ field, up, rs, pg, upRS, upPG }) {
+  return (
+    <>
+      <p className={s.subSectionLabel} style={{ marginTop: 12 }}>Behaviour</p>
       <ToggleRow label="Show table label"  value={field.showLabel !== false}        onChange={(v) => up('showLabel', v)} />
       <ToggleRow label="Allow add row"     value={field.allowAddRow !== false}       onChange={(v) => up('allowAddRow', v)} />
       <ToggleRow label="Allow delete row"  value={field.allowDeleteRow !== false}    onChange={(v) => up('allowDeleteRow', v)} />
@@ -196,7 +293,7 @@ export function TableConfigPanel({ field, up }) {
       {pg.enabled && (
         <SField label="Rows per page"><NumInput value={pg.pageSize} min={1} onChange={(v) => upPG('pageSize', v)} placeholder="25" /></SField>
       )}
-    </div>
+    </>
   );
 }
 

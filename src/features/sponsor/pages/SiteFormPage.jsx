@@ -13,6 +13,8 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { ArrowLeft } from 'lucide-react';
+import { useAppSelector } from '@/app/hooks';
+import { selectActiveStudy } from '@/features/workspace/store/workspaceSlice';
 
 import FormField         from '@/components/form/FormField';
 import SearchableDropdown from '@/components/form/SearchableDropdown';
@@ -80,6 +82,10 @@ export default function SiteFormPage() {
   const navigate            = useNavigate();
   const dispatch            = useDispatch();
   const location            = useLocation();
+  // Survey studies have no subject enrolment, so the per-site Subject Limit is
+  // meaningless and is hidden (the site allows unlimited by default).
+  const activeStudy         = useAppSelector(selectActiveStudy);
+  const isSurvey            = (activeStudy?.scope ?? '').toUpperCase() === 'SURVEY';
   // View mode = the same Create/Edit form, read-only (route ends with /view).
   const readOnly            = location.pathname.endsWith('/view');
   const isEdit              = !!siteId && !readOnly;
@@ -428,7 +434,9 @@ export default function SiteFormPage() {
 
           {/* Subject Limit — when enabled, cap the number of subjects that can
               be enrolled at this site; when off, the site allows unlimited
-              subjects and the field is hidden. Enforced server-side on enrol. */}
+              subjects and the field is hidden. Enforced server-side on enrol.
+              Hidden entirely for Survey studies (no subject enrolment). */}
+          {!isSurvey && (
           <div className={styles.row2}>
             <FormField label="Enable Subject Limit" name="enableSubjectLimit">
               <label className={styles.activeWrap} style={{ marginTop: 4 }}>
@@ -467,6 +475,7 @@ export default function SiteFormPage() {
               </FormField>
             )}
           </div>
+          )}
         </section>
         </fieldset>
 

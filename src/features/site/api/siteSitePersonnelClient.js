@@ -24,6 +24,10 @@ function normalizePersonnel(raw) {
     siteName:            raw.site_name             ?? raw.siteName          ?? '',
     contactNumber:       raw.contact_number        ?? raw.contactNumber     ?? '',
     status:              raw.status                ?? 'Active',
+    // User-facing status derived by the backend: Active | Inactive | Invited |
+    // Invitation Link Expired. Falls back to the raw status for older payloads.
+    displayStatus:       raw.display_status        ?? raw.displayStatus     ?? raw.status ?? 'Active',
+    invitationExpiresAt: raw.invitation_expires_at ?? raw.invitationExpiresAt ?? '',
     // Site response doesn't yet carry consent / compensation — keep defaults so
     // the mirrored sponsor UI columns render gracefully instead of blank.
     consentStatus:       raw.consent_status        ?? raw.consentStatus     ?? 'Pending',

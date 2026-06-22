@@ -251,9 +251,13 @@ function FieldPropsPanel({ block, page, field }) {
             <Accordion title="Table Settings" icon={<LayoutGrid size={13} />} defaultOpen>
               <TableConfigPanel field={field} up={up} />
             </Accordion>
-            <Accordion title="Columns" icon={<Settings size={13} />} defaultOpen>
-              <ColumnBuilder field={field} up={up} />
-            </Accordion>
+            {/* Columns are author-defined only in Standard mode; a Rating Matrix
+                drives its columns from the rating scale (Table Settings). */}
+            {field.matrixMode !== 'rating' && (
+              <Accordion title="Columns" icon={<Settings size={13} />} defaultOpen>
+                <ColumnBuilder field={field} up={up} />
+              </Accordion>
+            )}
           </>
         )}
 
