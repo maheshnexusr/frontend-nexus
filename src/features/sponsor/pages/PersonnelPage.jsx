@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import {
-  UserPlus, Search, X, RefreshCw, Upload,
+  UserPlus, Search, X, RefreshCw, Upload, Download,
   Filter, Eye, Pencil, Trash2, Send, ChevronUp, ChevronDown,
   ChevronsUpDown, AlertTriangle,
 } from 'lucide-react';
@@ -61,6 +61,7 @@ export default function PersonnelPage() {
   const canEdit     = has('site_personnel', 'edit');
   const canDelete   = has('site_personnel', 'delete');
   const canImport   = has('site_personnel', 'import');
+  const canExport   = has('site_personnel', 'export');
 
   // Data
   const [personnel,  setPersonnel]  = useState([]);
@@ -144,6 +145,47 @@ export default function PersonnelPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage   = Math.min(page, totalPages);
   const pageData   = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  // Export the (filtered) personnel list to a CSV — done client-side from the
+  // already-loaded rows (no backend export route exists). Opens in Excel.
+  const handleExport = useCallback(() => {
+    const rows = filtered;
+    if (!rows.length) {
+      dispatch(addToast({ type: 'info', message: 'Nothing to export.' }));
+      return;
+    }
+    const siteLabel = (p) => {
+      const names = (p.siteNames?.length ? p.siteNames : (p.siteName ? [p.siteName] : []));
+      const allSites = p.totalActiveSites > 1 && (p.siteIds?.length ?? 0) >= p.totalActiveSites;
+      return allSites ? 'All Sites' : names.join('; ');
+    };
+    const headers = ['S. No.', 'Full Name', 'Email', 'Contact Number', 'Role', 'Site(s)', 'Status'];
+    const esc = (v) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [
+      headers.join(','),
+      ...rows.map((p, i) => [
+        i + 1,
+        p.fullName,
+        p.email,
+        p.contactNumber,
+        p.role,
+        siteLabel(p),
+        p.displayStatus ?? p.status ?? '',
+      ].map(esc).join(',')),
+    ];
+    // Prepend a BOM so Excel reads UTF-8 (accented names) correctly.
+    const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `Site_Personnel_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    dispatch(addToast({ type: 'success', message: `Exported ${rows.length} personnel record${rows.length === 1 ? '' : 's'}.` }));
+  }, [filtered, dispatch]);
 
   function toggleSort(key) {
     setSort((prev) => prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' });
@@ -239,6 +281,15 @@ export default function PersonnelPage() {
               {...ro.disabledProps('Import Personnel')}
             >
               <Upload size={14} /> Import Personnel
+            </button>
+          )}
+          {canExport && (
+            <button
+              className={css.btnSecondary}
+              onClick={handleExport}
+              title="Export the current personnel list to CSV"
+            >
+              <Download size={14} /> Export
             </button>
           )}
           <button
