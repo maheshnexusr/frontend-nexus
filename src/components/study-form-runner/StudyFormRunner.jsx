@@ -34,7 +34,7 @@ import { evaluateField, evaluateEligibility, compareOp, dateBounds } from '@/fea
 import { headingStyleToCss } from '@/features/cro/components/study-form/headingStyle';
 import SignatureInput       from './SignatureInput';
 import TableFieldInput       from './TableFieldInput';
-import { validateTable }      from './tableEngine';
+import { validateTable, isRatingMatrix } from './tableEngine';
 import { evaluateExpression, coerceOutput } from '@/features/cro/components/study-form/formulaEngine';
 import { uploadFormFile }    from '@/api/formFileClient';
 import { resolveFileUrl }    from '@/api/fileUrl';
@@ -1017,6 +1017,9 @@ function StudyFormRunnerInner({
   // covered by the generic isHardReq path below (table value is an array).
   const tableInvalid = (f) => {
     if (f.type !== 'table') return false;
+    // Rating-matrix tables hold an OBJECT value ({ rowKey: rating }); validate it
+    // directly (per-row "require all"), bypassing the array/min-rows logic below.
+    if (isRatingMatrix(f)) return validateTable(f, values[f.id]).hasErrors;
     const list = Array.isArray(values[f.id]) ? values[f.id] : [];
     // rowSettings arrives snake_case in the capture runtime (row_settings/min_rows).
     const rset = f.rowSettings ?? f.row_settings ?? {};

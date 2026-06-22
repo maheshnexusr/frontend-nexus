@@ -146,7 +146,7 @@ export default function SiteLayout() {
     ? (scope === 'EPRO'
         ? { key: 'diary',   label: 'My Diary',    icon: Notebook,      path: '/site/capture' }
         : scope === 'SURVEY'
-        ? { key: 'survey',  label: 'Take Survey', icon: ClipboardList, path: '/site/capture' }
+        ? { key: 'survey',  label: 'Survey Submission', icon: ClipboardList, path: '/site/capture' }
         : { key: 'capture', label: 'Data Capture', icon: Database,     path: '/site/capture' })
     : null;
 

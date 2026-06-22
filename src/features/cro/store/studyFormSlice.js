@@ -70,6 +70,18 @@ const tableDefaults = () => ({
   pagination: { enabled: false, pageSize: 25 },
   density: 'comfortable',           // 'comfortable' | 'compact'
   columns: [makeColumn('text', 1)],
+
+  // Matrix mode. 'standard' = the repeating spreadsheet above (default).
+  // 'rating' = a fixed survey/Likert grid: matrixRows are the items/questions
+  // (down the side), matrixOptions are the rating scale (across the top), and
+  // each row allows exactly ONE selection (radio behaviour). Stored value is an
+  // object { [rowKey]: optionValue } rather than the repeating array.
+  matrixMode: 'standard',           // 'standard' | 'rating'
+  matrixRows: [],                   // rating: [{ key, label }] items to rate
+  matrixOptions: [],                // rating: [{ value, label }] scale columns
+  matrixAllowNA: false,             // rating: append an N/A column
+  matrixNALabel: 'N/A',
+  matrixRequireAll: false,          // rating: every row must have a response
 });
 
 export const makeField = (type = 'text') => ({

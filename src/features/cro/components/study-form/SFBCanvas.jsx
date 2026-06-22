@@ -401,6 +401,25 @@ function FieldPreviewRow({ fld }) {
         </div>
       );
     case 'table': {
+      if (fld.matrixMode === 'rating') {
+        const mRows = fld.matrixRows || [];
+        const scale = [
+          ...(fld.matrixOptions || []),
+          ...(fld.matrixAllowNA ? [{ value: '__na__', label: fld.matrixNALabel || 'N/A' }] : []),
+        ];
+        return (
+          <div className={s.previewInput} style={{ padding: '6px 8px' }}>
+            <div style={{ fontSize: 10, color: '#94a3b8', marginBottom: 4 }}>
+              Rating matrix · {mRows.length} row{mRows.length !== 1 ? 's' : ''} × {scale.length} option{scale.length !== 1 ? 's' : ''}
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              {scale.length === 0
+                ? <span style={{ fontSize: 11, color: '#94a3b8' }}>No scale yet</span>
+                : scale.map((o) => <span key={o.value} className={s.optionChip}>{o.label}</span>)}
+            </div>
+          </div>
+        );
+      }
       const cols = (fld.columns || []).filter((c) => !c.hidden);
       return (
         <div className={s.previewInput} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', padding: '6px 8px' }}>

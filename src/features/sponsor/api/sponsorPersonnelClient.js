@@ -34,6 +34,10 @@ function normalizePersonnel(raw) {
     totalActiveSites:    raw.total_active_sites    ?? raw.totalActiveSites  ?? 0,
     contactNumber:       raw.contact_number        ?? raw.contactNumber     ?? '',
     status:              raw.status                ?? 'Active',
+    // User-facing status derived by the backend: Active | Inactive | Invited |
+    // Invitation Link Expired. Falls back to the raw status for older payloads.
+    displayStatus:       raw.display_status        ?? raw.displayStatus     ?? raw.status ?? 'Active',
+    invitationExpiresAt: raw.invitation_expires_at ?? raw.invitationExpiresAt ?? '',
     consentStatus:       raw.consent_status        ?? raw.consentStatus     ?? 'Pending',
     consentRequired:     raw.consent_required      ?? raw.consentRequired   ?? true,
     consentTemplateId:   raw.consent_template_id   ?? raw.consentTemplateId ?? '',

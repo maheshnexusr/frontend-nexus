@@ -15,11 +15,13 @@ import PersonnelImportModal          from '../components/personnel/PersonnelImpo
 import ConfirmDialog                 from '@/components/feedback/ConfirmDialog';
 import { useReadOnlyView }           from '@/features/workspace/hooks/useReadOnlyView';
 import { usePermissions }            from '@/features/auth/usePermissions';
+import { PERSONNEL_STATUSES, personnelStatusStyle } from '@/utils/personnelStatus';
+import { formatDate }                from '@/utils/formatDate';
 import css from './PersonnelPage.module.css';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS = ['All', 'Active', 'Inactive'];
+const STATUS_OPTIONS = ['All', ...PERSONNEL_STATUSES];
 
 const COMP_COLORS = {
   None:            { color: '#94a3b8' },
@@ -115,7 +117,7 @@ export default function PersonnelPage() {
   const filtered = useMemo(() => {
     let list = personnel;
     if (statusFilter !== 'All') {
-      list = list.filter((p) => (p.status ?? 'Active') === statusFilter);
+      list = list.filter((p) => (p.displayStatus ?? p.status ?? 'Active') === statusFilter);
     }
     if (siteFilter !== 'All') {
       list = list.filter((p) => (p.siteIds ?? []).includes(siteFilter));
@@ -424,11 +426,12 @@ export default function PersonnelPage() {
                     <td className={css.td}>
                       <span
                         className={css.statusBadge}
-                        style={p.status === 'Active'
-                          ? { color: '#059669', background: '#ecfdf5', borderColor: '#a7f3d0' }
-                          : { color: '#dc2626', background: '#fef2f2', borderColor: '#fecaca' }}
+                        style={personnelStatusStyle(p.displayStatus)}
+                        title={p.displayStatus === 'Invitation Link Expired' && p.invitationExpiresAt
+                          ? `Activation link expired on ${formatDate(p.invitationExpiresAt)}`
+                          : undefined}
                       >
-                        {p.status}
+                        {p.displayStatus}
                       </span>
                     </td>
                     <td className={css.td}>

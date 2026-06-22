@@ -20,8 +20,9 @@ import {
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import PlatformDatePicker from '@/components/form/PlatformDatePicker';
 import { evaluateField } from '@/features/cro/components/study-form/runtime/runtimeEngine';
-import { evaluateFormula, grandTotal, toNum, colKey, evaluateRowColumn, rowColumnValueAction } from './tableEngine';
+import { evaluateFormula, grandTotal, toNum, colKey, evaluateRowColumn, rowColumnValueAction, isRatingMatrix } from './tableEngine';
 import ConfirmDialog from '@/components/feedback/ConfirmDialog';
+import RatingMatrixInput from './RatingMatrixInput';
 import s from './TableFieldInput.module.css';
 
 const uid = () => `row_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -31,6 +32,15 @@ const isBlankCell = (v) =>
   v === '' || v == null || v === false || (Array.isArray(v) && v.length === 0);
 
 export default function TableFieldInput({ field, value, onChange, allValues, loading = false, showErrors = false }) {
+  // Rating-matrix mode is a fixed survey/Likert grid (object value, one radio
+  // selection per row) rather than the repeating spreadsheet below.
+  if (isRatingMatrix(field)) {
+    return <RatingMatrixInput field={field} value={value} onChange={onChange} showErrors={showErrors} />;
+  }
+  return <StandardTableFieldInput field={field} value={value} onChange={onChange} allValues={allValues} loading={loading} showErrors={showErrors} />;
+}
+
+function StandardTableFieldInput({ field, value, onChange, allValues, loading = false, showErrors = false }) {
   const user = useSelector(selectCurrentUser);
   const actorName = user?.fullName || user?.full_name || user?.name || user?.email || 'Unknown';
 

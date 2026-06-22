@@ -64,6 +64,9 @@ export default function StudyWizardStep2({ onCancel, onNext }) {
   const scope           = Array.isArray(step1.scope) ? (step1.scope[0] ?? '') : (step1.scope ?? '');
   const hasEDC          = scope === 'EDC';
   const hasSurveyOrEPRO = scope === 'Survey' || scope === 'ePRO';
+  // A Survey has no enrolment target — respondents aren't "enrolled" the way EDC
+  // subjects are — so the Max. Number of Enrollments field is hidden + skipped.
+  const isSurvey        = scope === 'Survey';
   const hasBoth         = false; // single-select: scope is exactly one of EDC | Survey | ePRO
 
   const [form, setForm] = useState({
@@ -159,10 +162,13 @@ export default function StudyWizardStep2({ onCancel, onNext }) {
     else if (form.startDate && form.expectedEndDate <= form.startDate)
       errs.expectedEndDate = 'Expected End Date must be after Start Date.';
 
-    if (!form.maxEnrollments) {
-      errs.maxEnrollments = 'Maximum Number of Enrollments is required.';
-    } else if (!/^\d+$/.test(String(form.maxEnrollments)) || Number(form.maxEnrollments) <= 0) {
-      errs.maxEnrollments = 'Please enter a valid positive number.';
+    // Survey studies don't capture an enrolment target — skip the field entirely.
+    if (!isSurvey) {
+      if (!form.maxEnrollments) {
+        errs.maxEnrollments = 'Maximum Number of Enrollments is required.';
+      } else if (!/^\d+$/.test(String(form.maxEnrollments)) || Number(form.maxEnrollments) <= 0) {
+        errs.maxEnrollments = 'Please enter a valid positive number.';
+      }
     }
 
     if (!form.maxSites) {
@@ -192,7 +198,7 @@ export default function StudyWizardStep2({ onCancel, onNext }) {
     startDate:             form.startDate,
     expectedEndDate:       form.expectedEndDate,
     maxSites:              form.maxSites,
-    maxEnrollments:        form.maxEnrollments,
+    maxEnrollments:        isSurvey ? '' : form.maxEnrollments,
     regionId:              hasEDC          ? form.regionId              : '',
     regionName:            hasEDC          ? form.regionName            : '',
     randomizationMethod:   hasEDC          ? form.randomizationMethod   : '',
@@ -283,7 +289,8 @@ export default function StudyWizardStep2({ onCancel, onNext }) {
         </FormField>
       </div>
 
-      {/* Number of Sites + Max Enrollments — both shown for every scope */}
+      {/* Number of Sites (+ Max Enrollments, except for Survey studies which
+          have no enrolment target). */}
       <div className={styles.row2}>
         <FormField label="Number of Sites" name="maxSites" required error={errors.maxSites}>
           <input
@@ -296,17 +303,19 @@ export default function StudyWizardStep2({ onCancel, onNext }) {
             placeholder="e.g. 50"
           />
         </FormField>
-        <FormField label="Max. Number of Enrollments" name="maxEnrollments" required error={errors.maxEnrollments}>
-          <input
-            id="maxEnrollments"
-            type="number"
-            min="1"
-            className={ic(styles, errors.maxEnrollments)}
-            value={form.maxEnrollments}
-            onChange={set('maxEnrollments')}
-            placeholder="e.g. 500"
-          />
-        </FormField>
+        {!isSurvey && (
+          <FormField label="Max. Number of Enrollments" name="maxEnrollments" required error={errors.maxEnrollments}>
+            <input
+              id="maxEnrollments"
+              type="number"
+              min="1"
+              className={ic(styles, errors.maxEnrollments)}
+              value={form.maxEnrollments}
+              onChange={set('maxEnrollments')}
+              placeholder="e.g. 500"
+            />
+          </FormField>
+        )}
       </div>
 
       {/* ── EDC Coverage ────────────────────────────────────────────────── */}

@@ -30,6 +30,8 @@ import ActivityLogDrawer from '@/features/sponsor/components/activity/ActivityLo
 import TransferOwnershipModal from '@/components/subject/TransferOwnershipModal';
 import ConfirmDialog from '@/components/feedback/ConfirmDialog';
 import { usePermissions } from '@/features/auth/usePermissions';
+import { useAppSelector } from '@/app/hooks';
+import { selectActiveStudy } from '@/features/workspace/store/workspaceSlice';
 import css from './CapturePage.module.css';
 
 /* ── Status meta ─────────────────────────────────────────────────────────── */
@@ -143,6 +145,11 @@ export default function CapturePage() {
   const { studyId } = useParams();
   const navigate    = useNavigate();
   const dispatch    = useDispatch();
+
+  // Survey studies capture survey responses, not enrolled subjects — relabel the
+  // roster columns so the sponsor's review view reads as a survey, not EDC.
+  const activeStudy = useAppSelector(selectActiveStudy);
+  const surveyMode  = (activeStudy?.scope ?? '').toUpperCase() === 'SURVEY';
 
   // Activity-log drill-in. The icon shows only for roles with the data_capture
   // activity_log permission. Subject CRUD was folded into data_capture in
@@ -351,7 +358,11 @@ export default function CapturePage() {
       <div className={css.header}>
         <div>
           <h1 className={css.title}>Data Capture</h1>
-          <p className={css.sub}>Browse enrolled subjects and enter or review visit CRF data.</p>
+          <p className={css.sub}>
+            {surveyMode
+              ? 'Review the survey responses captured across your sites.'
+              : 'Browse enrolled subjects and enter or review visit CRF data.'}
+          </p>
         </div>
         <div className={css.headerActions}>
           <SnapshotButton leaf="data_capture" filename="data_capture" />
@@ -371,7 +382,7 @@ export default function CapturePage() {
         <div className={css.kpiRow}>
           <div className={css.kpi}>
             <span className={css.kpiVal}>{subjects.length}</span>
-            <span className={css.kpiLabel}>Total Subjects</span>
+            <span className={css.kpiLabel}>{surveyMode ? 'Total Responses' : 'Total Subjects'}</span>
           </div>
           {Object.entries(STATUS_META).map(([status, meta]) => {
             const n = counts[status] ?? 0;
@@ -408,7 +419,7 @@ export default function CapturePage() {
             <Search size={14} className={css.searchIcon} />
             <input
               className={css.searchInput}
-              placeholder="Search by subject initials, code or site…"
+              placeholder={surveyMode ? 'Search by response ID or site…' : 'Search by subject initials, code or site…'}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -424,43 +435,106 @@ export default function CapturePage() {
             </select>
           )}
         </div>
-        <span className={css.count}>{filtered.length} of {subjects.length} subject{subjects.length !== 1 ? 's' : ''}</span>
+        <span className={css.count}>
+          {filtered.length} of {subjects.length} {surveyMode
+            ? `response${subjects.length !== 1 ? 's' : ''}`
+            : `subject${subjects.length !== 1 ? 's' : ''}`}
+        </span>
       </div>
 
       {/* Table */}
       <div className={css.tableWrap}>
         <table className={css.table}>
           <thead>
-            <tr>
-              <th className={css.th}>Site</th>
-              <th className={css.th}>Subject</th>
-              <th className={css.th}>Responsible By</th>
-              <th className={css.th}>Status</th>
-              <th className={css.th}>Enrollment Date</th>
-              <th className={css.thActions}>Actions</th>
-            </tr>
+            {surveyMode ? (
+              <tr>
+                <th className={css.th}>S. No.</th>
+                <th className={css.th}>Site</th>
+                <th className={css.th}>Submitted By</th>
+                <th className={css.thActions}>Actions</th>
+              </tr>
+            ) : (
+              <tr>
+                <th className={css.th}>Site</th>
+                <th className={css.th}>Subject</th>
+                <th className={css.th}>Responsible By</th>
+                <th className={css.th}>Status</th>
+                <th className={css.th}>Enrollment Date</th>
+                <th className={css.thActions}>Actions</th>
+              </tr>
+            )}
           </thead>
           <tbody>
             {loading ? (
               Array.from({ length: 8 }, (_, i) => <SkeletonRow key={i} />)
             ) : pageData.length === 0 ? (
               <tr>
-                <td colSpan={6} className={css.emptyCell}>
+                <td colSpan={surveyMode ? 4 : 6} className={css.emptyCell}>
                   <div className={css.empty}>
                     <Database size={40} strokeWidth={1.25} className={css.emptyIcon} />
                     <p className={css.emptyTitle}>
-                      {subjects.length === 0 ? 'No subjects enrolled yet' : 'No subjects match your filters'}
+                      {subjects.length === 0
+                        ? (surveyMode ? 'No survey responses captured yet' : 'No subjects enrolled yet')
+                        : (surveyMode ? 'No responses match your filters' : 'No subjects match your filters')}
                     </p>
                     <p className={css.emptySub}>
                       {subjects.length === 0
-                        ? 'Subjects will appear here once they are enrolled in this study.'
+                        ? (surveyMode
+                            ? 'Responses will appear here once site personnel submit the survey.'
+                            : 'Subjects will appear here once they are enrolled in this study.')
                         : 'Try adjusting your search or filter criteria.'}
                     </p>
                   </div>
                 </td>
               </tr>
             ) : (
-              pageData.map((subject) => {
+              pageData.map((subject, idx) => {
+                // Survey responses table — S. No. | Site | Submitted By (PI) |
+                // Open Response. Sponsor/CRO see ALL PIs' responses (not scoped).
+                if (surveyMode) {
+                  const serial = (page - 1) * PAGE_SIZE + idx + 1;
+                  return (
+                    <tr key={subject.id} className={css.row}>
+                      <td className={css.td}>{serial}</td>
+                      <td className={css.td}>
+                        <span className={css.siteCode}>{subject.siteCode || '—'}</span>
+                        {subject.siteName && (
+                          <div className={css.siteName}>{subject.siteName}</div>
+                        )}
+                      </td>
+                      <td className={css.td}>
+                        {subject.ownerName
+                          ? <span className={css.siteCode}>{subject.ownerName}</span>
+                          : <span className={css.na}>—</span>}
+                      </td>
+                      <td className={css.tdActions}>
+                        {canOpenForm && (
+                          <button
+                            type="button"
+                            className={css.iconBtn}
+                            onClick={() => openForm(subject)}
+                            title="Open response"
+                            aria-label="Open response"
+                          >
+                            <FileText size={16} />
+                          </button>
+                        )}
+                        {canDeleteSubject && (
+                          <button
+                            type="button"
+                            className={css.iconBtn}
+                            onClick={() => setDeleteTarget(subject)}
+                            disabled={deletingId === subject.id}
+                            title="Delete response and all its data"
+                            aria-label="Delete response"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                }
                 return (
                   <tr key={subject.id} className={css.row}>
                     {/* Site — code (primary) over name (secondary). First column. */}
