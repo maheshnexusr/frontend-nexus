@@ -261,7 +261,7 @@ export const studiesClient = {
     const res = await axiosClient.put(`/api/v1/studies/${id}/step-2`, {
       start_date:        data.startDate,
       expected_end_date: data.expectedEndDate,
-      max_enrollments:   Number(data.maxEnrollments),
+      max_enrollments:   data.maxEnrollments ? Number(data.maxEnrollments) : null,
       coverage_type:     data.coverageType,          // 'COUNTRY' | 'REGION'
       coverage_id:       data.coverageId,
       max_sites:         data.maxSites ? Number(data.maxSites) : undefined,

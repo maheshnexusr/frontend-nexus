@@ -23,11 +23,13 @@ import PersonnelDetailsModal         from '@/features/sponsor/components/personn
 import SitePersonnelModal            from '@/features/site/components/SitePersonnelModal';
 import ConfirmDialog                 from '@/components/feedback/ConfirmDialog';
 import { usePermissions }            from '@/features/auth/usePermissions';
+import { PERSONNEL_STATUSES, personnelStatusStyle } from '@/utils/personnelStatus';
+import { formatDate }                from '@/utils/formatDate';
 import css from '@/features/sponsor/pages/PersonnelPage.module.css';
 
 // Role options are loaded from the Site Roles master at runtime (see
 // roleOptions state) — never hardcoded, so custom study roles appear too.
-const STATUS_OPTIONS = ['All', 'Active', 'Inactive', 'Invited'];
+const STATUS_OPTIONS = ['All', ...PERSONNEL_STATUSES];
 const CONSENT_STATUS = ['All', 'Pending', 'Submitted', 'Approved', 'Rejected', 'Expired'];
 
 const CONSENT_META = {
@@ -108,8 +110,9 @@ export default function SitePersonnelPage() {
     if (!quiet) setLoading(true);
     else        setRefreshing(true);
     try {
+      // Status is filtered CLIENT-SIDE (below) because "Invited" vs "Invitation
+      // Link Expired" is derived from the activation link, not the stored status.
       const filters = {
-        ...(statusFilter  !== 'All' ? { status:        statusFilter }  : {}),
         ...(roleFilter    !== 'All' ? { role:           roleFilter }    : {}),
         ...(siteFilter    !== 'All' ? { siteId:         siteFilter }    : {}),
         ...(consentFilter !== 'All' ? { consentStatus:  consentFilter } : {}),
@@ -128,7 +131,7 @@ export default function SitePersonnelPage() {
       setRefreshing(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, roleFilter, siteFilter, consentFilter]);
+  }, [roleFilter, siteFilter, consentFilter]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -139,6 +142,9 @@ export default function SitePersonnelPage() {
 
   const filtered = useMemo(() => {
     let list = personnel;
+    if (statusFilter !== 'All') {
+      list = list.filter((p) => (p.displayStatus ?? p.status ?? 'Active') === statusFilter);
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -155,7 +161,7 @@ export default function SitePersonnelPage() {
       bv = String(bv).toLowerCase();
       return sort.dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
     });
-  }, [personnel, search, sort]);
+  }, [personnel, search, sort, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage   = Math.min(page, totalPages);
@@ -451,11 +457,12 @@ export default function SitePersonnelPage() {
                     <td className={css.td}>
                       <span
                         className={css.statusBadge}
-                        style={p.status === 'Active'
-                          ? { color: '#059669', background: '#ecfdf5', borderColor: '#a7f3d0' }
-                          : { color: '#dc2626', background: '#fef2f2', borderColor: '#fecaca' }}
+                        style={personnelStatusStyle(p.displayStatus)}
+                        title={p.displayStatus === 'Invitation Link Expired' && p.invitationExpiresAt
+                          ? `Activation link expired on ${formatDate(p.invitationExpiresAt)}`
+                          : undefined}
                       >
-                        {p.status}
+                        {p.displayStatus}
                       </span>
                     </td>
                     <td className={css.td}>

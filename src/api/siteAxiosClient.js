@@ -164,6 +164,51 @@ function redirectToStudyPicker() {
  * is NOT a workspace-token route — the response interceptor's workspace branch
  * won't fire on it, so it can't re-enter rebindWorkspaceToken from inside.
  */
+/**
+ * A refresh failure is "definitive" — a real reason to sign out — only when the
+ * server EXPLICITLY rejects the refresh token (401/403: expired, revoked, or
+ * the account is gone). Everything else (no response = network error, request
+ * timeout, or a 5xx from a backend that's waking from a cold/idle state) is
+ * TRANSIENT and must NOT dump a still-valid session to the sign-in page.
+ *
+ * This is the crux of the "logged out on first Data Capture access" bug: a new
+ * user reads/signs the consent for several minutes, the 15-min access token
+ * expires and the backend goes idle; the first request afterwards triggers a
+ * refresh that can transiently fail (cold backend) — and the old code treated
+ * ANY refresh failure as a forced sign-out.
+ */
+function isDefinitiveAuthFailure(err) {
+  const status = err?.response?.status;
+  return status === 401 || status === 403;
+}
+
+/**
+ * Refresh the session access token. Retries once on a transient failure
+ * (network / timeout / 5xx) with a short back-off so a cold backend gets a
+ * second chance; rethrows immediately on a definitive 401/403. Uses raw axios
+ * so it never re-enters this interceptor. Returns the new access token.
+ */
+async function refreshSessionToken(refreshToken) {
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const { data } = await axios.post(
+        `${BASE_URL}/api/v1/site/auth/refresh`,
+        { refresh_token: refreshToken },
+        { timeout: 30_000 },
+      );
+      const newAccess = data?.accessToken ?? data?.access_token;
+      if (newAccess) return newAccess;
+      lastErr = new Error('Refresh response missing access token.');
+    } catch (e) {
+      lastErr = e;
+      if (isDefinitiveAuthFailure(e)) throw e;        // token truly dead — stop now
+      await new Promise((resolve) => setTimeout(resolve, 600)); // transient — retry
+    }
+  }
+  throw lastErr;
+}
+
 async function rebindWorkspaceToken() {
   const ctx = readContext();
   if (!ctx?.studyId || !ctx?.environment) return null;
@@ -261,18 +306,20 @@ siteAxiosClient.interceptors.response.use(
 
       refreshing = true;
       try {
-        const { data } = await axios.post(
-          `${BASE_URL}/api/v1/site/auth/refresh`,
-          { refresh_token: refresh },
-        );
-        const newAccess = data?.accessToken ?? data?.access_token;
-        if (newAccess) localStorage.setItem(SESSION_TOKEN_KEY, newAccess);
+        const newAccess = await refreshSessionToken(refresh);
+        localStorage.setItem(SESSION_TOKEN_KEY, newAccess);
         notify(newAccess);
         original.headers.Authorization = `Bearer ${newAccess}`;
         return siteAxiosClient(original);
-      } catch {
+      } catch (refreshErr) {
         notify(null);
-        redirectToSignIn();
+        // Only a DEFINITIVE rejection (the refresh token itself is invalid /
+        // revoked / expired) is a genuine sign-out. A transient failure — a
+        // network blip or a backend waking from idle after the long first-time
+        // consent read — must NOT force a full sign-in on a session whose
+        // refresh token is still good. Reject so the caller surfaces an error;
+        // the tokens stay put and the next action can recover.
+        if (isDefinitiveAuthFailure(refreshErr)) redirectToSignIn();
         return Promise.reject(normalizeError(error));
       } finally {
         refreshing = false;

@@ -6,6 +6,7 @@ import {
 import Modal from '@/components/feedback/Modal';
 import { sponsorPersonnelClient } from '../../api/sponsorPersonnelClient';
 import { formatDate, formatDateTime } from '@/utils/formatDate';
+import { personnelStatusStyle } from '@/utils/personnelStatus';
 import css from './PersonnelDetailsModal.module.css';
 
 /**
@@ -80,11 +81,12 @@ export default function PersonnelDetailsModal({ studyId, personnel, onClose, cli
         <div className={css.badgeRow}>
           <span
             className={css.statusBadge}
-            style={d.status === 'Active'
-              ? { color: '#059669', background: '#ecfdf5', borderColor: '#a7f3d0' }
-              : { color: '#dc2626', background: '#fef2f2', borderColor: '#fecaca' }}
+            style={personnelStatusStyle(d.displayStatus ?? d.status)}
+            title={(d.displayStatus ?? d.status) === 'Invitation Link Expired' && d.invitationExpiresAt
+              ? `Activation link expired on ${formatDate(d.invitationExpiresAt)}`
+              : undefined}
           >
-            {d.status}
+            {d.displayStatus ?? d.status}
           </span>
           <span className={css.roleBadge}>{d.role}</span>
         </div>
