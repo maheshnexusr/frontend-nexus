@@ -46,7 +46,7 @@ const fmtVal = (v) => {
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
 };
-const diffPill = { fontSize: 11.5, padding: '1px 7px', borderRadius: 5, fontFamily: 'monospace' };
+const diffPill = { fontSize: 11.5, padding: '1px 7px', borderRadius: 5, fontFamily: 'monospace', whiteSpace: 'pre-line', textAlign: 'left' };
 
 // Friendly labels for raw resource_type / module values stored on the log.
 // CRF form events are recorded under the internal 'subject_form_data' name —

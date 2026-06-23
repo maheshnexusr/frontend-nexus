@@ -69,8 +69,6 @@ export default function SiteCaptureFormPage() {
   const [error,       setError]       = useState(null);
   const [noFormsHere, setNoFormsHere] = useState(false);
   const [submitted,   setSubmitted]   = useState(false);
-  // Subject initials — shown in the post-submit confirmation message.
-  const [subjectInitials, setSubjectInitials] = useState('');
   // Reopen-reason dialog (replaces the native window.prompt).
   const [reopenOpen,   setReopenOpen]   = useState(false);
   const [reopenReason, setReopenReason] = useState('');
@@ -177,20 +175,6 @@ export default function SiteCaptureFormPage() {
     })();
     return () => { cancelled = true; };
   }, [formId, subjectId]);
-
-  // Subject initials for the submit-confirmation message. Non-fatal on error.
-  useEffect(() => {
-    if (!subjectId) return undefined;
-    let cancelled = false;
-    siteWorkspaceClient.getSubject(subjectId)
-      .then((res) => {
-        if (cancelled) return;
-        const sub = res?.subject ?? res?.item ?? res ?? {};
-        setSubjectInitials(sub.subject_initials ?? sub.subjectInitials ?? '');
-      })
-      .catch(() => { /* message falls back to the subject code */ });
-    return () => { cancelled = true; };
-  }, [subjectId]);
 
   // A Submitted form is read-only here, and the site owner has no Reopen button
   // of their own — only a sponsor/CRO can reopen it (from a different session).
@@ -400,13 +384,11 @@ export default function SiteCaptureFormPage() {
             </div>
             <h2 className={s.successTitle}>Form submitted</h2>
             <p className={s.successSub}>
-              The Case Report Form for subject{' '}
-              <span className={s.successCode}>{subjectInitials || subjectId}</span> has been
-              successfully submitted and saved.
+              Case Report Form (CRF) submitted successfully.
             </p>
             <div className={s.successNote}>
               <Info size={15} className={s.successNoteIcon} />
-              <span>To modify the submitted subject details, please contact the Administrator.</span>
+              <span>To modify the submitted CRF details, please contact the administrator.</span>
             </div>
             <div className={s.successActions}>
               <button

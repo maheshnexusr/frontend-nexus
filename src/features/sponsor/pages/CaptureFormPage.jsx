@@ -72,7 +72,6 @@ export default function CaptureFormPage() {
   const [defaults,  setDefaults]  = useState({});
   const [submitted, setSubmitted] = useState(false);
   // Subject initials — shown in the post-submit confirmation message.
-  const [subjectInitials, setSubjectInitials] = useState('');
   // Step-3 study module toggles (from the form GET) — hide the verification
   // workflow / query chips when the study doesn't enable those managers.
   const [verificationEnabled, setVerificationEnabled] = useState(true);
@@ -159,20 +158,6 @@ export default function CaptureFormPage() {
     if (studyId && formId) load();
     return () => { cancelled = true; };
   }, [studyId, formId, subjectId]);
-
-  // Subject initials for the submit-confirmation message. Non-fatal on error.
-  useEffect(() => {
-    if (!subjectId) return undefined;
-    let cancelled = false;
-    sponsorAxiosClient.get(`/api/v1/sponsor/workspace/subjects/${subjectId}`)
-      .then((res) => {
-        if (cancelled) return;
-        const sub = res?.subject ?? res?.item ?? res ?? {};
-        setSubjectInitials(sub.subject_initials ?? sub.subjectInitials ?? '');
-      })
-      .catch(() => { /* message falls back to the subject code */ });
-    return () => { cancelled = true; };
-  }, [subjectId]);
 
   /* ── submit handler ── */
   const handleSubmit = useCallback(async (formData, { reason, reasons } = {}) => {
@@ -310,13 +295,11 @@ export default function CaptureFormPage() {
             </div>
             <h2 className={s.successTitle}>Form submitted</h2>
             <p className={s.successSub}>
-              The Case Report Form for subject{' '}
-              <span className={s.successCode}>{subjectInitials || subjectId}</span> has been
-              successfully submitted and saved.
+              Case Report Form (CRF) submitted successfully.
             </p>
             <div className={s.successNote}>
               <Info size={15} className={s.successNoteIcon} />
-              <span>To modify the submitted subject details, please contact the Data Administrator.</span>
+              <span>To modify the submitted CRF details, please contact the administrator.</span>
             </div>
             <div className={s.successActions}>
               <button
