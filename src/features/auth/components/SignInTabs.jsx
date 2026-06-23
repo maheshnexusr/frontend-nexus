@@ -9,12 +9,12 @@ import OTPLoginForm      from './OTPLoginForm';
 import styles            from './SignInTabs.module.css';
 
 const TABS = [
-  { id: 'password', label: 'Password'           },
   { id: 'otp',      label: 'OTP / Passwordless' },
+  { id: 'password', label: 'Password'           },
 ];
 
 export default function SignInTabs() {
-  const [activeTab, setActiveTab] = useState('password');
+  const [activeTab, setActiveTab] = useState('otp');
 
   const activeIndex = TABS.findIndex((t) => t.id === activeTab);
 
