@@ -40,7 +40,7 @@ function AuditChange({ metadata }) {
   const hasPrevNew = previous_value != null || new_value != null;
   const extras = Object.entries(metadata).filter(([k, v]) => !AUDIT_OMIT.has(k) && v != null && v !== '');
   if (!hasPrevNew && !reason && !(Array.isArray(changes) && changes.length) && !extras.length) return null;
-  const pill = { fontSize: 11.5, padding: '1px 7px', borderRadius: 5, fontFamily: 'monospace' };
+  const pill = { fontSize: 11.5, padding: '1px 7px', borderRadius: 5, fontFamily: 'monospace', whiteSpace: 'pre-line', textAlign: 'left' };
   return (
     <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
       {hasPrevNew && (
