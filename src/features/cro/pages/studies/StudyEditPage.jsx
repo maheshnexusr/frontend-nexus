@@ -58,6 +58,7 @@ export default function StudyEditPage() {
         sponsorFullName:  study.sponsorFullName   ?? '',
         sponsorPermissions: study.sponsorPermissions ?? null,
         sponsorDashboardWidgetKeys: study.sponsorDashboardWidgetKeys ?? null,
+        activationMethod: study.activationMethod ?? 'PASSWORD',
       }));
 
       dispatch(setStep2({

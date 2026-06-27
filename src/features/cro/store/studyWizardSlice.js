@@ -19,6 +19,7 @@ const STEP1_INIT = {
   sponsorName:      '',   // organizationName for display
   sponsorPermissions: null, // nested matrix — per-study sponsor workspace grant
   sponsorDashboardWidgetKeys: null, // per-study sponsor dashboard whitelist (Step 1)
+  activationMethod: 'PASSWORD', // how invited site personnel activate (PASSWORD | OTP)
 };
 
 const STEP2_INIT = {

@@ -26,6 +26,9 @@ function normalizeVerify(raw) {
     valid:        o.valid ?? true,
     fullName:     o.full_name ?? o.fullName ?? '',
     emailAddress: o.email ?? o.email_address ?? o.emailAddress ?? '',
+    // How the account activates — decided server-side and used by the page to
+    // render the password screen ('PASSWORD') or the OTP screen ('OTP').
+    activationMethod: o.activation_method ?? o.activationMethod ?? 'PASSWORD',
     // Studies the person has already been assigned to (shown as context on
     // the set-password screen). Each is a study card from siteStudyService.
     studies:      Array.isArray(o.studies) ? o.studies : [],
@@ -46,6 +49,26 @@ export const siteInviteClient = {
    */
   async activate({ token, password }) {
     const res = await siteAxiosClient.post(`${BASE}/activate`, { token, password });
+    setSiteSession(res);
+    return {
+      user:    res.user ?? null,
+      studies: Array.isArray(res.studies) ? res.studies : [],
+      scope:   res.scope ?? 'site',
+    };
+  },
+
+  /** OTP activation: email a one-time code to the registered address. */
+  async requestOtp(token) {
+    const res = await siteAxiosClient.post(`${BASE}/otp/request`, { token });
+    return { message: res.message ?? '' };
+  },
+
+  /**
+   * Verify the activation OTP. On success the account is activated (no password)
+   * and a session is started — same persisted shape as activate().
+   */
+  async verifyOtp({ token, otp }) {
+    const res = await siteAxiosClient.post(`${BASE}/otp/verify`, { token, otp });
     setSiteSession(res);
     return {
       user:    res.user ?? null,

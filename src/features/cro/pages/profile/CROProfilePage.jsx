@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { selectCurrentUser, updateUser } from '@/features/auth/authSlice';
 import { userService }                   from '@/services/userService';
+import { profileClient }                 from '@/api/profileClient';
 import { useReadOnlyView }               from '@/features/workspace/hooks/useReadOnlyView';
 import { addToast }                      from '@/app/notificationSlice';
 import styles from './CROProfilePage.module.css';
@@ -58,7 +59,42 @@ export default function CROProfilePage() {
   const [saving,        setSaving]        = useState(false);
   const [dirty,         setDirty]         = useState(false);
 
+  // MFA (two-factor) self-service toggle. Scope-aware via profileClient, so the
+  // same control works for CRO and sponsor users on this shared page.
+  const [mfaEnabled,    setMfaEnabled]    = useState(false);
+  const [mfaSaving,     setMfaSaving]     = useState(false);
+
   const fileInputRef = useRef(null);
+
+  /* load current MFA state */
+  useEffect(() => {
+    let cancelled = false;
+    profileClient.getMfa()
+      .then((on) => { if (!cancelled) setMfaEnabled(on); })
+      .catch(() => { /* leave default off */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleMfa = async () => {
+    if (mfaSaving || ro?.isReadOnly) return;
+    const next = !mfaEnabled;
+    setMfaSaving(true);
+    try {
+      const saved = await profileClient.setMfa(next);
+      setMfaEnabled(saved);
+      dispatch(addToast({
+        type: 'success',
+        message: `Two-factor authentication ${saved ? 'enabled' : 'disabled'}.`,
+      }));
+    } catch (err) {
+      dispatch(addToast({
+        type: 'error',
+        message: err?.response?.data?.message ?? err?.message ?? 'Could not update MFA setting.',
+      }));
+    } finally {
+      setMfaSaving(false);
+    }
+  };
 
   /* seed from Redux */
   useEffect(() => {
@@ -309,6 +345,49 @@ export default function CROProfilePage() {
               </button>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Security — two-factor authentication */}
+      <div className={styles.infoCard} style={{ marginTop: 18 }}>
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16,
+          }}
+        >
+          <div>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Shield size={14} /> Two-Factor Authentication (MFA)
+            </p>
+            <p style={{ margin: '6px 0 0', fontSize: 12.5, color: '#64748b', maxWidth: 460, lineHeight: 1.5 }}>
+              When enabled, we email a 6-digit verification code after each password
+              sign-in. You&apos;ll enter it to finish logging in.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={mfaEnabled}
+            onClick={toggleMfa}
+            disabled={mfaSaving || ro.isReadOnly}
+            title={ro.isReadOnly ? ro.readOnlyMessage : undefined}
+            style={{
+              flexShrink: 0,
+              width: 46, height: 26, borderRadius: 999, border: 'none',
+              cursor: (mfaSaving || ro.isReadOnly) ? 'not-allowed' : 'pointer',
+              background: mfaEnabled ? '#2563eb' : '#cbd5e1',
+              position: 'relative', transition: 'background 0.15s',
+              opacity: mfaSaving ? 0.6 : 1,
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute', top: 3, left: mfaEnabled ? 23 : 3,
+                width: 20, height: 20, borderRadius: '50%', background: '#fff',
+                transition: 'left 0.15s', boxShadow: '0 1px 2px rgba(0,0,0,.2)',
+              }}
+            />
+          </button>
         </div>
       </div>
     </div>

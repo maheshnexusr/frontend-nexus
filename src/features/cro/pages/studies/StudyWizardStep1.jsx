@@ -117,6 +117,8 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
     // array = explicit cap intersected with the role's whitelist by buildSponsorView.
     sponsorDashboardWidgetKeys:
       Array.isArray(saved.sponsorDashboardWidgetKeys) ? saved.sponsorDashboardWidgetKeys : null,
+    // How site personnel invited to this study activate their account.
+    activationMethod: saved.activationMethod ?? 'PASSWORD',
   });
 
   const [errors,          setErrors]          = useState({});
@@ -235,6 +237,7 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
       sponsorFullName:  form.sponsorFullName,
       sponsorPermissions: form.sponsorPermissions,
       sponsorDashboardWidgetKeys: form.sponsorDashboardWidgetKeys,
+      activationMethod: form.activationMethod,
     }));
     navigate('/cro/sponsors/new');
   };
@@ -265,6 +268,7 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
       sponsorFullName:  form.sponsorFullName,
       sponsorPermissions: form.sponsorPermissions,
       sponsorDashboardWidgetKeys: form.sponsorDashboardWidgetKeys,
+      activationMethod: form.activationMethod,
     };
 
     setSaving(true);
@@ -384,6 +388,34 @@ export default function StudyWizardStep1({ onNext, onCancel }) {
           placeholder="Brief description of the study objectives, design, and population…"
           rows={4}
         />
+      </FormField>
+
+      {/* Activation Method — applies to every site person invited to this study.
+          PASSWORD: they set a password from the invite link. OTP: they receive a
+          one-time code by email to activate, then sign in with OTP. */}
+      <FormField
+        label="Activation Method"
+        name="activationMethod"
+        required
+        helpText="How site personnel invited to this study activate their account."
+      >
+        <div style={{ display: 'flex', gap: 24, marginTop: 4 }}>
+          {[
+            { value: 'PASSWORD', label: 'Password' },
+            { value: 'OTP',      label: 'OTP' },
+          ].map((opt) => (
+            <label key={opt.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="activationMethod"
+                value={opt.value}
+                checked={(form.activationMethod ?? 'PASSWORD') === opt.value}
+                onChange={() => set('activationMethod')(opt.value)}
+              />
+              <span>{opt.label}</span>
+            </label>
+          ))}
+        </div>
       </FormField>
 
       {/* Sponsor — last per spec */}

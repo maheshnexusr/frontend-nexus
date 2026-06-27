@@ -67,6 +67,8 @@ function normalize(raw) {
     scopeEpro:           Boolean(raw.scope_epro   ?? raw.scopeEpro),
     therapeuticArea:     raw.therapeutic_area   ?? raw.therapeuticArea ?? '',
     studyDescription:    raw.study_description  ?? raw.studyDescription ?? '',
+    // Study-level account activation method for invited site personnel.
+    activationMethod:    raw.activation_method  ?? raw.activationMethod ?? 'PASSWORD',
     sponsorId:           raw.sponsor_id         ?? raw.sponsorId ?? '',
     sponsorName:         raw.sponsor_name       ?? raw.sponsorName ?? '',
     // Per-study sponsor workspace permissions (Study Wizard Step 1) — nested
@@ -229,6 +231,7 @@ export const studiesClient = {
       scopes:            toScopes(data),
       therapeutic_area:  data.therapeuticArea  || undefined,
       study_description: data.studyDescription || undefined,
+      activation_method: data.activationMethod === 'OTP' ? 'OTP' : 'PASSWORD',
       sponsor_permissions: data.sponsorPermissions
         ? nestedPermsToApi(data.sponsorPermissions)
         : undefined,
@@ -247,6 +250,7 @@ export const studiesClient = {
       scopes:            toScopes(data),
       therapeutic_area:  data.therapeuticArea  || undefined,
       study_description: data.studyDescription || undefined,
+      activation_method: data.activationMethod === 'OTP' ? 'OTP' : 'PASSWORD',
       sponsor_permissions: data.sponsorPermissions
         ? nestedPermsToApi(data.sponsorPermissions)
         : undefined,
