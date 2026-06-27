@@ -26,8 +26,13 @@ import {
   Eye, EyeOff,
 } from 'lucide-react';
 import { siteInviteClient } from '@/features/site/api/siteInviteClient';
+import { clearSiteSession } from '@/features/site/authStore';
+import OTPInput from '@/features/auth/components/OTPInput';
 import styles from './SitePersonnelActivationPage.module.css';
 
+// Resend cooldown for the activation OTP, matching the sign-in / forgot-password
+// OTP flows.
+const OTP_COOLDOWN_SECONDS = 60;
 const PWD_MIN = 8;
 const PWD_RE  = {
   upper:   /[A-Z]/,
@@ -63,6 +68,64 @@ export default function SitePersonnelActivationPage() {
   const [showPwd,      setShowPwd]      = useState(false);
   const [pwdError,     setPwdError]     = useState('');
   const [confirmError, setConfirmError] = useState('');
+
+  // OTP-activation state (only used when meta.activationMethod === 'OTP')
+  const isOtp = meta?.activationMethod === 'OTP';
+  const [otpSent,      setOtpSent]      = useState(false);
+  const [otp,          setOtp]          = useState('');
+  const [otpBusy,      setOtpBusy]      = useState(false);   // send / verify in flight
+  const [otpError,     setOtpError]     = useState('');
+  const [cooldown,     setCooldown]     = useState(0);       // resend countdown
+
+  // Tick the resend cooldown down to zero.
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  // Request (or resend) the activation OTP.
+  const sendOtp = async () => {
+    setOtpError('');
+    setErrorMsg('');
+    setOtpBusy(true);
+    try {
+      await siteInviteClient.requestOtp(token);
+      setOtpSent(true);
+      setOtp('');
+      setCooldown(OTP_COOLDOWN_SECONDS);
+    } catch (err) {
+      setErrorMsg(
+        err?.response?.data?.message ?? err?.message
+          ?? 'Could not send the activation code. Please try again.',
+      );
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
+  // Verify the entered OTP → activates the account and starts a session.
+  const verifyOtp = async (code) => {
+    const value = (code ?? otp).trim();
+    setOtpError('');
+    if (value.length < 6) { setOtpError('Enter the 6-digit code.'); return; }
+    setOtpBusy(true);
+    try {
+      await siteInviteClient.verifyOtp({ token, otp: value });
+      // Account is active — require a fresh sign-in rather than dropping them
+      // straight into the workspace. Discard the activation session first.
+      clearSiteSession();
+      setPhase('success');
+      setTimeout(() => navigate('/signin', { replace: true }), 1400);
+    } catch (err) {
+      setOtpError(
+        err?.response?.data?.message ?? err?.message
+          ?? 'The activation code is invalid or has expired.',
+      );
+    } finally {
+      setOtpBusy(false);
+    }
+  };
 
   // ── Verify on mount ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -106,15 +169,15 @@ export default function SitePersonnelActivationPage() {
 
     setPhase('activating');
     try {
-      // activate() persists the study-agnostic site session internally
-      // (session token + refresh token + user + assigned-studies list).
       await siteInviteClient.activate({ token, password });
 
+      // Account is active — require a fresh sign-in rather than dropping them
+      // straight into the workspace. Discard the activation session first.
+      clearSiteSession();
       setPhase('success');
 
-      // Brief pause, then route to the study picker — the account is active
-      // but no study is chosen yet (a site person can be on several studies).
-      setTimeout(() => navigate('/site/dashboard', { replace: true }), 1400);
+      // Brief pause, then route to the sign-in page.
+      setTimeout(() => navigate('/signin', { replace: true }), 1400);
     } catch (err) {
       setErrorMsg(
         err?.response?.data?.message
@@ -167,7 +230,7 @@ export default function SitePersonnelActivationPage() {
           </div>
           <h1 className={styles.title}>Account activated</h1>
           <p className={styles.sub}>
-            Welcome, {meta?.fullName}. Taking you to your site portal…
+            Your account has been successfully activated. Redirecting you to sign in…
           </p>
         </div>
       </div>
@@ -180,8 +243,9 @@ export default function SitePersonnelActivationPage() {
       <div className={styles.card}>
         <h1 className={styles.title}>Activate your account</h1>
         <p className={styles.sub}>
-          Set a password to activate your SclinNexus site account. After
-          activation you'll choose which study to work in.
+          {isOtp
+            ? "Your account uses OTP-based activation. We'll email you a one-time code to activate it. After activation you'll choose which study to work in."
+            : "Set a password to activate your SclinNexus site account. After activation you'll choose which study to work in."}
         </p>
 
         {/* Read-only summary */}
@@ -207,6 +271,53 @@ export default function SitePersonnelActivationPage() {
           </div>
         )}
 
+        {isOtp ? (
+          /* ── OTP activation ─────────────────────────────────────────────── */
+          !otpSent ? (
+            <div className={styles.form}>
+              <button
+                type="button"
+                className={styles.btnSubmit}
+                onClick={sendOtp}
+                disabled={otpBusy}
+              >
+                {otpBusy ? 'Sending…' : 'Send OTP'}
+              </button>
+            </div>
+          ) : (
+            <div className={styles.form}>
+              <div className={styles.field}>
+                <label className={styles.label}>Enter the 6-digit code</label>
+                <OTPInput
+                  length={6}
+                  onChange={(v) => { setOtp(v); setOtpError(''); }}
+                  onComplete={(v) => verifyOtp(v)}
+                  disabled={otpBusy}
+                  error={!!otpError}
+                />
+                {otpError && <span className={styles.fieldError}>{otpError}</span>}
+              </div>
+
+              <button
+                type="button"
+                className={styles.btnSubmit}
+                onClick={() => verifyOtp()}
+                disabled={otpBusy || otp.trim().length < 6}
+              >
+                {otpBusy ? 'Verifying…' : 'Verify OTP'}
+              </button>
+
+              <button
+                type="button"
+                className={styles.btnLink}
+                onClick={sendOtp}
+                disabled={otpBusy || cooldown > 0}
+              >
+                {cooldown > 0 ? `Resend OTP in ${cooldown}s` : 'Resend OTP'}
+              </button>
+            </div>
+          )
+        ) : (
         <form onSubmit={handleSubmit} className={styles.form}>
           <div className={styles.field}>
             <label className={styles.label}>New password</label>
@@ -251,6 +362,7 @@ export default function SitePersonnelActivationPage() {
             {phase === 'activating' ? 'Activating…' : 'Activate Account'}
           </button>
         </form>
+        )}
 
         <p className={styles.fineprint}>
           By activating, you agree to the study's terms and the consent form your

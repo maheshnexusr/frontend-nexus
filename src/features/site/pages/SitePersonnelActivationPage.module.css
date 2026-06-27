@@ -179,6 +179,18 @@
 .btnSubmit:hover:not(:disabled) { background: #1d4ed8; }
 .btnSubmit:disabled { opacity: 0.65; cursor: not-allowed; }
 
+.btnLink {
+  margin-top: 2px;
+  background: none;
+  border: none;
+  padding: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-primary, #2563eb);
+  cursor: pointer;
+}
+.btnLink:disabled { color: var(--text-muted, #94a3b8); cursor: not-allowed; }
+
 .fineprint {
   margin: 16px 0 0;
   font-size: 11.5px;

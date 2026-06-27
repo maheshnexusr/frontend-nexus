@@ -17,17 +17,21 @@
  * user dawdles, Step 2 returns 401 and we kick them back to Step 1.
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '@/app/hooks';
-import { loginAsync, chooseIdentityAsync } from '@/features/auth/authSlice';
+import { loginAsync, chooseIdentityAsync, verifyMfaAsync } from '@/features/auth/authSlice';
+import { authService } from '@/services/authService';
 import { getRoleRedirect } from '@/utils/roleRedirect';
+import OTPInput     from '@/features/auth/components/OTPInput';
 import FormField     from '@/components/form/FormField';
 import PasswordInput from '@/components/form/PasswordInput';
 import styles        from './PasswordLoginForm.module.css';
+
+const MFA_COOLDOWN_SECONDS = 60;
 
 /* ── Validation schema ───────────────────────────────────────────────────── */
 const loginSchema = z.object({
@@ -52,6 +56,21 @@ export default function PasswordLoginForm() {
   const [choosing,          setChoosing]          = useState(null);
   const choiceTokenRef                            = useRef(null); // short-lived JWT from Step 1
 
+  // MFA challenge state — set when login (or choose-identity) returns
+  // mfaRequired. We hold the single-use challenge token here and render a
+  // 6-digit code entry view; verifyMfaAsync completes the sign-in.
+  const [mfa,        setMfa]        = useState(null);   // { mfaToken, email } | null
+  const [mfaCode,    setMfaCode]    = useState('');
+  const [mfaBusy,    setMfaBusy]    = useState(false);
+  const [mfaError,   setMfaError]   = useState('');
+  const [mfaCooldown, setMfaCooldown] = useState(MFA_COOLDOWN_SECONDS);
+
+  useEffect(() => {
+    if (!mfa || mfaCooldown <= 0) return undefined;
+    const t = setTimeout(() => setMfaCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [mfa, mfaCooldown]);
+
   const {
     register,
     handleSubmit,
@@ -72,6 +91,10 @@ export default function PasswordLoginForm() {
         setIdentities(result.identities ?? []);
         return; // wait for the user to pick one
       }
+      if (result?.mfaRequired) {
+        beginMfa(result);
+        return; // wait for the emailed code
+      }
       navigate(getRoleRedirect(result?.user));
     } catch (err) {
       setError('root', {
@@ -79,6 +102,40 @@ export default function PasswordLoginForm() {
           ? err
           : (err?.message ?? 'Sign-in failed. Please check your credentials.'),
       });
+    }
+  };
+
+  const beginMfa = (result) => {
+    setMfa({ mfaToken: result.mfaToken ?? null, email: result.email ?? null });
+    setMfaCode('');
+    setMfaError('');
+    setMfaCooldown(MFA_COOLDOWN_SECONDS);
+  };
+
+  const onVerifyMfa = async (codeArg) => {
+    const code = (codeArg ?? mfaCode).trim();
+    setMfaError('');
+    if (code.length < 6) { setMfaError('Enter the 6-digit code.'); return; }
+    if (!mfa?.mfaToken) { setMfaError('Your verification session expired. Please sign in again.'); return; }
+    setMfaBusy(true);
+    try {
+      const result = await dispatch(verifyMfaAsync({ mfaToken: mfa.mfaToken, code })).unwrap();
+      navigate(getRoleRedirect(result?.user));
+    } catch (err) {
+      setMfaError(typeof err === 'string' ? err : (err?.message ?? 'The code is invalid or has expired.'));
+      setMfaBusy(false);
+    }
+  };
+
+  const onResendMfa = async () => {
+    if (!mfa?.mfaToken || mfaCooldown > 0) return;
+    setMfaError('');
+    try {
+      await authService.resendMfa({ mfaToken: mfa.mfaToken });
+      setMfaCode('');
+      setMfaCooldown(MFA_COOLDOWN_SECONDS);
+    } catch (err) {
+      setMfaError(err?.response?.data?.message ?? err?.message ?? 'Could not resend the code.');
     }
   };
 
@@ -98,6 +155,11 @@ export default function PasswordLoginForm() {
         choiceToken,
       })).unwrap();
       choiceTokenRef.current = null;
+      if (result?.mfaRequired) {
+        setIdentities(null);
+        beginMfa(result);
+        return; // the picked identity needs MFA
+      }
       navigate(getRoleRedirect(result?.user));
     } catch (err) {
       const message = typeof err === 'string'
@@ -114,6 +176,68 @@ export default function PasswordLoginForm() {
       }
     }
   };
+
+  // ── MFA code-entry view ─────────────────────────────────────────────────
+  if (mfa) {
+    return (
+      <div className={styles.form}>
+        <header style={{ marginBottom: 18 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: '#0f172a', margin: 0 }}>Verify it&apos;s you</h2>
+          <p style={{ fontSize: 13, color: '#64748b', margin: '6px 0 0' }}>
+            We&apos;ve emailed a 6-digit verification code{mfa.email ? ` to ${mfa.email}` : ''}. Enter it
+            below to finish signing in.
+          </p>
+        </header>
+
+        <OTPInput
+          length={6}
+          onChange={(v) => { setMfaCode(v); setMfaError(''); }}
+          onComplete={(v) => onVerifyMfa(v)}
+          disabled={mfaBusy}
+          error={!!mfaError}
+        />
+
+        {mfaError && (
+          <p style={{ marginTop: 10, fontSize: 13, color: '#dc2626' }}>{mfaError}</p>
+        )}
+
+        <button
+          type="button"
+          className={styles.submitBtn}
+          style={{ marginTop: 16 }}
+          onClick={() => onVerifyMfa()}
+          disabled={mfaBusy || mfaCode.trim().length < 6}
+        >
+          {mfaBusy ? 'Verifying…' : 'Verify & Sign In'}
+        </button>
+
+        <button
+          type="button"
+          onClick={onResendMfa}
+          disabled={mfaBusy || mfaCooldown > 0}
+          style={{
+            marginTop: 12, background: 'transparent', border: 0,
+            color: mfaCooldown > 0 ? '#94a3b8' : '#2563eb',
+            fontSize: 13, cursor: mfaCooldown > 0 ? 'not-allowed' : 'pointer', fontWeight: 600,
+          }}
+        >
+          {mfaCooldown > 0 ? `Resend code in ${mfaCooldown}s` : 'Resend code'}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => { setMfa(null); setMfaCode(''); setMfaError(''); }}
+          disabled={mfaBusy}
+          style={{
+            marginTop: 6, background: 'transparent', border: 0, color: '#64748b',
+            fontSize: 13, cursor: 'pointer', textDecoration: 'underline',
+          }}
+        >
+          ← Back to sign-in
+        </button>
+      </div>
+    );
+  }
 
   // ── Identity-picker view ────────────────────────────────────────────────
   if (identities) {

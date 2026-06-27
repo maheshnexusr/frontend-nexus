@@ -175,6 +175,7 @@ const SiteSubjectFormPage            = lazy(() => import('@/features/site/pages/
 const SitePersonnelPage              = lazy(() => import('@/features/site/pages/SitePersonnelPage'));
 const SiteQueriesPage                = lazy(() => import('@/features/site/pages/SiteQueriesPage'));
 const SiteFeaturePlaceholderPage     = lazy(() => import('@/features/site/pages/SiteFeaturePlaceholderPage'));
+const SiteProfilePage                = lazy(() => import('@/features/site/pages/SiteProfilePage'));
 const RolesPage              = lazy(() => import('@/features/sponsor/pages/RolesPage'));
 const ReportsPage            = lazy(() => import('@/features/sponsor/pages/ReportsPage'));
 const SponsorActivityLogPage      = lazy(() => import('@/features/sponsor/pages/SponsorActivityLogPage'));
@@ -360,7 +361,7 @@ export const router = createBrowserRouter([
           { path: 'masters/locations',       element: sp(SiteFeaturePlaceholderPage) },
           { path: 'masters/regions',         element: sp(SiteFeaturePlaceholderPage) },
           { path: 'activity-log',            element: sp(SiteFeaturePlaceholderPage) },
-          { path: 'profile',                 element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'profile',                 element: sp(SiteProfilePage) },
         ],
       },
 

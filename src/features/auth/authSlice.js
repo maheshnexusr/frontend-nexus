@@ -381,6 +381,18 @@ export const loginAsync = createAsyncThunk(
         };
       }
 
+      // MFA-enabled account — backend emailed a 6-digit code and returned a
+      // challenge token instead of a session. No tokens are issued at this
+      // step; the UI renders the MFA code-entry view and then calls
+      // verifyMfaAsync({ mfaToken, code }) to complete the sign-in.
+      if (loginRes?.mfa_required || loginRes?.mfaRequired) {
+        return {
+          mfaRequired: true,
+          mfaToken:    loginRes.mfa_token ?? loginRes.mfaToken ?? null,
+          email:       loginRes.email ?? emailAddress,
+        };
+      }
+
       // Save tokens immediately so the next request has Authorization header.
       // Handles multiple backend wrapper shapes (item / data / tokens / …).
       const { accessToken, refreshToken } = extractAuthTokens(loginRes);
@@ -529,6 +541,15 @@ export const fetchIdentitiesAsync = createAsyncThunk(
  *  the right scope's storage and return the thunk payload. Both endpoints
  *  return the same shape as a normal login. */
 async function persistMintedSession(loginRes, label, rejectWithValue) {
+  // MFA challenge — a picked identity may itself require MFA. No tokens yet;
+  // surface the challenge so the UI can prompt for the code (verifyMfaAsync).
+  if (loginRes?.mfa_required || loginRes?.mfaRequired) {
+    return {
+      mfaRequired: true,
+      mfaToken:    loginRes.mfa_token ?? loginRes.mfaToken ?? null,
+      email:       loginRes.email ?? null,
+    };
+  }
   // Site personnel scope — persist to site storage, not CRO. Drop CRO +
   // sponsor scope storage so a stale token from the previous workspace
   // doesn't shadow the new site session.
@@ -628,6 +649,30 @@ export const chooseIdentityAsync = createAsyncThunk(
         return rejectWithValue(serverMsg || "You don't have access to this workspace. Please contact your administrator.");
       }
       return rejectWithValue(serverMsg ?? 'Failed to switch identity.');
+    }
+  },
+);
+
+/**
+ * Finish an MFA login.
+ *
+ * POST /api/v1/auth/login/mfa/verify  body: { mfa_token, code }
+ *
+ * Returns the same shape as a normal login (accessToken/refreshToken/user/scope
+ * for cro/sponsor, or a site session). Reuses persistMintedSession so the
+ * resulting session is persisted into the right scope's storage.
+ *
+ * Args: { mfaToken, code }
+ */
+export const verifyMfaAsync = createAsyncThunk(
+  'auth/verifyMfa',
+  async ({ mfaToken, code }, { rejectWithValue }) => {
+    try {
+      const loginRes = await authService.verifyMfa({ mfaToken, code });
+      return await persistMintedSession(loginRes, 'mfa-verify', rejectWithValue);
+    } catch (err) {
+      const serverMsg = err?.response?.data?.message ?? err?.message;
+      return rejectWithValue(serverMsg ?? 'Verification failed. Please try again.');
     }
   },
 );
@@ -1265,6 +1310,9 @@ const authSlice = createSlice({
     // applyUser, or the sponsor/site permission tree would land in the CRO
     // `authPermissionsTree` slot and CROLayout would render a stale menu.
     const applyByScope = (state, { payload }) => {
+      // MFA challenge carries no tokens/user — leave state untouched; the UI
+      // prompts for the code and verifyMfaAsync applies the real session.
+      if (payload?.mfaRequired) { state.status = 'succeeded'; return; }
       const scope = (payload?.scope ?? '').toLowerCase();
       if (scope === 'sponsor') {
         applySponsorFulfilled(state, { payload });
@@ -1304,6 +1352,7 @@ const authSlice = createSlice({
         // out the currently authenticated user mid-flow). The component
         // will call chooseIdentityAsync next, which DOES apply state.
         if (action.payload?.requiresChoice) { state.status = 'succeeded'; return; }
+        if (action.payload?.mfaRequired) { state.status = 'succeeded'; return; }
         applyByScope(state, action);
       })
       .addCase(loginAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
@@ -1323,6 +1372,13 @@ const authSlice = createSlice({
       .addCase(chooseIdentityAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
       .addCase(chooseIdentityAsync.fulfilled, applyByScope)
       .addCase(chooseIdentityAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
+
+    // ── verifyMfaAsync ──────────────────────────────────────────────────────
+    // Completes a 2FA login; applies the real session via applyByScope.
+    builder
+      .addCase(verifyMfaAsync.pending,   (state) => { state.status = 'loading'; state.error = null; })
+      .addCase(verifyMfaAsync.fulfilled, applyByScope)
+      .addCase(verifyMfaAsync.rejected,  (state, { payload }) => { state.status = 'failed'; state.error = payload; });
 
     // ── switchIdentityAsync ─────────────────────────────────────────────────
     // In-app no-password workspace switch — applies state exactly like

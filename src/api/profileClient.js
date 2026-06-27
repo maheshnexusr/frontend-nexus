@@ -99,6 +99,18 @@ export const profileClient = {
     const res = await client.get('/api/v1/profile/me/permissions');
     return normalizePermissionsResponse(res);
   },
+
+  /** GET /api/v1/profile/me/mfa — current MFA state for the active scope. */
+  async getMfa() {
+    const res = await client.get('/api/v1/profile/me/mfa');
+    return Boolean((res?.item ?? res ?? {}).mfa_enabled);
+  },
+
+  /** PUT /api/v1/profile/me/mfa — enable/disable MFA for the active scope. */
+  async setMfa(enabled) {
+    const res = await client.put('/api/v1/profile/me/mfa', { enabled });
+    return Boolean((res?.item ?? res ?? {}).mfa_enabled);
+  },
 };
 
 export default profileClient;

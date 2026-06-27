@@ -25,8 +25,9 @@ import styles from './MasterEmailTemplatesPage.module.css';
 //   • CONSENT_SUBMITTED             — "Consent Submitted (Review)" → reviewers
 //   • CONSENT_APPROVED              — "Consent Approved"           → submitting user
 //   • CONSENT_REJECTED              — "Consent Rejected"           → submitting user
+//   • PASSWORD_RESET_OTP            — "Password Reset OTP"         → Forgot Password screen
 const SPONSOR_TEMPLATE_CODES =
-  'SPONSOR_SITE_PERSONNEL_INVITE,SPONSOR_STUDY_SUBMISSION,CONSENT_SUBMITTED,CONSENT_APPROVED,CONSENT_REJECTED';
+  'SPONSOR_SITE_PERSONNEL_INVITE,SPONSOR_STUDY_SUBMISSION,CONSENT_SUBMITTED,CONSENT_APPROVED,CONSENT_REJECTED,PASSWORD_RESET_OTP';
 
 // The list endpoint returns raw master_email_templates rows (snake_case DB
 // columns). Map them to the camelCase shape the table + modals consume.

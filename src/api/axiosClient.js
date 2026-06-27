@@ -79,6 +79,11 @@ const AUTH_ENDPOINTS = [
   '/api/v1/auth/refresh',
   '/api/v1/auth/register',
   '/api/v1/auth/activate',
+  // Forgot-password OTP — a 401 here means a bad/expired code, never an expired
+  // session, so it must not trigger a token refresh or redirect.
+  '/api/v1/auth/forgot-password/otp/request',
+  '/api/v1/auth/forgot-password/otp/verify',
+  '/api/v1/auth/forgot-password/otp/reset',
 ];
 
 /* ── Debug logger (only active when VITE_API_DEBUG=true) ─────────────────── */
