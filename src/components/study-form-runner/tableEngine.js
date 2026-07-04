@@ -55,6 +55,9 @@ export const matrixOptions = (field) => {
 export const matrixAllowNA   = (field) => mProp(field, 'matrixAllowNA', 'matrix_allow_na') === true;
 export const matrixNALabel   = (field) => mProp(field, 'matrixNALabel', 'matrix_na_label') || 'N/A';
 export const matrixRequireAll = (field) => mProp(field, 'matrixRequireAll', 'matrix_require_all') === true;
+// Unique selection: each scale option may be chosen by only ONE row (the option
+// is disabled in every other row once taken). N/A is exempt (any row can be N/A).
+export const matrixUnique = (field) => mProp(field, 'matrixUnique', 'matrix_unique') === true;
 
 // Normalise a stored rating-matrix value to a plain object map.
 export const matrixValueMap = (value) =>

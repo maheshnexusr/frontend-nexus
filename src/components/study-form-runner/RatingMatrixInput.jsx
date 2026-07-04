@@ -16,7 +16,7 @@ import { useMemo } from 'react';
 import { Table2 } from 'lucide-react';
 import {
   matrixRows, matrixOptions, matrixAllowNA, matrixNALabel,
-  matrixRequireAll, matrixRowKey, matrixValueMap, MATRIX_NA_VALUE,
+  matrixRequireAll, matrixUnique, matrixRowKey, matrixValueMap, MATRIX_NA_VALUE,
 } from './tableEngine';
 import s from './RatingMatrixInput.module.css';
 
@@ -25,6 +25,7 @@ export default function RatingMatrixInput({ field, value, onChange, showErrors =
   const baseOptions = useMemo(() => matrixOptions(field), [field]);
   const allowNA = matrixAllowNA(field);
   const requireAll = matrixRequireAll(field);
+  const unique = matrixUnique(field);
 
   // The scale columns, plus an optional trailing N/A pseudo-column.
   const scale = useMemo(() => {
@@ -34,6 +35,22 @@ export default function RatingMatrixInput({ field, value, onChange, showErrors =
   }, [baseOptions, allowNA, field]);
 
   const map = matrixValueMap(value);
+
+  // Unique selection: map each already-chosen option → the row that owns it, so
+  // it can be disabled in every OTHER row. N/A is exempt (any row may be N/A).
+  // Recomputed from the value each render, so changing/clearing a row's choice
+  // frees the option immediately.
+  const takenBy = useMemo(() => {
+    if (!unique) return {};
+    const t = {};
+    rows.forEach((row, idx) => {
+      const rk = matrixRowKey(row, idx);
+      const v = map[rk];
+      if (v != null && v !== '' && v !== MATRIX_NA_VALUE) t[v] = rk;
+    });
+    return t;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unique, rows, value]);
 
   const select = (rowKey, optValue) => {
     // Single selection per row — clicking the chosen option again clears it
@@ -82,13 +99,18 @@ export default function RatingMatrixInput({ field, value, onChange, showErrors =
                   {scale.map((o) => {
                     const inputName = `${field.id}_${rowKey}`;
                     const checked = sel === o.value;
+                    // Unique mode: an option taken by ANOTHER row is disabled here
+                    // (this row's own selection stays selectable; N/A is exempt).
+                    const owner = unique && !o.isNA ? takenBy[o.value] : undefined;
+                    const lockedByUnique = !!owner && owner !== rowKey;
                     return (
                       <td key={o.value} className={`${s.td} ${s.tdRadio}`}>
-                        <label className={s.radioLabel} title={o.label}>
+                        <label className={`${s.radioLabel} ${lockedByUnique ? s.disabled : ''}`} title={lockedByUnique ? `${o.label} — already assigned` : o.label}>
                           <input
                             type="radio"
                             name={inputName}
                             checked={checked}
+                            disabled={lockedByUnique}
                             onChange={() => select(rowKey, o.value)}
                             onClick={() => { if (checked) select(rowKey, o.value); }}
                           />
