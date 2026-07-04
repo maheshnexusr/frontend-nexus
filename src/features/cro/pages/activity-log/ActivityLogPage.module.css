@@ -350,16 +350,33 @@
 .mClose:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 .mBody {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
+  /* Always allow vertical scroll and keep the gutter reserved so the thin
+     scrollbar is visible (not overlaid/hidden) whenever the detail rows + change
+     table exceed the modal height. */
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;                       /* Firefox */
+  scrollbar-color: #64748b #e2e8f0;            /* Firefox: dark thumb + gray track */
   padding: var(--sp-5);
   display: flex;
   flex-direction: column;
   gap: var(--sp-5);
 }
-.mBody::-webkit-scrollbar { width: 5px; }
-.mBody::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: var(--r-full); }
+.mBody::-webkit-scrollbar { width: 12px; }
+.mBody::-webkit-scrollbar-track {
+  background: #e2e8f0;                          /* clearly visible scroll lane */
+  border-radius: var(--r-full);
+}
+.mBody::-webkit-scrollbar-thumb {
+  background: #64748b;                          /* dark slate — obvious on white */
+  border-radius: var(--r-full);
+  border: 2px solid #e2e8f0;
+  background-clip: content-box;
+  min-height: 32px;
+}
+.mBody::-webkit-scrollbar-thumb:hover { background: #475569; background-clip: content-box; }
 
 .mLoading {
   font-size: 13.5px;
@@ -495,3 +512,75 @@
   transition: all var(--t-fast);
 }
 .mCloseBtn:hover { border-color: var(--color-primary, #2563eb); color: var(--color-primary, #2563eb); }
+
+/* ── Severity badge ──────────────────────────────────────────────────────── */
+.sevBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.sevCritical { color: #fff;    background: #b91c1c; }
+.sevHigh     { color: #b91c1c; background: #fee2e2; }
+.sevMedium   { color: #b45309; background: #fef3c7; }
+.sevLow      { color: #047857; background: #ecfdf5; }
+.sevInfo     { color: #475569; background: #f1f5f9; }
+.muted       { color: var(--text-muted); }
+
+/* ── Human-readable changes table ────────────────────────────────────────── */
+.changeTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.changeTable th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-medium);
+}
+.changeTable td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  word-break: break-word;
+}
+.changeField { font-weight: 600; color: var(--text-secondary); white-space: nowrap; }
+.changeOld   { background: #fff1f2; color: #9f1239; border-radius: var(--r-sm); }
+.changeNew   { background: #ecfdf5; color: #065f46; border-radius: var(--r-sm); }
+
+/* ── Dashboard summary cards ─────────────────────────────────────────────── */
+.summaryRow {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+@media (max-width: 900px) { .summaryRow { grid-template-columns: repeat(2, 1fr); } }
+.summaryCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--r-md);
+  background: var(--bg-surface);
+}
+.summaryCritical { border-color: #fecaca; background: #fef2f2; }
+.summaryWarn     { border-color: #fde68a; background: #fffbeb; }
+.summaryLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+}
+.summaryValue   { font-size: 22px; font-weight: 700; color: var(--text-primary); }
+.summaryValueSm { font-size: 14px; font-weight: 600; color: var(--text-primary); }

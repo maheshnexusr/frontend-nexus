@@ -31,17 +31,25 @@ import { usePermissions }     from '@/features/auth/usePermissions';
 import styles from './ActivityLogPage.module.css';
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
-const MODULES     = ['Auth', 'Study', 'Profile', 'Sponsor', 'Team', 'Masters'];
-const ACTION_TYPES = ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'EXPORT'];
+const MODULES     = ['Auth', 'Study', 'Profile', 'Sponsor', 'Team', 'Masters', 'ActivityLog'];
+const ACTION_TYPES = ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'EXPORT', 'VIEW', 'APPROVE', 'PUBLISH'];
 const STATUSES    = ['SUCCESS', 'FAILURE', 'WARNING'];
+const SEVERITIES  = ['INFO', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 
 const ACTIVITY_EXPORT_COLUMNS = [
   { header: 'Timestamp',   accessor: 'timestamp'   },
   { header: 'User',        accessor: 'userName'    },
+  { header: 'Role',        accessor: 'roleName'    },
   { header: 'Action',      accessor: 'actionType'  },
   { header: 'Module',      accessor: 'module'      },
+  { header: 'Category',    accessor: 'category'    },
   { header: 'Entity Type', accessor: 'entityType'  },
   { header: 'Entity',      accessor: 'entityName'  },
+  { header: 'Study',       accessor: 'studyName'   },
+  { header: 'Site',        accessor: 'siteName'    },
+  { header: 'Subject',     accessor: 'subjectName' },
+  { header: 'Severity',    accessor: 'severity'    },
+  { header: 'Reason',      accessor: 'reason'      },
   { header: 'Description', accessor: 'description' },
   { header: 'IP Address',  accessor: 'ipAddress'   },
   { header: 'Status',      accessor: 'status'      },
@@ -51,10 +59,17 @@ function buildExportRows(items) {
   return items.map((r) => ({
     timestamp:   fmtDate(r.timestamp),
     userName:    r.userName   ?? '—',
+    roleName:    r.roleName   ?? '—',
     actionType:  r.actionType ?? '—',
     module:      r.module     ?? '—',
+    category:    r.category   ?? '—',
     entityType:  r.entityType ?? '—',
     entityName:  r.entityName ?? '—',
+    studyName:   r.studyName  ?? '—',
+    siteName:    r.siteName   ?? '—',
+    subjectName: r.subjectName ?? '—',
+    severity:    r.severity   ?? '—',
+    reason:      r.reason     ?? '—',
     description: r.description ?? '—',
     ipAddress:   r.ipAddress  ?? '—',
     status:      r.status     ?? '—',
@@ -112,6 +127,116 @@ function ActionBadge({ actionType }) {
   );
 }
 
+/* ── Severity badge ──────────────────────────────────────────────────────── */
+const SEVERITY_CLS = {
+  CRITICAL: styles.sevCritical,
+  HIGH:     styles.sevHigh,
+  MEDIUM:   styles.sevMedium,
+  LOW:      styles.sevLow,
+  INFO:     styles.sevInfo,
+};
+function SeverityBadge({ severity }) {
+  if (!severity) return <span className={styles.muted}>—</span>;
+  return (
+    <span className={`${styles.sevBadge} ${SEVERITY_CLS[severity] ?? styles.sevInfo}`}>
+      {severity}
+    </span>
+  );
+}
+
+/* ── Human-readable change derivation ───────────────────────────────────────
+ * The audit log must NEVER show raw JSON. Prefer the backend's structured diff
+ * (`changes` JSONB / `changeRows` table). When neither is present (legacy rows
+ * that only stored before/after blobs) flatten both sides into dotted paths and
+ * compare client-side so the user still sees a Field / Old / New table.        */
+const prettyLabel = (path) =>
+  String(path)
+    .split('.')
+    .filter((s) => s !== '' && !/^\d+$/.test(s))
+    .map((seg) =>
+      seg
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/[_-]+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (c) => c.toUpperCase()),
+    )
+    .join(' → ');
+
+function flatten(obj, base = '', out = {}) {
+  if (obj === null || obj === undefined) return out;
+  if (typeof obj !== 'object') { out[base] = obj; return out; }
+  if (Array.isArray(obj)) {
+    if (obj.every((v) => v === null || typeof v !== 'object')) { out[base] = obj; return out; }
+    obj.forEach((v, i) => flatten(v, base ? `${base}.${i}` : `${i}`, out));
+    return out;
+  }
+  for (const [k, v] of Object.entries(obj)) flatten(v, base ? `${base}.${k}` : k, out);
+  return out;
+}
+
+const renderCell = (v) => {
+  if (v === null || v === undefined || v === '') return '—';
+  if (Array.isArray(v)) return v.length ? v.join(', ') : '—';
+  if (typeof v === 'object') return Object.entries(v).map(([k, val]) => `${k}: ${val}`).join(', ');
+  return String(v);
+};
+
+function deriveChanges(log) {
+  // 1) Normalized rows from the changes table (detail screen).
+  if (Array.isArray(log.changeRows) && log.changeRows.length) {
+    return log.changeRows.map((c) => ({
+      label: c.field_label || prettyLabel(c.field_path),
+      oldValue: c.old_value,
+      newValue: c.new_value,
+      changeType: c.change_type,
+    }));
+  }
+  // 2) Structured JSONB diff on the row.
+  if (Array.isArray(log.changes) && log.changes.length) {
+    return log.changes.map((c) => ({
+      label: c.label || prettyLabel(c.path || c.field || ''),
+      oldValue: c.oldValue ?? c.previous_value,
+      newValue: c.newValue ?? c.new_value,
+      changeType: c.changeType,
+    }));
+  }
+  // 3) Fallback: flatten before/after blobs (no raw JSON shown).
+  const before = flatten(log.beforeValue ?? {});
+  const after = flatten(log.afterValue ?? {});
+  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])];
+  return keys
+    .filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k]))
+    .map((k) => ({ label: prettyLabel(k), oldValue: before[k], newValue: after[k] }));
+}
+
+function ChangesTable({ log }) {
+  const rows = deriveChanges(log);
+  if (!rows.length) return null;
+  return (
+    <div className={styles.mSection}>
+      <p className={styles.mSectionLabel}>Changes</p>
+      <table className={styles.changeTable}>
+        <thead>
+          <tr>
+            <th>Field</th>
+            <th>Old Value</th>
+            <th>New Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td className={styles.changeField}>{r.label}</td>
+              <td className={styles.changeOld}>{renderCell(r.oldValue)}</td>
+              <td className={styles.changeNew}>{renderCell(r.newValue)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /* ── Detail Modal ────────────────────────────────────────────────────────── */
 function DetailModal({ logId, onClose }) {
   const { data: log, loading } = useApi(activityLogService.getById, {
@@ -144,13 +269,23 @@ function DetailModal({ logId, onClose }) {
                 {[
                   { label: 'Timestamp',   value: fmtDate(log.timestamp),        icon: <Clock size={12} /> },
                   { label: 'User',        value: log.userName ?? '—',            icon: <UserIcon size={12} /> },
+                  { label: 'Role',        value: log.roleName ?? '—' },
                   { label: 'Action',      value: <ActionBadge actionType={log.actionType} /> },
                   { label: 'Module',      value: log.module },
+                  ...(log.feature ? [{ label: 'Feature', value: log.feature }] : []),
+                  ...(log.category ? [{ label: 'Category', value: log.category }] : []),
                   { label: 'Entity Type', value: log.entityType ?? '—' },
                   { label: 'Entity Name', value: log.entityName ?? '—' },
+                  ...(log.studyName ? [{ label: 'Study', value: log.studyName }] : []),
+                  ...(log.siteName ? [{ label: 'Site', value: log.siteName }] : []),
+                  ...(log.subjectName ? [{ label: 'Subject', value: log.subjectName }] : []),
+                  { label: 'Severity',    value: <SeverityBadge severity={log.severity} /> },
+                  ...(log.riskLevel ? [{ label: 'Risk Level', value: log.riskLevel }] : []),
                   { label: 'Status',      value: <StatusBadge status={log.status} /> },
                   { label: 'IP Address',  value: log.ipAddress || '—' },
-                  ...(log.userAgent ? [{ label: 'User Agent', value: log.userAgent, icon: <Monitor size={12} /> }] : []),
+                  ...(log.browser ? [{ label: 'Browser', value: `${log.browser}${log.os ? ` · ${log.os}` : ''}${log.device ? ` · ${log.device}` : ''}`, icon: <Monitor size={12} /> }] : []),
+                  ...(log.requestId ? [{ label: 'Request ID', value: log.requestId }] : []),
+                  ...(log.executionTimeMs != null ? [{ label: 'Execution', value: `${log.executionTimeMs} ms` }] : []),
                 ].map(({ label, value, icon }) => (
                   <div key={label} className={styles.dRow}>
                     <span className={styles.dLabel}>{label}</span>
@@ -170,26 +305,16 @@ function DetailModal({ logId, onClose }) {
                 </div>
               )}
 
-              {/* Before / After */}
-              {(log.beforeValue || log.afterValue) && (
+              {/* Reason for change (dedicated section, spec §Reason) */}
+              {log.reason && (
                 <div className={styles.mSection}>
-                  <p className={styles.mSectionLabel}>Changes</p>
-                  <div className={styles.diffRow}>
-                    <div className={styles.diffCol}>
-                      <p className={styles.diffLabel}>Before</p>
-                      <pre className={`${styles.diffBox} ${styles.diffBefore}`}>
-                        {log.beforeValue ? JSON.stringify(log.beforeValue, null, 2) : '—'}
-                      </pre>
-                    </div>
-                    <div className={styles.diffCol}>
-                      <p className={styles.diffLabel}>After</p>
-                      <pre className={`${styles.diffBox} ${styles.diffAfter}`}>
-                        {log.afterValue ? JSON.stringify(log.afterValue, null, 2) : '—'}
-                      </pre>
-                    </div>
-                  </div>
+                  <p className={styles.mSectionLabel}>Reason for Change</p>
+                  <p className={styles.mDesc}>{log.reason}</p>
                 </div>
               )}
+
+              {/* Human-readable Field / Old / New changes — never raw JSON */}
+              <ChangesTable log={log} />
             </>
           )}
         </div>
@@ -214,9 +339,15 @@ export default function ActivityLogPage() {
   const [modFilter,   setModFilter]   = useState('');
   const [actFilter,   setActFilter]   = useState('');
   const [statFilter,  setStatFilter]  = useState('');
+  const [sevFilter,   setSevFilter]   = useState('');
   const [userFilter,  setUserFilter]  = useState('');
   const [search,      setSearch]      = useState('');
   const [filtersOpen, setFiltersOpen] = useState(true);
+
+  /* ── Dashboard summary ── */
+  const { data: summary } = useApi(activityLogService.dashboard, {
+    immediate: true, immediateArgs: [{ days: 30 }],
+  });
 
   /* ── Pagination / sort ── */
   const [page,     setPage]     = useState(1);
@@ -244,10 +375,11 @@ export default function ActivityLogPage() {
     module:     modFilter  || undefined,
     actionType: actFilter  || undefined,
     status:     statFilter || undefined,
+    severity:   sevFilter  || undefined,
     user:       userFilter || undefined,
     dateFrom:   dateFrom   || undefined,
     dateTo:     dateTo     || undefined,
-  }), [page, pageSize, search, modFilter, actFilter, statFilter, userFilter, dateFrom, dateTo]);
+  }), [page, pageSize, search, modFilter, actFilter, statFilter, sevFilter, userFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     fetchLogs(buildParams()).catch(() => {
@@ -256,16 +388,16 @@ export default function ActivityLogPage() {
   }, [buildParams]);                        // eslint-disable-line react-hooks/exhaustive-deps
 
   /* Reset to page 1 when any filter changes */
-  useEffect(() => { setPage(1); }, [search, modFilter, actFilter, statFilter, userFilter, dateFrom, dateTo]);
+  useEffect(() => { setPage(1); }, [search, modFilter, actFilter, statFilter, sevFilter, userFilter, dateFrom, dateTo]);
 
   /* ── Clear filters ── */
-  const hasActiveFilters = modFilter || actFilter || statFilter || userFilter ||
+  const hasActiveFilters = modFilter || actFilter || statFilter || sevFilter || userFilter ||
     dateFrom !== sevenDaysAgoISO() || dateTo !== todayISO();
 
   const clearFilters = () => {
     setDateFrom(sevenDaysAgoISO());
     setDateTo(todayISO());
-    setModFilter(''); setActFilter(''); setStatFilter(''); setUserFilter('');
+    setModFilter(''); setActFilter(''); setStatFilter(''); setSevFilter(''); setUserFilter('');
   };
 
   /* ── Export ── */
@@ -279,6 +411,13 @@ export default function ActivityLogPage() {
         filename,
         sheetName: 'Activity Log',
         title:     'Activity Log',
+      });
+      // Audit the export itself (spec §Security — audit logging of exports).
+      activityLogService.record({
+        actionType:  'EXPORT',
+        module:      'ActivityLog',
+        entityType:  'ActivityLog',
+        description: `Exported activity log (${format?.toUpperCase?.() ?? 'file'}, ${items.length} rows)`,
       });
       dispatch(addToast({ type: 'success', message: 'Activity log exported successfully.' }));
     } catch {
@@ -299,6 +438,14 @@ export default function ActivityLogPage() {
       render: (v) => <span className={styles.userName}>{v ?? '—'}</span>,
     },
     {
+      key: 'email', label: 'Email', width: '180px',
+      render: (v, row) => <span className={styles.userName}>{v ?? row.userName ?? '—'}</span>,
+    },
+    {
+      key: 'roleName', label: 'Role', width: '130px',
+      render: (v) => <span>{v ?? '—'}</span>,
+    },
+    {
       key: 'actionType', label: 'Action', sortable: true, width: '110px',
       render: (v) => <ActionBadge actionType={v} />,
     },
@@ -307,8 +454,16 @@ export default function ActivityLogPage() {
       render: (v) => <span className={styles.moduleChip}>{v}</span>,
     },
     {
+      key: 'entityName', label: 'Entity', width: '150px',
+      render: (v, row) => <span>{v ?? row.entityType ?? '—'}</span>,
+    },
+    {
       key: 'ipAddress', label: 'IP Address', width: '115px',
       render: (v) => <span className={styles.ipCell}>{v || '—'}</span>,
+    },
+    {
+      key: 'severity', label: 'Severity', sortable: true, width: '95px',
+      render: (v) => <SeverityBadge severity={v} />,
     },
     {
       key: 'status', label: 'Status', sortable: true, width: '95px',
@@ -346,6 +501,38 @@ export default function ActivityLogPage() {
           />
         )}
       </div>
+
+      {/* ── Dashboard summary (last 30 days) ── */}
+      {summary && (
+        <div className={styles.summaryRow}>
+          <div className={styles.summaryCard}>
+            <span className={styles.summaryLabel}>Today’s Activities</span>
+            <span className={styles.summaryValue}>{summary.todayCount}</span>
+          </div>
+          <div className={`${styles.summaryCard} ${styles.summaryCritical}`}>
+            <span className={styles.summaryLabel}>Critical Events (30d)</span>
+            <span className={styles.summaryValue}>{summary.criticalCount}</span>
+          </div>
+          <div className={`${styles.summaryCard} ${styles.summaryWarn}`}>
+            <span className={styles.summaryLabel}>Failed Logins (30d)</span>
+            <span className={styles.summaryValue}>{summary.failedLoginCount}</span>
+          </div>
+          <div className={styles.summaryCard}>
+            <span className={styles.summaryLabel}>Top User (30d)</span>
+            <span className={styles.summaryValueSm}>
+              {summary.topUsers?.[0]?.user_name ?? '—'}
+              {summary.topUsers?.[0] ? ` · ${summary.topUsers[0].c}` : ''}
+            </span>
+          </div>
+          <div className={styles.summaryCard}>
+            <span className={styles.summaryLabel}>Top Module (30d)</span>
+            <span className={styles.summaryValueSm}>
+              {summary.topModules?.[0]?.module ?? '—'}
+              {summary.topModules?.[0] ? ` · ${summary.topModules[0].c}` : ''}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ── Filter card ── */}
       <div className={styles.filterCard}>
@@ -387,6 +574,15 @@ export default function ActivityLogPage() {
               <select className={styles.fselect} value={statFilter} onChange={(e) => setStatFilter(e.target.value)}>
                 <option value="">All Statuses</option>
                 {STATUSES.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.fg}>
+              <label className={styles.flabel}>Severity</label>
+              <select className={styles.fselect} value={sevFilter} onChange={(e) => setSevFilter(e.target.value)}>
+                <option value="">All Severities</option>
+                {SEVERITIES.map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
