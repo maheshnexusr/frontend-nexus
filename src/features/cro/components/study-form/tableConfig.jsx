@@ -90,6 +90,7 @@ export const COLUMN_TYPES = [
   { value: 'url',         label: 'URL' },
   { value: 'file',        label: 'File Upload' },
   { value: 'rating',      label: 'Rating' },
+  { value: 'rank',        label: 'Rank (unique per row)' },
   { value: 'formula',     label: 'Formula / Calculated' },
 ];
 
@@ -256,6 +257,13 @@ export function TableConfigPanel({ field, up }) {
             </SField>
           )}
           <ToggleRow label="Require response for all rows" value={!!field.matrixRequireAll} onChange={(v) => up('matrixRequireAll', v)} />
+          <ToggleRow label="Unique selection (ranking — each option used once)" value={!!field.matrixUnique} onChange={(v) => up('matrixUnique', v)} />
+          {field.matrixUnique && (
+            <p className={s.hintText} style={{ marginTop: 4 }}>
+              Each scale option can be assigned to only one row. Once a row picks an option it is
+              disabled for every other row (N/A is exempt). Selecting/clearing frees it again.
+            </p>
+          )}
         </>
       ) : (
         <StandardTableSettings field={field} up={up} rs={rs} pg={pg} upRS={upRS} upPG={upPG} />
@@ -429,16 +437,26 @@ function ColumnEditor({ col, onPatch, columns, selfId }) {
         </select>
       </SField>
 
+      {col.type === 'rank' && (
+        <p className={s.hintText} style={{ marginTop: 4 }}>
+          Rank options are generated automatically as <strong>Rank 1…N</strong> where N is the current
+          number of rows. Each rank can be assigned to only one row — a rank picked in one row is
+          disabled in every other row.
+        </p>
+      )}
+
       {col.type !== 'formula' && (
         <>
-          {IS_TEXT.concat('number', 'currency').includes(col.type) && (
-            <SField label="Placeholder">
-              <input className={s.sinput} value={col.placeholder ?? ''} onChange={(e) => onPatch({ placeholder: e.target.value })} placeholder="Enter value…" />
+          {IS_TEXT.concat('number', 'currency', 'rank').includes(col.type) && (
+            <SField label={col.type === 'rank' ? 'Empty option label' : 'Placeholder'}>
+              <input className={s.sinput} value={col.placeholder ?? ''} onChange={(e) => onPatch({ placeholder: e.target.value })} placeholder={col.type === 'rank' ? 'Not Selected' : 'Enter value…'} />
             </SField>
           )}
-          <SField label="Default value">
-            <input className={s.sinput} value={col.defaultValue ?? ''} onChange={(e) => onPatch({ defaultValue: e.target.value })} placeholder="Optional" />
-          </SField>
+          {col.type !== 'rank' && (
+            <SField label="Default value">
+              <input className={s.sinput} value={col.defaultValue ?? ''} onChange={(e) => onPatch({ defaultValue: e.target.value })} placeholder="Optional" />
+            </SField>
+          )}
         </>
       )}
 

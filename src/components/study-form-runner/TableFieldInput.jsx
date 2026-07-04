@@ -131,6 +131,28 @@ function StandardTableFieldInput({ field, value, onChange, allValues, loading = 
     return [...front, ...rest];
   }, [order, liveColumns]);
 
+  /* ── Rank columns (unique rank per row) ──────────────────────────────────────
+     A `rank` column offers Rank 1…N where N = the CURRENT row count, and each
+     rank may be assigned to only ONE row. Precompute, per rank column, which rank
+     value is held by which row (`{ rankValue: _rowId }`) so a taken rank can be
+     disabled in every OTHER row's dropdown while the owning row still shows its
+     own. Recomputed from `rows` on every change, so changing/clearing a rank frees
+     it immediately and adding/deleting a row regrows the 1…N range. Keyed per
+     column, so multiple rank columns rank independently. */
+  const rankTaken = useMemo(() => {
+    const map = {};
+    columns.forEach((col) => {
+      if (col.type !== 'rank') return;
+      const byVal = {};
+      rows.forEach((r) => {
+        const v = r?.[col.fieldKey];
+        if (v !== '' && v != null) byVal[String(v)] = r._rowId;
+      });
+      map[col.fieldKey] = byVal;
+    });
+    return map;
+  }, [columns, rows]);
+
   /* ── Row factory + formula recompute ─────────────────────────────────────── */
   const blankCell = (col) => {
     if (col.type === 'multiselect') return [];
@@ -276,7 +298,7 @@ function StandardTableFieldInput({ field, value, onChange, allValues, loading = 
   const sorted = useMemo(() => {
     if (!sort.key) return filtered;
     const col = columns.find((c) => c.fieldKey === sort.key);
-    const numeric = col && ['number', 'currency', 'rating', 'formula'].includes(col.type);
+    const numeric = col && ['number', 'currency', 'rating', 'formula', 'rank'].includes(col.type);
     return [...filtered].sort((a, b) => {
       const av = a?.[sort.key]; const bv = b?.[sort.key];
       const cmp = numeric ? toNum(av) - toNum(bv) : String(av ?? '').localeCompare(String(bv ?? ''));
@@ -397,6 +419,9 @@ function StandardTableFieldInput({ field, value, onChange, allValues, loading = 
                               value={row[col.fieldKey]}
                               readOnly={eff.readOnly || !allowEdit}
                               onChange={(v) => setCell(row._rowId, col.fieldKey, v)}
+                              rankCount={rows.length}
+                              rankTaken={rankTaken[col.fieldKey]}
+                              rowId={row._rowId}
                             />
                           )}
                         </td>
@@ -463,7 +488,7 @@ function StandardTableFieldInput({ field, value, onChange, allValues, loading = 
 }
 
 /* ── Per-cell input by column type ──────────────────────────────────────────*/
-function TableCell({ col, value, onChange, readOnly, name }) {
+function TableCell({ col, value, onChange, readOnly, name, rankCount = 0, rankTaken, rowId }) {
   const ro = readOnly || col.formula?.enabled;
   const base = s.cellInput;
 
@@ -472,6 +497,27 @@ function TableCell({ col, value, onChange, readOnly, name }) {
   }
 
   switch (col.type) {
+    case 'rank': {
+      // Options are Rank 1…N (N = current row count). A rank already taken by
+      // ANOTHER row is disabled so every rank stays unique; this row's own rank
+      // is always selectable. If a delete shrank N below an existing selection,
+      // still surface that value so it isn't silently dropped from view.
+      const taken = rankTaken || {};
+      const cur = value == null ? '' : String(value);
+      const nums = Array.from({ length: rankCount }, (_, i) => i + 1);
+      const curNum = Number(cur);
+      if (cur && Number.isFinite(curNum) && curNum > rankCount) nums.push(curNum);
+      return (
+        <select className={base} value={cur} disabled={ro} onChange={(e) => onChange(e.target.value)}>
+          <option value="">{col.placeholder || 'Not Selected'}</option>
+          {nums.map((n) => {
+            const rv = String(n);
+            const owner = taken[rv];
+            return <option key={rv} value={rv} disabled={!!owner && owner !== rowId}>{`Rank ${n}`}</option>;
+          })}
+        </select>
+      );
+    }
     case 'textarea':
       return <textarea className={s.cellTextarea} rows={1} value={value ?? ''} disabled={ro} placeholder={col.placeholder || ''} onChange={(e) => onChange(e.target.value)} />;
     case 'number':

@@ -58,6 +58,9 @@
   accent-color: #2563eb;
   cursor: pointer;
 }
+/* Unique-selection: an option already taken by another row is disabled. */
+.radioLabel.disabled { cursor: not-allowed; opacity: 0.4; }
+.radioLabel.disabled input[type='radio'] { cursor: not-allowed; }
 /* The scale label already shows in the header; keep an accessible per-cell
    label but hide it visually so the grid stays compact. */
 .radioText {

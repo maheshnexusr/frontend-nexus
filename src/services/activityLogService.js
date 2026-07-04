@@ -22,18 +22,43 @@ function normalizeLog(raw) {
     id:            raw.log_id,
     userId:        raw.user_id,
     userName:      raw.user_name,
+    email:         raw.email        ?? raw.user_name,
+    roleName:      raw.role_name     ?? null,
     actionType:    raw.action_type,
     module:        raw.module,
+    feature:       raw.feature       ?? null,
+    category:      raw.category      ?? null,
     entityType:    raw.entity_type,
     entityId:      raw.entity_id,
     entityName:    raw.entity_name,
+    studyName:     raw.study_name    ?? null,
+    siteName:      raw.site_name     ?? null,
+    subjectName:   raw.subject_name  ?? null,
+    organizationName: raw.organization_name ?? null,
     description:   raw.action_description,
+    reason:        raw.reason        ?? null,
     status:        raw.status,          // 'SUCCESS' | 'FAILURE' | 'WARNING'
+    severity:      raw.severity      ?? null, // INFO|LOW|MEDIUM|HIGH|CRITICAL
+    riskLevel:     raw.risk_level    ?? null,
     ipAddress:     raw.ip_address,
     userAgent:     raw.user_agent    ?? null,
+    browser:       raw.browser       ?? null,
+    device:        raw.device        ?? null,
+    os:            raw.os            ?? null,
     sessionId:     raw.session_id    ?? null,
+    correlationId: raw.correlation_id ?? null,
+    requestId:     raw.request_id    ?? null,
+    apiEndpoint:   raw.api_endpoint  ?? null,
+    httpMethod:    raw.http_method   ?? null,
+    responseStatus: raw.response_status ?? null,
+    executionTimeMs: raw.execution_time_ms ?? null,
     beforeValue:   raw.before_value  ?? null,
     afterValue:    raw.after_value   ?? null,
+    // Structured per-field diff. `changes` (JSONB on the row) is present on list
+    // + detail; `change_rows` (normalized table) only on detail. Either renders
+    // as a Field / Old / New table — never raw JSON.
+    changes:       raw.changes       ?? null,
+    changeRows:    raw.change_rows   ?? null,
     failureReason: raw.failure_reason ?? null,
     timestamp:     raw.timestamp,
   };
@@ -59,12 +84,42 @@ export const activityLogService = {
       module:      params.module,
       action_type: params.action_type ?? params.actionType,
       status:      params.status,
+      severity:    params.severity,
+      category:    params.category,
+      risk_level:  params.risk_level  ?? params.riskLevel,
+      study_id:    params.study_id    ?? params.studyId,
+      site_id:     params.site_id     ?? params.siteId,
+      subject_id:  params.subject_id  ?? params.subjectId,
+      role:        params.role        ?? params.roleName,
+      entity_type: params.entity_type ?? params.entityType,
+      browser:     params.browser,
+      device:      params.device,
       search:      params.search,
     };
     const res = await axiosClient.get(`/api/v1/activity-logs${buildQueryString(query)}`);
     return {
       items:      (res.items ?? []).map(normalizeLog),
       pagination: res.pagination ?? { page: 1, limit: query.limit ?? 50, total: 0 },
+    };
+  },
+
+  /**
+   * Activity dashboard summary (spec §Dashboard): today's count, critical
+   * events, failed logins, top users / modules / studies, and a daily trend.
+   * Returns the raw summary object from the backend.
+   */
+  dashboard: async (params = {}) => {
+    const res = await axiosClient.get(
+      `/api/v1/activity-logs/dashboard${buildQueryString({ days: params.days })}`,
+    );
+    return {
+      todayCount:       res.todayCount       ?? 0,
+      criticalCount:    res.criticalCount    ?? 0,
+      failedLoginCount: res.failedLoginCount ?? 0,
+      topUsers:         res.topUsers         ?? [],
+      topModules:       res.topModules       ?? [],
+      topStudies:       res.topStudies       ?? [],
+      trend:            res.trend            ?? [],
     };
   },
 
