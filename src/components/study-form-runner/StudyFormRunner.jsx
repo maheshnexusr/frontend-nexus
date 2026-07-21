@@ -132,6 +132,10 @@ const CHILD_PARENT_TYPES = ['radiogroup', 'checkboxgroup', 'select', 'multiselec
 const selectedOptionValues = (v) => Array.isArray(v) ? v : (v === '' || v == null ? [] : [v]);
 const isEmptyChildValue = (v) =>
   v === undefined || v === null || (typeof v === 'string' && v.trim() === '') || (Array.isArray(v) && v.length === 0);
+// Module-level "no value entered" test, shared by the RFC effect and the
+// randomisation write-once lock.
+const isEmptyValue = (v) =>
+  v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
 
 // Conditional AUTO-SELECTION (checkbox group). Each option may carry an
 // `autoRule` that auto-checks / unchecks the option (and optionally forces its
@@ -940,7 +944,15 @@ function StudyFormRunnerInner({
     || roles.length === 0
     || roles.includes(effectiveRole);
   const canViewField = (field) => roleAllows(field?.clinical?.viewRoles);
-  const canEditField = (field) => roleAllows(field?.clinical?.editRoles);
+  // Randomisation numbers are WRITE-ONCE: an allocation is assigned, not re-typed.
+  // Locked against the BASELINE (last persisted value), not the live one, so the
+  // field stays editable while the user is still typing it for the first time
+  // and locks the moment that value is saved. The server enforces the same rule
+  // in siteFormDataService — this is the visible half of it.
+  const randomizationLocked = (field) =>
+    field?.type === 'randomization' && !isEmptyValue(baseline[field.id]);
+  const canEditField = (field) =>
+    roleAllows(field?.clinical?.editRoles) && !randomizationLocked(field);
   const visibleFields = (page.fields || []).filter(canViewField);
   // Fields actually painted on this page = role-visible AND not conditionally
   // hidden. Excluding hidden fields HERE (not just returning null inside the
@@ -1725,6 +1737,7 @@ function StudyFormRunnerInner({
                             onOptionInputsChange={(next) => setValue(optInputsKey(f.id), next)}
                             optionChildren={values[childFieldsKey(f.id)]}
                             onOptionChildrenChange={(next) => setValue(childFieldsKey(f.id), next)}
+                            locked={randomizationLocked(f)}
                           />
                         </fieldset>
                       )}
@@ -2516,7 +2529,7 @@ function OptionChildFields({ field, value, allValues, childValues, onChildValues
   );
 }
 
-function FieldInput({ field, value, onChange, allValues, showErrors, optionInputs, onOptionInputsChange, optionChildren, onOptionChildrenChange }) {
+function FieldInput({ field, value, onChange, allValues, showErrors, optionInputs, onOptionInputsChange, optionChildren, onOptionChildrenChange, locked = false }) {
   const v = value ?? '';
   // "Other" free-text mode for radio/checkbox groups (allowOther).
   const [otherOpen, setOtherOpen] = useState(false);
@@ -2552,6 +2565,27 @@ function FieldInput({ field, value, onChange, allValues, showErrors, optionInput
         </div>
       );
     }
+    // Randomisation (allocation) number. Plain text input — the write-once lock
+    // is applied by the enclosing <fieldset disabled> (see canEditField), so all
+    // this adds is the explanatory hint once a value is locked in.
+    case 'randomization':
+      return (
+        <>
+          <input
+            type="text"
+            className={s.input}
+            placeholder={field.placeholder || ''}
+            value={v}
+            onChange={(e) => onChange(e.target.value)}
+          />
+          {locked && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4, fontSize: 11.5, color: '#64748b' }}>
+              <Lock size={12} style={{ flexShrink: 0 }} />
+              Randomisation number is locked once saved.
+            </div>
+          )}
+        </>
+      );
     case 'text':
     case 'number':
     case 'email':

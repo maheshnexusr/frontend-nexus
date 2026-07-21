@@ -93,6 +93,20 @@ export default function SubjectContextStrip({ studyId, subjectId }) {
   const initials =
        subject?.subjectInitials ?? subject?.subject_initials
     ?? '';
+  // Randomisation (allocation) number, snapshotted onto the subject when the
+  // eCRF's randomization field is saved. The study-level toggle decides whether
+  // the cell exists at all; a blank value shows as "—" (enabled but not yet
+  // entered, or the designer never placed the field).
+  const randomizationNumber =
+       subject?.randomizationNumber ?? subject?.randomization_number
+    ?? '';
+  // The study flag is the intended gate, but the study fetch above is best-effort
+  // and fails silently. An existing number is itself proof the feature is on, so
+  // treat it as a fallback — otherwise a study-fetch hiccup would hide a number
+  // the subject demonstrably has.
+  const randomizationEnabled =
+       Boolean(study?.randomizationEnabled ?? study?.randomization_enabled ?? false)
+    || Boolean(randomizationNumber);
 
   // Each cell stacks a PRIMARY identifier (the CODE — emphasised) over a
   // SECONDARY descriptor (the name/initials — de-emphasised):
@@ -101,6 +115,9 @@ export default function SubjectContextStrip({ studyId, subjectId }) {
     { label: 'Protocol', primary: protocolNumber,    secondary: studyTitle },
     { label: 'Site',     primary: siteCode,          secondary: siteName },
     { label: 'Subject',  primary: subjectNumber || '—', secondary: initials },
+    ...(randomizationEnabled
+      ? [{ label: 'Randomisation No.', primary: randomizationNumber || '—', secondary: '' }]
+      : []),
   ];
 
   return (

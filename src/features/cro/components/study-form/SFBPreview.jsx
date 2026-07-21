@@ -646,13 +646,16 @@ function FieldInput({ field, value, onChange }) {
         <div className={s.input} style={{ background: '#f8fafc', fontWeight: 600, display: 'flex', alignItems: 'center', cursor: 'default' }}>{text}</div>
       );
     }
+    // Preview stays editable (no write-once lock): the designer needs to type
+    // into it to check the layout, and preview data is never persisted.
+    case 'randomization':
     case 'text':
     case 'number':
     case 'email':
     case 'phone':
       return (
         <input
-          type={field.type === 'phone' ? 'tel' : field.type}
+          type={field.type === 'phone' ? 'tel' : field.type === 'randomization' ? 'text' : field.type}
           className={s.input}
           placeholder={field.placeholder || ''}
           value={v}

@@ -49,6 +49,7 @@ export default function StudyFormBuilder({ formId, formTitle, onPrevious, onNext
           formId: study.formId ?? null,
           formTitle: formTitle ?? '',
           data: study.formDefinition ?? null,
+          randomizationEnabled: study.randomizationEnabled ?? false,
         }));
       })
       .catch(() => {

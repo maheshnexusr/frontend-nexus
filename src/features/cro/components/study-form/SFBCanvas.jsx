@@ -355,6 +355,15 @@ function FieldPreviewRow({ fld }) {
   switch (fld.type) {
     case 'text': case 'email': case 'phone': case 'number': case 'password': case 'url':
       return <div className={s.previewInput}>{fld.placeholder || `Enter ${fld.type}...`}</div>;
+    case 'randomization':
+      return (
+        <div className={s.previewInput} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>{fld.placeholder || 'e.g. R-0042'}</span>
+          <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 'auto' }}>
+            locks after first save · shown in form header
+          </span>
+        </div>
+      );
     case 'textarea':
       return <div className={`${s.previewInput} ${s.previewTextarea}`}>{fld.placeholder || 'Enter text...'}</div>;
     case 'date': case 'datetime': case 'time':

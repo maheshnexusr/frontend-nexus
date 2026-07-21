@@ -80,6 +80,7 @@ export default function StudyWizardStep2({ onCancel, onNext }) {
     countryId:             saved.countryId             ?? '',
     countryName:           saved.countryName           ?? '',
     randomizationApproach: saved.randomizationApproach ?? '',
+    randomizationEnabled:  saved.randomizationEnabled  ?? false,
     contractCurrency:      saved.contractCurrency      ?? 'INR',
     contractValue:         saved.contractValue         ?? '',
     milestones:            Array.isArray(saved.milestones) ? saved.milestones : [],
@@ -205,6 +206,7 @@ export default function StudyWizardStep2({ onCancel, onNext }) {
     countryId:             hasSurveyOrEPRO ? form.countryId             : '',
     countryName:           hasSurveyOrEPRO ? form.countryName           : '',
     randomizationApproach: hasSurveyOrEPRO ? form.randomizationApproach : '',
+    randomizationEnabled:  form.randomizationEnabled,
     contractCurrency:      form.contractCurrency,
     contractValue:         form.contractValue,
     milestones:            form.milestones,
@@ -374,6 +376,37 @@ export default function StudyWizardStep2({ onCancel, onNext }) {
           </div>
         </>
       )}
+
+      {/* ── Randomisation Number ────────────────────────────────────────────
+          Scope-independent (unlike Method / Approach above, which are split
+          EDC vs Survey-ePRO): any randomised study can capture an allocation
+          number, so this renders for every scope. */}
+      <div className={styles.configCard} style={{ marginTop: 4 }}>
+        <div className={styles.configLeft}>
+          <span className={styles.configLabel}>Randomisation Number</span>
+          <span className={styles.configInfo}>
+            Lets the Form Builder add a Randomisation No. field to the eCRF. Site
+            personnel enter the number once — it then locks and appears in the
+            header of every form for that subject.
+          </span>
+        </div>
+        <label className={styles.toggle}>
+          <input
+            type="checkbox"
+            checked={form.randomizationEnabled}
+            onChange={() => setForm((f) => ({
+              ...f,
+              randomizationEnabled: !f.randomizationEnabled,
+            }))}
+          />
+          <span className={styles.toggleTrack}>
+            <span className={styles.toggleThumb} />
+          </span>
+          <span className={styles.toggleLabel}>
+            {form.randomizationEnabled ? 'ON' : 'OFF'}
+          </span>
+        </label>
+      </div>
 
       {/* ── Contractuality & Milestones ─────────────────────────────────── */}
       <div className={styles.contractSection}>

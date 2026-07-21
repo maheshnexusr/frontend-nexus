@@ -93,6 +93,11 @@ function normalize(raw) {
     regionId:            coverage.type === 'REGION'  ? coverage.id : '',
     countryId:           coverage.type === 'COUNTRY' ? coverage.id : '',
     randomizationMethod: raw.randomization_method ?? raw.randomizationMethod ?? '',
+    // Step-2 toggle. Gates the Form Builder's randomization field type and the
+    // Randomisation No. cell in the data-capture header strip. Default FALSE is
+    // correct here (unlike the Step-3 module flags below): the column is NOT
+    // NULL DEFAULT FALSE, so a missing value genuinely means "not enabled".
+    randomizationEnabled: Boolean(raw.randomization_enabled ?? raw.randomizationEnabled ?? false),
     status:              raw.status             ?? 'Draft',
     lastCompletedStep:   raw.last_completed_step ?? raw.lastCompletedStep ?? 0,
     currentEnvironment:  raw.current_environment ?? raw.currentEnvironment ?? '',
@@ -269,6 +274,7 @@ export const studiesClient = {
       coverage_type:     data.coverageType,          // 'COUNTRY' | 'REGION'
       coverage_id:       data.coverageId,
       max_sites:         data.maxSites ? Number(data.maxSites) : undefined,
+      randomization_enabled: Boolean(data.randomizationEnabled),
     });
     return normalize(res?.item ?? res);
   },

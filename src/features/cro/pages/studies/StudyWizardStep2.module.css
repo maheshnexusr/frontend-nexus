@@ -377,3 +377,93 @@
   gap: 10px;
   background: var(--bg-muted, #fafbff);
 }
+
+/* ── Randomisation toggle ───────────────────────────────────────────────────
+   Same switch treatment as the Step-3 module toggles, so a study-level on/off
+   reads identically wherever it appears in the wizard. */
+.configCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--bg-subtle, #f8fafc);
+  border: 1px solid var(--border-light, #f1f5f9);
+  border-radius: var(--r-md);
+  transition: border-color var(--t-fast), background var(--t-fast);
+}
+.configCard:hover {
+  border-color: var(--border-medium);
+  background: var(--bg-hover, #f1f5f9);
+}
+.configLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+.configLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.configInfo {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+}
+.toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.toggleTrack {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--border-medium, #cbd5e1);
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.toggleThumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.20);
+  transition: transform 0.2s;
+}
+.toggle input:checked ~ .toggleTrack {
+  background: var(--color-primary, #2563eb);
+}
+.toggle input:checked ~ .toggleTrack .toggleThumb {
+  transform: translateX(20px);
+}
+.toggleLabel {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  min-width: 26px;
+}
+.toggle input:checked ~ .toggleLabel {
+  color: var(--color-primary, #2563eb);
+}
