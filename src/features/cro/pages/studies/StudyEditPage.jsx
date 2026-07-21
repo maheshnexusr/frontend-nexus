@@ -72,6 +72,7 @@ export default function StudyEditPage() {
         countryId:             study.countryId           ?? '',
         countryName:           '',
         randomizationApproach: '',
+        randomizationEnabled:  study.randomizationEnabled ?? false,
         contractCurrency:      study.contractCurrency    ?? 'INR',
         contractValue:         study.contractValue       ?? '',
         milestones:            Array.isArray(study.milestones) ? study.milestones : [],

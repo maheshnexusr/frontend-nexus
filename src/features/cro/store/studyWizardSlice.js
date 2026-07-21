@@ -33,6 +33,7 @@ const STEP2_INIT = {
   countryId:             '',
   countryName:           '',
   randomizationApproach: '',
+  randomizationEnabled:  false,
   contractCurrency:      'INR',
   contractValue:         '',
   milestones:            [],   // [{ id, name, startDate, endDate }]

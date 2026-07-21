@@ -161,6 +161,15 @@ export const makeField = (type = 'text') => ({
     dependencies: [],         // [fieldKey,…] derived from the expression
     readOnly: true,
   } : {}),
+  // Randomisation (allocation) number. Ships with a sensible label because the
+  // value is mirrored into the data-capture header strip, where a blank label
+  // would leave the cell nameless. Write-once at runtime; the lock is enforced
+  // server-side in siteFormDataService, not here.
+  ...(type === 'randomization' ? {
+    label: 'Randomisation Number',
+    placeholder: 'e.g. R-0042',
+    required: true,
+  } : {}),
 });
 
 // A single per-option child field (the dependent input revealed when a parent
@@ -226,6 +235,11 @@ const initialState = {
   // { id, type:'inclusion'|'exclusion', blockId, pageId, fieldId, fieldLabel,
   //   operator, value, logic:'AND'|'OR' }
   eligibilityCriteria: [],
+  // Study-level Randomisation Number switch (Wizard Step 2). Carried here rather
+  // than read from the wizard slice because the builder is reachable from the
+  // wizard AND from Study Edit, and only the builder's own study fetch is
+  // guaranteed to be populated on both paths.
+  randomizationEnabled: false,
   isDirty:   false,
 };
 
@@ -236,9 +250,10 @@ const studyFormSlice = createSlice({
 
     // ── Init ────────────────────────────────────────────────────────────────
     initForm(state, { payload }) {
-      const { formId, formTitle, data } = payload;
+      const { formId, formTitle, data, randomizationEnabled } = payload;
       state.formId    = formId;
       state.formTitle = formTitle ?? '';
+      state.randomizationEnabled = Boolean(randomizationEnabled);
       if (data) {
         state.blocks             = data.blocks             ?? [];
         state.submissionControls = { ...state.submissionControls, ...(data.submissionControls ?? {}) };
@@ -517,6 +532,12 @@ export const selectTriggers        = (s) => s.studyForm.triggers;
 export const selectEligibilityCriteria = (s) => s.studyForm.eligibilityCriteria;
 export const selectComments        = (s) => s.studyForm.comments;
 export const selectIsDirty         = (s) => s.studyForm.isDirty;
+export const selectRandomizationEnabled = (s) => s.studyForm.randomizationEnabled;
+// Randomisation is one-per-form: the palette disables the entry once placed.
+export const selectHasRandomizationField = (s) =>
+  (s.studyForm.blocks ?? []).some((b) =>
+    (b.pages ?? []).some((p) =>
+      (p.fields ?? []).some((f) => f?.type === 'randomization')));
 export const selectFormMeta        = (s) => ({ formId: s.studyForm.formId, formTitle: s.studyForm.formTitle });
 
 export const selectActivePage = (s) => {

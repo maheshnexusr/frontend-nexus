@@ -11,12 +11,13 @@ import {
   GripVertical, Type, Hash, Mail, Phone, Calendar, CheckSquare,
   List, Circle, FileUp, PenLine, AlignLeft, ToggleLeft, Clock,
   Star, Image, Minus, AlignCenter, LayoutList, Pencil, SlidersHorizontal,
-  Heading, Table2, Calculator,
+  Heading, Table2, Calculator, Shuffle,
 } from 'lucide-react';
 import {
   selectBlocks, selectSelectedBlockId, selectSelectedPageId,
   addBlock, removeBlock, updateBlock, toggleBlockCollapse,
   addPage, removePage, updatePage, selectPage,
+  selectRandomizationEnabled, selectHasRandomizationField,
 } from '@/features/cro/store/studyFormSlice';
 import ConfirmDialog     from '@/components/feedback/ConfirmDialog';
 import { activityLogService } from '@/services/activityLogService';
@@ -66,6 +67,9 @@ const FIELD_GROUPS = [
     fields: [
       { type: 'table',        label: 'Table / Grid', Icon: Table2      },
       { type: 'formula',      label: 'Formula',      Icon: Calculator  },
+      // Only offered when the study has Randomisation Number ON (Wizard Step 2),
+      // and only once per form — the value feeds the data-capture header strip.
+      { type: 'randomization', label: 'Randomisation No.', Icon: Shuffle, studyFlag: 'randomizationEnabled', once: true },
     ],
   },
   {
@@ -343,35 +347,50 @@ function PageNode({ pg, pIdx, blk, selPageId, selBlockId }) {
 /* ── Field Palette ──────────────────────────────────────────────────────── */
 function FieldPalette() {
   const [openGroups, setOpenGroups] = useState(() => Object.fromEntries(FIELD_GROUPS.map((g) => [g.group, true])));
+  const studyFlags = {
+    randomizationEnabled: useSelector(selectRandomizationEnabled),
+  };
+  const hasRandomization = useSelector(selectHasRandomizationField);
 
   const toggle = (group) => setOpenGroups((prev) => ({ ...prev, [group]: !prev[group] }));
+
+  // A `studyFlag` field is hidden entirely unless the study enables it; an
+  // `once` field stays visible but goes undraggable after it has been placed,
+  // so the designer can see the rule rather than wonder where it went.
+  const visible = (f) => !f.studyFlag || Boolean(studyFlags[f.studyFlag]);
+  const usedUp  = (f) => f.once && f.type === 'randomization' && hasRandomization;
 
   return (
     <div className={s.palette}>
       <p className={s.paletteHint}>Drag fields onto the canvas</p>
-      {FIELD_GROUPS.map((g) => (
-        <div key={g.group} className={s.paletteGroup}>
-          <button className={s.paletteGroupHeader} onClick={() => toggle(g.group)}>
-            <span>{g.group}</span>
-            {openGroups[g.group] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          </button>
-          {openGroups[g.group] && (
-            <div className={s.paletteItems}>
-              {g.fields.map((f) => (
-                <DraggableField key={f.type} {...f} />
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
+      {FIELD_GROUPS.map((g) => {
+        const fields = g.fields.filter(visible);
+        if (fields.length === 0) return null;
+        return (
+          <div key={g.group} className={s.paletteGroup}>
+            <button className={s.paletteGroupHeader} onClick={() => toggle(g.group)}>
+              <span>{g.group}</span>
+              {openGroups[g.group] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </button>
+            {openGroups[g.group] && (
+              <div className={s.paletteItems}>
+                {fields.map((f) => (
+                  <DraggableField key={f.type} {...f} disabled={usedUp(f)} />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function DraggableField({ type, label, Icon }) {
+function DraggableField({ type, label, Icon, disabled = false }) {
   const [dragging, setDragging] = useState(false);
 
   const onDragStart = (e) => {
+    if (disabled) { e.preventDefault(); return; }
     e.dataTransfer.setData('sfb-fieldtype', type);
     e.dataTransfer.effectAllowed = 'copy';
     setDragging(true);
@@ -379,10 +398,12 @@ function DraggableField({ type, label, Icon }) {
 
   return (
     <div
-      draggable
+      draggable={!disabled}
       onDragStart={onDragStart}
       onDragEnd={() => setDragging(false)}
       className={`${s.paletteItem} ${dragging ? s.paletteItemDragging : ''}`}
+      style={disabled ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+      title={disabled ? 'Already added — only one Randomisation No. field per form.' : undefined}
     >
       <Icon size={13} className={s.paletteItemIcon} />
       <span className={s.paletteItemLabel}>{label}</span>
