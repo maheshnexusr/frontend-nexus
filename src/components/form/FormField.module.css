@@ -91,3 +91,35 @@
   color: var(--text-muted);
   line-height: 1.5;
 }
+
+/* ── Touch: phone AND tablet (≤ 1023 px) ─────────────────────────────────── */
+/* Shared wrapper — every page built on FormField picks this up.
+
+   `.control input` is specificity (0,1,1), so it BEATS a page-level `.input`
+   class (0,1,0). Pages that raise their own inputs to 16px for the Safari
+   zoom threshold are silently overridden back down to 14px unless the same
+   bump happens here.
+
+   1023px, not 767px: iPad portrait is exactly 768px and iPadOS Safari zooms
+   on sub-16px inputs just like iPhone, so a 767px ceiling would miss every
+   tablet. Matches the app shell's own 1024px touch threshold. */
+@media (max-width: 1023px) {
+  .label { font-size: 14px; }
+
+  .control input,
+  .control select,
+  .control textarea {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  .control textarea { min-height: 88px; }
+
+  /* Validation and hint text wrap to two or three lines in a single column;
+     top-align the icon so it sits against the first line, not the middle. */
+  .error {
+    align-items: flex-start;
+    font-size: 12.5px;
+    line-height: 1.45;
+  }
+  .helpText { font-size: 12.5px; }
+}

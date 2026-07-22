@@ -404,3 +404,90 @@
   cursor: pointer;
 }
 .filterChipsClearAll:hover { text-decoration: underline; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOUCH (≤ 1023 px) — phone AND tablet.
+
+   Shared by the sponsor Queries page and the site one (SiteQueriesPage imports
+   this module). Answering queries is routine PI work and often happens away
+   from a desk, so every control here needs a real target. Ceiling is 1023px
+   because iPad portrait is exactly 768px — see SFBPreview.module.css.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1023px) {
+  .btnSecondary { min-height: 44px; padding: 10px 16px; }
+  .btnRefresh   { width: 44px; height: 44px; }
+  .filterBtn    { min-height: 44px; padding: 8px 14px; font-size: 13px; }
+
+  /* Text and date inputs under 16px make Safari zoom the page on focus. The
+     date pair is the easiest to miss — they read as small chips, not fields. */
+  .searchInput { font-size: 16px; height: 44px; padding: 8px 34px; }
+  .dateInput   { font-size: 16px; min-height: 44px; padding: 8px 10px; }
+  .pageSizeSelect { font-size: 16px; min-height: 44px; padding: 8px 10px; }
+
+  /* Row actions (respond / close / escalate / reopen) were 26px — the
+     smallest targets in the whole app, sitting shoulder to shoulder, where a
+     mis-tap closes a query instead of answering it. 40px rather than 44 so
+     they still fit the pinned column two-up on a phone. */
+  .actionBtn { width: 40px; height: 40px; margin: 0 1px; }
+
+  .pageBtn { min-width: 44px; height: 44px; font-size: 13px; }
+
+  .bulkClose, .bulkExport, .bulkClear {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  /* Row select checkboxes — the browser default is ~13px. */
+  .tdCheck input[type="checkbox"],
+  .thCheck input[type="checkbox"] { width: 20px; height: 20px; }
+
+  .tableWrap { -webkit-overflow-scrolling: touch; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NARROW (< 768 px) — phone. Layout only.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  .page { padding: 14px 12px; gap: 12px; }
+  .title { font-size: 18px; }
+  .sub   { font-size: 12.5px; }
+
+  /* Search takes its own row; filters and the date range flow beneath it. */
+  .toolbarLeft   { width: 100%; gap: 8px; }
+  .searchWrapper { flex: 1 1 100%; }
+  .searchInput   { width: 100%; box-sizing: border-box; }
+  .searchClear   { width: 28px; height: 28px; right: 6px; }
+  .filterWrap    { flex-wrap: wrap; gap: 6px; }
+  .siteFilter    { min-width: 0; flex: 1 1 100%; }
+
+  /* Two date fields plus a separator do not fit one phone row at 44px. */
+  .dateRange { flex: 1 1 100%; }
+  .dateInput { flex: 1 1 0; min-width: 0; }
+
+  /* Bulk bar: count on its own line, actions sharing the next. */
+  .bulkBar   { flex-wrap: wrap; }
+  .bulkCount { flex: 1 1 100%; }
+  .bulkClose, .bulkExport, .bulkClear { flex: 1 1 auto; justify-content: center; }
+
+  /* The table is 1100px wide — wider than the capture table — so Actions is a
+     long scroll away on every row. Pin it to the right edge of the scrollport.
+     Needs an opaque background (it sits over scrolling cells) and a shadow
+     rather than a border, since `border-collapse: collapse` drops borders on
+     sticky cells. */
+  .thActions, .tdActions {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    width: 100px;
+    min-width: 100px;
+    white-space: normal;
+    box-shadow: inset 1px 0 0 var(--border-default, #e2e8f0);
+  }
+  .tdActions { background: var(--bg-card, #fff); padding: 8px 6px; }
+  .thActions { background: var(--bg-subtle, #f8fafc); z-index: 3; }
+
+  .pagination  { justify-content: center; gap: 6px; }
+  .pageInfo    { flex: 1 1 100%; margin-right: 0; text-align: center; }
+  .empty       { padding: 40px 16px; }
+}

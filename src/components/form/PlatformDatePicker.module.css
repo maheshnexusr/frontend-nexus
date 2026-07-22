@@ -298,3 +298,59 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ── Mobile: bottom-sheet calendar (< 768 px) ────────────────────────────── */
+/* The desktop popover is a 296px card anchored to the trigger, which gives
+   ~40x34px day cells — under the touch floor, and easy to mis-tap into the
+   wrong date. On a phone it docks to the bottom of the screen instead and the
+   grid expands to fill the width, matching the sheet pattern the modals use.
+
+   `top`/`left` are set inline by computePopoverPos(), so they need !important
+   to be neutralised; the rest is plain CSS. */
+/* Touch sizing — phone AND tablet. Picking the wrong date in an eCRF is a
+   data-integrity problem, not just an annoyance, so the cells clear the touch
+   floor on every touch device. iPad portrait is exactly 768px. */
+@media (max-width: 1023px) {
+  .trigger {
+    min-height: 44px;
+    font-size: 16px;
+    padding: 8px 12px;
+  }
+
+  .header { height: 44px; margin-bottom: 6px; }
+  .headerLabel { height: 44px; font-size: 15px; padding: 0 12px; }
+  .navBtn { width: 44px; height: 44px; }
+
+  .weekday { height: 30px; font-size: 12px; }
+  /* aspect-ratio keeps the cells square; the max-height cap is what held them
+     at 34px, so it has to go before min-height can take effect. */
+  .day {
+    max-height: none;
+    min-height: 44px;
+    font-size: 15px;
+  }
+
+  /* The card stays anchored to the trigger on a tablet, but 7 columns of 44px
+     need more than the desktop 296px (which leaves ~39px per column once
+     padding is taken). Widen it so the cells are square rather than tall and
+     narrow. Below 768px this is overridden by the full-width sheet. */
+  .popover { width: 340px; }
+
+  .tile { height: 52px; font-size: 15px; }
+  .gridQuarters { min-height: 0; }
+}
+
+/* Narrow — dock the calendar to the bottom as a sheet. An anchored 340px card
+   does not fit beside a 360px viewport. */
+@media (max-width: 767px) {
+  .popover {
+    top: auto !important;
+    left: 0 !important;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    border-radius: 14px 14px 0 0;
+    padding: 14px 14px calc(14px + var(--safe-bottom, 0px));
+    font-size: 15px;
+  }
+}

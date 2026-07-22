@@ -17,6 +17,17 @@
 .title { font-size: 20px; font-weight: 700; color: var(--text-primary, #0f172a); margin: 0 0 4px; }
 .sub   { font-size: 13px; color: var(--text-secondary, #64748b); margin: 0; }
 
+/* Snapshot + Refresh, sitting opposite the title in .header.
+   NOTE: this class was referenced by CapturePage.jsx but never defined here,
+   so the container rendered with `className="undefined"` and no layout of its
+   own — the buttons only lined up because they are inline-flex. */
+.headerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .btnRefresh {
   display: inline-flex; align-items: center; justify-content: center;
   width: 36px; height: 36px;
@@ -129,6 +140,20 @@
 .dateCell    { font-size: 12px; color: var(--text-secondary, #64748b); white-space: nowrap; }
 .na          { color: var(--text-secondary, #94a3b8); font-size: 12px; }
 
+/* Randomisation number — monospace so transposed digits in an allocation code
+   are visible at a glance when scanning the column. */
+.randomCode {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #4338ca;
+  background: #eef2ff;
+  border-radius: 5px;
+  padding: 2px 8px;
+  letter-spacing: 0.02em;
+}
+
 /* Visit progress bar */
 .visitCell  { display: flex; align-items: center; gap: 8px; }
 .visitBar   { flex: 1; height: 5px; background: var(--border-default, #e2e8f0); border-radius: 3px; overflow: hidden; min-width: 60px; }
@@ -210,3 +235,80 @@
 /* ── Spin ────────────────────────────────────────────────────────────────── */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE (< 768 px)
+
+   The subject table keeps its columns and scrolls sideways inside .tableWrap
+   (already overflow:auto with a 760px min-width, so this never becomes
+   page-level horizontal scroll). Restacking six columns into cards would mean
+   parallel markup for the same data; instead the Actions column is pinned to
+   the right edge so "Open CRF" / Edit / Delete stay reachable without
+   scrolling back and forth for every row.
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* Touch controls — phone AND tablet. iPad portrait is exactly 768px, and a
+   13px search box / 12.5px select both sit under the Safari zoom threshold. */
+@media (max-width: 1023px) {
+  .btnRefresh { width: 44px; height: 44px; }
+  .headerActions { gap: 6px; }
+  .searchInput { font-size: 16px; height: 44px; padding: 8px 34px; }
+  .siteSelect  { height: 44px; font-size: 16px; padding: 0 30px 0 12px; }
+  .filterBtn   { min-height: 44px; padding: 8px 14px; font-size: 13px; }
+  .pageBtn     { min-height: 44px; padding: 8px 16px; font-size: 13px; }
+  .iconBtn     { width: 40px; height: 40px; }
+  .tableWrap   { -webkit-overflow-scrolling: touch; }
+}
+
+@media (max-width: 767px) {
+  .page { padding: 14px 12px; gap: 12px; }
+
+  .title { font-size: 18px; }
+  .sub   { font-size: 12.5px; }
+
+  /* KPIs wrap raggedly at `display: flex` on a narrow screen — a 3-up grid
+     keeps them on a tidy baseline. */
+  .kpiRow {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px 8px;
+    padding: 12px;
+  }
+  .kpiVal   { font-size: 18px; }
+  .kpiLabel { font-size: 10.5px; white-space: normal; text-align: center; }
+
+  /* Toolbar: search takes its own full-width row, filters flow beneath it.
+     (Control SIZES come from the ≤1023px block above.) */
+  .toolbar     { gap: 8px; }
+  .toolbarLeft { width: 100%; gap: 8px; }
+  .searchWrapper { flex: 1 1 100%; }
+  .searchInput { width: 100%; box-sizing: border-box; }
+  .searchClear { width: 28px; height: 28px; right: 6px; }
+
+  .filterRow { flex-wrap: wrap; gap: 6px; }
+
+  .table { font-size: 13px; }
+  .td, .tdActions { padding: 10px; }
+
+  /* Pin Actions to the right edge of the scrollport. Needs an opaque
+     background (it sits over scrolling cells) and a shadow rather than a
+     border, because `border-collapse: collapse` drops borders on sticky
+     cells. The row-hover tint is not applied here — it has no meaning on
+     touch, and matching it would need a second sticky override. */
+  .thActions, .tdActions {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    /* A row can carry four actions (edit / open CRF / transfer / delete).
+       In one line at 40px each they would pin ~170px — nearly half a 360px
+       screen. Capping the column wraps them 2-up instead, which costs a
+       little row height and keeps the data columns readable. */
+    width: 100px;
+    min-width: 100px;
+    box-shadow: inset 1px 0 0 var(--border-default, #e2e8f0);
+  }
+  .tdActions { background: var(--bg-card, #fff); padding: 8px 6px; }
+  .thActions { background: var(--bg-subtle, #f8fafc); z-index: 3; }
+
+  .pagination { gap: 8px; }
+  .empty      { padding: 40px 16px; }
+}

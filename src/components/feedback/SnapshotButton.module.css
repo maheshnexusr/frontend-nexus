@@ -28,3 +28,15 @@
 
 .spin { animation: snap-spin 0.7s linear infinite; }
 @keyframes snap-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* ── Touch (≤ 1023 px) — phone AND tablet ────────────────────────────────── */
+/* Shared toolbar button (7 pages use it). At 6px padding / 12.5px it lands
+   around 30px tall, under the touch floor, and on the capture pages it sits
+   right beside the Refresh button where a mis-tap is easy. */
+@media (max-width: 1023px) {
+  .btn {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 13.5px;
+  }
+}

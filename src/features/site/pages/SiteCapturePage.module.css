@@ -41,3 +41,28 @@
   background: rgba(37, 99, 235, .04);
 }
 .iconBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Touch (≤ 1023 px) — phone AND tablet ────────────────────────────────── */
+/* The page's layout lives in the shared CapturePage.module.css; these are the
+   site page's own controls — the Enrol/Start button and the row action icons. */
+@media (max-width: 1023px) {
+  .btnCreate {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  /* Row actions sit in the sticky Actions column on a phone, so they stay just
+     under the 44px floor — four buttons at full size would push that pinned
+     column wide enough to cover most of a 360px screen. The row is tall enough
+     that the effective touch area still clears 40px in both axes. */
+  .iconBtn {
+    width: 40px;
+    height: 40px;
+    margin: 0 1px;
+  }
+}
+
+@media (max-width: 767px) {
+  .headerActions { gap: 6px; }
+}

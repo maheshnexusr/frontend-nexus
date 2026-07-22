@@ -64,6 +64,9 @@ function normalize(raw) {
     // Responsible PI (subject owner); falls back to created_by for legacy rows.
     ownerId:         raw.owner_id          ?? raw.ownerId   ?? raw.created_by ?? raw.createdBy ?? '',
     ownerName:       raw.owner_name        ?? raw.ownerName ?? raw.created_by_name ?? raw.createdByName ?? '',
+    // Randomisation number — snapshotted onto the subject when the Randomisation
+    // field is filled on any CRF, so the roster can show it without form data.
+    randomizationNumber: raw.randomization_number ?? raw.randomizationNumber ?? '',
     eligibilityStatus: raw.eligibility_status ?? raw.eligibilityStatus ?? '',
     eligibilityReason: raw.eligibility_reason ?? raw.eligibilityReason ?? '',
   };
@@ -88,12 +91,12 @@ function EligibilityBadge({ status, reason }) {
   );
 }
 
-function SkeletonRow() {
+function SkeletonRow({ cols = 6 }) {
   return (
     <tr className={css.row}>
-      {[1,2,3,4,5,6].map((i) => (
+      {Array.from({ length: cols }, (_, n) => n + 1).map((i) => (
         <td key={i} className={css.td}>
-          <div className={css.skeleton} style={{ width: i === 1 ? '80px' : i === 6 ? '80px' : '120px' }} />
+          <div className={css.skeleton} style={{ width: i === 1 ? '80px' : i === cols ? '80px' : '120px' }} />
         </td>
       ))}
     </tr>
@@ -146,6 +149,12 @@ export default function SiteCapturePage() {
   const [query,        setQuery]        = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [refreshing,   setRefreshing]   = useState(false);
+  // Seeded from the chosen-study context (written at study choose, so it needs
+  // no permission), then refreshed from the dashboard below in case the CRO
+  // flipped the toggle after this user picked the study.
+  const [randomizationEnabled, setRandomizationEnabled] = useState(
+    () => Boolean(getSiteStudyContext()?.randomizationEnabled),
+  );
   // The current person's per-person subject cap + usage (null = unlimited).
   // Drives the "Create Subject" disabled state + limit-reached banner.
   const [allowance,    setAllowance]    = useState(null);
@@ -176,6 +185,35 @@ export default function SiteCapturePage() {
 
   useEffect(() => { loadSubjects(); }, [loadSubjects]);
 
+  /* ── Study-level randomisation toggle (dashboard summary carries it). ── */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await siteWorkspaceClient.dashboard();
+        const row = res?.study ?? res?.item ?? res;
+        if (!cancelled) {
+          setRandomizationEnabled(
+            Boolean(row?.randomizationEnabled ?? row?.randomization_enabled ?? false),
+          );
+        }
+      } catch { /* non-fatal — the data fallback below still reveals the column */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  /* ── Randomisation column ──
+     Driven by the study toggle (read from the dashboard summary, the same
+     source the CRF header strip uses), so the column is there before the first
+     allocation. An existing number also reveals it, so a failed fetch can never
+     hide data the roster demonstrably has. */
+  const showRandomization = useMemo(
+    () => !surveyMode
+      && (randomizationEnabled || subjects.some((s) => s.randomizationNumber)),
+    [surveyMode, randomizationEnabled, subjects],
+  );
+  const edcColCount = showRandomization ? 7 : 6;
+
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
     return subjects
@@ -185,7 +223,8 @@ export default function SiteCapturePage() {
           || s.subjectName.toLowerCase().includes(q)
           || s.subjectInitials.toLowerCase().includes(q)
           || String(s.siteCode).toLowerCase().includes(q)
-          || String(s.siteName).toLowerCase().includes(q);
+          || String(s.siteName).toLowerCase().includes(q)
+          || String(s.randomizationNumber).toLowerCase().includes(q);
         const matchStat = statusFilter === 'All' || s.status === statusFilter;
         return matchQ && matchStat;
       })
@@ -410,6 +449,7 @@ export default function SiteCapturePage() {
               <tr>
                 <th className={css.th}>Site</th>
                 <th className={css.th}>Subject</th>
+                {showRandomization && <th className={css.th}>Randomisation No.</th>}
                 <th className={css.th}>Responsible By</th>
                 <th className={css.th}>Status</th>
                 <th className={css.th}>Enrolled</th>
@@ -419,10 +459,12 @@ export default function SiteCapturePage() {
           </thead>
           <tbody>
             {loading ? (
-              Array.from({ length: 8 }, (_, i) => <SkeletonRow key={i} />)
+              Array.from({ length: 8 }, (_, i) => (
+                <SkeletonRow key={i} cols={surveyMode ? 4 : edcColCount} />
+              ))
             ) : pageData.length === 0 ? (
               <tr>
-                <td colSpan={surveyMode ? 4 : 6} className={css.emptyCell}>
+                <td colSpan={surveyMode ? 4 : edcColCount} className={css.emptyCell}>
                   <div className={css.empty}>
                     <Database size={40} strokeWidth={1.25} className={css.emptyIcon} />
                     <p className={css.emptyTitle}>
@@ -517,6 +559,14 @@ export default function SiteCapturePage() {
                         </div>
                       </div>
                     </td>
+                    {/* Randomisation number (write-once, captured on the CRF). */}
+                    {showRandomization && (
+                      <td className={css.td}>
+                        {subject.randomizationNumber
+                          ? <span className={css.randomCode}>{subject.randomizationNumber}</span>
+                          : <span className={css.na}>—</span>}
+                      </td>
+                    )}
                     <td className={css.td}>
                       {subject.ownerName
                         ? <span className={css.subjectCode}>{subject.ownerName}</span>

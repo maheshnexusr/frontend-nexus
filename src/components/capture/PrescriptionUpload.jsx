@@ -28,6 +28,7 @@ import { uploadFormFile } from '@/api/formFileClient';
 import { resolveFileUrl } from '@/api/fileUrl';
 import { listPrescriptions, addPrescription, removePrescription } from '@/api/prescriptionClient';
 import { addToast } from '@/app/notificationSlice';
+import css from './PrescriptionUpload.module.css';
 import { formatDateTime } from '@/utils/formatDate';
 
 const ACCEPT = 'image/*,application/pdf';
@@ -122,6 +123,7 @@ export default function PrescriptionUpload({ subjectId, canUpload, triggerStyle 
     <>
       <button
         type="button"
+        className={css.trigger}
         style={{ ...S.trigger, ...(hover ? S.triggerHover : null), ...triggerStyle }}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
@@ -149,7 +151,7 @@ export default function PrescriptionUpload({ subjectId, canUpload, triggerStyle 
             The subject&apos;s attachments — images or PDF, up to {MAX_MB} MB each.
           </p>
           {canUpload && (
-            <button type="button" style={S.uploadBtn} onClick={handlePick} disabled={uploading}>
+            <button type="button" className={css.uploadBtn} style={S.uploadBtn} onClick={handlePick} disabled={uploading}>
               {uploading ? <Loader2 size={14} style={S.spin} /> : <UploadCloud size={14} />}
               {uploading ? 'Uploading…' : 'Upload'}
             </button>
@@ -171,7 +173,7 @@ export default function PrescriptionUpload({ subjectId, canUpload, triggerStyle 
             <FileText size={26} strokeWidth={1.25} style={{ color: '#cbd5e1' }} />
             <span style={S.emptyText}>No attachments uploaded yet.</span>
             {canUpload && (
-              <button type="button" style={S.uploadGhost} onClick={handlePick} disabled={uploading}>
+              <button type="button" className={css.uploadGhost} style={S.uploadGhost} onClick={handlePick} disabled={uploading}>
                 <UploadCloud size={14} /> Upload the first one
               </button>
             )}
@@ -198,6 +200,7 @@ export default function PrescriptionUpload({ subjectId, canUpload, triggerStyle 
                 {canUpload && (
                   <button
                     type="button"
+                    className={css.removeBtn}
                     style={S.removeBtn}
                     onClick={() => handleRemove(p)}
                     disabled={removingId === p.id}
@@ -223,9 +226,11 @@ PrescriptionUpload.propTypes = {
 };
 
 const S = {
+  /* padding + fontSize live in PrescriptionUpload.module.css so they can grow
+     for touch; an inline value here would override the media query. */
   trigger: {
-    display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px 5px 6px',
-    borderRadius: 999, fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', gap: 7,
+    borderRadius: 999, fontWeight: 600, cursor: 'pointer',
     border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8',
     boxShadow: '0 1px 2px rgba(37,99,235,0.10)', transition: 'all 0.12s ease',
   },
@@ -249,13 +254,13 @@ const S = {
   modalHead: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' },
   modalSub: { margin: 0, flex: '1 1 auto', fontSize: 12.5, color: '#64748b', lineHeight: 1.5 },
   uploadBtn: {
-    display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px',
-    borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    borderRadius: 8, fontWeight: 600, cursor: 'pointer',
     border: '1px solid #2563eb', background: '#2563eb', color: '#fff', flexShrink: 0,
   },
   uploadGhost: {
-    display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 4, padding: '7px 14px',
-    borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 4,
+    borderRadius: 8, fontWeight: 600, cursor: 'pointer',
     border: '1px solid #cbd5e1', background: '#fff', color: '#1d4ed8',
   },
   closeBtn: {
@@ -289,7 +294,7 @@ const S = {
   fileSub: { fontSize: 11.5, color: '#94a3b8', marginTop: 1 },
   removeBtn: {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    width: 30, height: 30, borderRadius: 7, cursor: 'pointer',
+    borderRadius: 7, cursor: 'pointer',
     border: '1px solid #fecaca', background: '#fff', color: '#dc2626', flexShrink: 0,
   },
   spin: { animation: 'spin 0.8s linear infinite' },

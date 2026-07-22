@@ -133,6 +133,69 @@ tbody tr:hover .td { background: #f8fafc; }
 .rowBtnDanger:hover { background: #fee2e2; color: #dc2626; }
 .rowBtn:disabled { opacity: 0.35; cursor: not-allowed; }
 
+/* ── Touch data entry (≤ 1023 px) — phone AND tablet ─────────────────────── */
+/* Control sizing. The grid keeps its columns at every width — collapsing rows
+   into stacked cards would break the row-to-row comparison the table exists
+   for. iPad portrait is exactly 768px, so this ceiling is 1023px; otherwise
+   every tablet keeps 30px cells at 12px and zooms on focus. */
+@media (max-width: 1023px) {
+  /* Cell editors — same 16px / 44px floor as the rest of the form. */
+  .cellInput, .cellTextarea {
+    font-size: 16px;
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+  .cellTextarea { min-height: 66px; }
+  .td { padding: 6px; }
+
+  .searchInput {
+    font-size: 16px;      /* below 16px Safari zooms the page on focus */
+    min-height: 44px;
+    padding: 8px 10px 8px 30px;
+  }
+  .addRowBtn { min-height: 44px; padding: 10px 16px; font-size: 14px; }
+
+  /* In-cell choice controls. */
+  .cellChoices { gap: 12px; }
+  .cellRadio { font-size: 14px; min-height: 44px; gap: 6px; }
+  .cellRadio input { width: 20px; height: 20px; }
+  .cellCheckbox { width: 22px; height: 22px; }
+
+  /* Row add/remove/duplicate — 28px is well under the touch floor, and these
+     sit next to each other, so mis-taps delete the wrong row. */
+  .rowActions { gap: 4px; }
+  .rowBtn { width: 44px; height: 44px; }
+  .thActions { width: 104px; }
+
+  .fileBtn { min-height: 44px; padding: 8px 12px; font-size: 14px; }
+
+  .scroller { -webkit-overflow-scrolling: touch; }
+}
+
+/* ── Narrow (< 768 px) — phone. Layout only. ─────────────────────────────── */
+@media (max-width: 767px) {
+  /* Toolbar wraps; search takes its own full-width row. */
+  .toolbar { flex-wrap: wrap; gap: 8px; padding: 10px; }
+  .searchBox { flex: 1 1 100%; }
+  .searchInput { width: 100%; box-sizing: border-box; }
+  .spacer { display: none; }
+
+  .scroller { max-height: none; }
+
+  /* `.table { width: 100% }` alone would shrink columns to fit the screen —
+     six columns on a 360px phone leaves ~50px per cell, too narrow to read a
+     value or tap into an input. A per-column floor makes the table wider than
+     the viewport instead, so it scrolls horizontally inside .scroller (.wrap
+     is overflow:hidden, so this never becomes page-level scroll) with every
+     column still legible. A tablet has the width to lay the columns out
+     normally, so the floor only applies here. */
+  .th, .td { min-width: 128px; }
+  .thNum, .tdNum { min-width: 34px; width: 34px; }
+  .thActions, .tdActions { min-width: 104px; }
+
+  .fileName { max-width: 90px; }
+}
+
 /* ── Density ─────────────────────────────────────────────────────────────── */
 .compact .td { padding: 2px 4px; }
 .compact .cellInput, .compact .cellTextarea { min-height: 26px; padding: 3px 6px; font-size: 11.5px; }

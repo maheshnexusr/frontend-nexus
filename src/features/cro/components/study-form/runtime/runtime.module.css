@@ -48,6 +48,43 @@
   gap: 4px;
 }
 
+/* ── Mobile data entry (< 768 px) ────────────────────────────────────────── */
+/* The head row packs the label against the collaboration chips + toolbar. On a
+   narrow screen that squeezes the label into a 2-3 word column, so let the row
+   wrap and give the label enough size to read at arm's length. Pairs with the
+   matching block in SFBPreview.module.css. */
+/* Touch: label + message legibility applies on tablet as well as phone. */
+@media (max-width: 1023px) {
+  .label { font-size: 14px; line-height: 1.35; }
+  .help  { font-size: 12px; line-height: 1.4; }
+
+  /* Validation messages are full sentences ("Systolic BP is required.") and
+     routinely wrap. `align-items: center` would centre the ⚠ against the whole
+     wrapped block, leaving it floating beside the middle line. */
+  .errorMsg {
+    align-items: flex-start;
+    font-size: 13px;
+    line-height: 1.45;
+    gap: 6px;
+  }
+}
+
+@media (max-width: 767px) {
+  .fieldWrap { padding: 4px 0; }
+
+  .fieldHead {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    margin-bottom: 5px;
+  }
+  /* Claim the full row so the actions wrap underneath rather than crushing it.
+     (Label / message sizing lives in the ≤1023px block above.) */
+  .labelGroup { flex: 1 1 100%; gap: 2px; }
+
+  /* Chips sit on their own line once the label has taken the row. */
+  .fieldHeadActions { flex: 0 0 auto; margin-left: auto; }
+}
+
 /* ── Collaboration badges ────────────────────────────────────────────────── */
 .badges {
   display: inline-flex;
@@ -314,6 +351,65 @@
   padding: 8px 12px;
   border-top: 1px solid var(--border-light, #f1f5f9);
   background: var(--bg-muted, #fafbff);
+}
+
+/* ── Mobile workflow surfaces (< 768 px) ─────────────────────────────────── */
+/* The query / annotation / attachment / verification surfaces are dialogs in
+   their own right, so they follow the same bottom-sheet pattern as
+   Modal.module.css: full width, action buttons pinned under a scrolling body,
+   90vh ceiling. */
+@media (max-width: 767px) {
+  /* Centred dialog → bottom sheet. */
+  .modalBackdrop { align-items: flex-end; padding: 0; }
+  .modal {
+    max-width: 100%;
+    max-height: 90vh;
+    max-height: 90dvh;
+    border-radius: 14px 14px 0 0;
+  }
+
+  /* Side drawer → full-width sheet; 480px of drawer on a 360px screen was
+     just a full-width panel with its shadow off-screen anyway. */
+  .drawer { max-width: 100%; }
+
+  /* Popover.jsx positions this shell with INLINE top/left/width (default
+     380px) computed from the anchor field's rect. On a 360px viewport a 380px
+     popover overflows the screen — and its left clamp can go negative, so it
+     is also clipped. Inline styles can only be overridden with !important:
+     drop the JS geometry entirely and dock it to the bottom instead. `top`
+     must be neutralised too, or the fixed element inherits a document-scroll
+     offset and lands off-screen. */
+  .popoverShell {
+    position: fixed !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0;
+    bottom: 0;
+    width: auto !important;
+    max-width: none;
+    max-height: 90vh !important;
+    border-radius: 14px 14px 0 0;
+  }
+  .popoverShellFoot {
+    padding: 10px 12px calc(10px + var(--safe-bottom, 0px));
+  }
+  .popoverShellFoot > button,
+  .modalFoot > button,
+  .drawerFoot > button {
+    min-height: 44px;
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  /* Bodies already scroll (`flex: 1; overflow-y: auto`) — just give the sheet
+     room to breathe and keep the last row clear of the home indicator. */
+  .modalBody, .drawerBody { padding: 14px 16px; }
+  .modalFoot, .drawerFoot {
+    padding: 12px 16px calc(12px + var(--safe-bottom, 0px));
+    gap: 8px;
+  }
+
+  .closeBtn { width: 44px; height: 44px; }
 }
 
 /* ── Popover (lightweight legacy — kept for absolute positioning helpers) ──── */

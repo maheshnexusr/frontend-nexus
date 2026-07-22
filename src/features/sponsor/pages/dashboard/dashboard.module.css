@@ -180,6 +180,9 @@
 }
 @media (max-width: 768px) {
   .chartCard, .chartCardHalf { grid-column: 1 / -1; }
+  /* Reclaim the side gutters — a bar chart on a phone needs every pixel of
+     plot width it can get before the axis labels start colliding. */
+  .chartCard { padding: 14px 12px; }
 }
 .chartTitle {
   font-size: 13px;

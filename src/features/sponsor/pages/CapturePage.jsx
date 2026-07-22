@@ -99,6 +99,10 @@ function normalize(raw) {
     // backfilled at migration time.
     ownerId:           raw.owner_id          ?? raw.ownerId          ?? raw.created_by ?? raw.createdBy ?? '',
     ownerName:         raw.owner_name        ?? raw.ownerName        ?? raw.created_by_name ?? raw.createdByName ?? '',
+    // Randomisation number — snapshotted onto the subject when the site person
+    // fills the Randomisation field on any CRF, so it is available here without
+    // reading form data.
+    randomizationNumber: raw.randomization_number ?? raw.randomizationNumber ?? '',
     // Inclusion/Exclusion eligibility (auto-derived from form criteria).
     eligibilityStatus: raw.eligibility_status ?? raw.eligibilityStatus ?? '',
     eligibilityReason: raw.eligibility_reason ?? raw.eligibilityReason ?? '',
@@ -127,13 +131,14 @@ function EligibilityBadge({ status, reason }) {
 }
 
 /* ── Skeleton row ────────────────────────────────────────────────────────── */
-function SkeletonRow() {
-  // 6 columns: Subject, Site, Responsible PI, Screening Status, Enrollment Date, Actions.
+function SkeletonRow({ cols = 6 }) {
+  // 6 columns: Site, Subject, Responsible PI, Status, Enrollment Date, Actions
+  // — 7 when the study is randomised (Randomisation No. sits after Subject).
   return (
     <tr className={css.row}>
-      {[1,2,3,4,5,6].map((i) => (
+      {Array.from({ length: cols }, (_, n) => n + 1).map((i) => (
         <td key={i} className={css.td}>
-          <div className={css.skeleton} style={{ width: i === 1 ? '80px' : i === 6 ? '80px' : '120px' }} />
+          <div className={css.skeleton} style={{ width: i === 1 ? '80px' : i === cols ? '80px' : '120px' }} />
         </td>
       ))}
     </tr>
@@ -172,6 +177,7 @@ export default function CapturePage() {
   const [siteFilter,   setSiteFilter]   = useState('');
   const [refreshing,   setRefreshing]   = useState(false);
   const [studyFormId,  setStudyFormId]  = useState(null);
+  const [randomizationEnabled, setRandomizationEnabled] = useState(false);
 
   const [page,     setPage]     = useState(1);
   const PAGE_SIZE = 25;
@@ -280,6 +286,27 @@ export default function CapturePage() {
     return () => { cancelled = true; };
   }, [dispatch]);
 
+  /* ── Study-level randomisation toggle ──
+     Same source the CRF header strip reads: the dashboard endpoint already
+     carries the study summary, so this costs no extra round trip beyond the one
+     request and stays fresh if the CRO flips the toggle mid-session (a cached
+     login-time copy would not). ── */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res  = await axiosClient.get('/api/v1/sponsor/workspace/studies/dashboard');
+        const row  = res?.study ?? res?.item ?? res;
+        if (!cancelled) {
+          setRandomizationEnabled(
+            Boolean(row?.randomizationEnabled ?? row?.randomization_enabled ?? false),
+          );
+        }
+      } catch { /* non-fatal — the data fallback below still reveals the column */ }
+    })();
+    return () => { cancelled = true; };
+  }, [studyId]);
+
   /* ── Derived site list for dropdown ── */
   const siteOptions = useMemo(() => {
     const seen = new Set();
@@ -294,6 +321,18 @@ export default function CapturePage() {
     return opts.sort((a, b) => a.label.localeCompare(b.label));
   }, [subjects]);
 
+  /* ── Randomisation column ──
+     Driven by the study toggle, so a randomised study shows the column from the
+     start (empty cells read as "not yet allocated" — real information). An
+     existing number also reveals it, because the fetch above is best-effort and
+     a hiccup must never hide data the roster demonstrably has. */
+  const showRandomization = useMemo(
+    () => !surveyMode
+      && (randomizationEnabled || subjects.some((s) => s.randomizationNumber)),
+    [surveyMode, randomizationEnabled, subjects],
+  );
+  const edcColCount = showRandomization ? 7 : 6;
+
   /* ── Filter + search ── */
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
@@ -302,8 +341,9 @@ export default function CapturePage() {
         // Match against every human-readable identifier so a study coordinator
         // can search by initials, the formatted code, the site code, or the
         // site name interchangeably.
-        const matchQ    = !q || [s.subjectInitials, s.subjectCode, s.siteCode, s.siteName]
-          .some((v) => (v ?? '').toLowerCase().includes(q));
+        const matchQ    = !q
+          || [s.subjectInitials, s.subjectCode, s.siteCode, s.siteName, s.randomizationNumber]
+            .some((v) => (v ?? '').toLowerCase().includes(q));
         // Status quick-filter matches the screening pipeline (the column the
         // table renders). Falls back to the legacy single status field for
         // older subject rows that don't carry a screening_status yet.
@@ -457,6 +497,7 @@ export default function CapturePage() {
               <tr>
                 <th className={css.th}>Site</th>
                 <th className={css.th}>Subject</th>
+                {showRandomization && <th className={css.th}>Randomisation No.</th>}
                 <th className={css.th}>Responsible By</th>
                 <th className={css.th}>Status</th>
                 <th className={css.th}>Enrollment Date</th>
@@ -466,10 +507,12 @@ export default function CapturePage() {
           </thead>
           <tbody>
             {loading ? (
-              Array.from({ length: 8 }, (_, i) => <SkeletonRow key={i} />)
+              Array.from({ length: 8 }, (_, i) => (
+                <SkeletonRow key={i} cols={surveyMode ? 4 : edcColCount} />
+              ))
             ) : pageData.length === 0 ? (
               <tr>
-                <td colSpan={surveyMode ? 4 : 6} className={css.emptyCell}>
+                <td colSpan={surveyMode ? 4 : edcColCount} className={css.emptyCell}>
                   <div className={css.empty}>
                     <Database size={40} strokeWidth={1.25} className={css.emptyIcon} />
                     <p className={css.emptyTitle}>
@@ -563,6 +606,14 @@ export default function CapturePage() {
                         </div>
                       </div>
                     </td>
+                    {/* Randomisation number (write-once, captured on the CRF). */}
+                    {showRandomization && (
+                      <td className={css.td}>
+                        {subject.randomizationNumber
+                          ? <span className={css.randomCode}>{subject.randomizationNumber}</span>
+                          : <span className={css.na}>—</span>}
+                      </td>
+                    )}
                     {/* Responsible PI (subject owner). */}
                     <td className={css.td}>
                       {subject.ownerName
