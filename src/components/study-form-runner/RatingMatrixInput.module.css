@@ -103,21 +103,58 @@ tbody tr:hover .td { background: #f8fafc; }
   .table { font-size: 14px; }
 
   /* Each radio cell becomes a 44px touch target. The label wraps the input, so
-     sizing the label is what actually widens the tap area. */
-  .td { padding: 4px 2px; }
+     sizing the label is what actually widens the tap area.
+     Scoped to .tdRadio, NOT .td — the item cell carries both classes, and
+     trimming it to 2px jams the question text against the frozen column's
+     edge. */
+  .tdRadio { padding: 4px 2px; }
   .radioLabel { min-width: 44px; min-height: 44px; justify-content: center; }
   .radioLabel input[type='radio'] { width: 22px; height: 22px; }
 
-  .scroller { -webkit-overflow-scrolling: touch; }
+  /* The item column is frozen while the scale scrolls under it. At rest that
+     edge is a 1px #f1f5f9 border, which is invisible in motion — the scale
+     appears to slide out of nowhere. A darker inset edge marks the seam. */
+  .thItem, .tdItem { box-shadow: inset -1px 0 0 #e2e8f0; }
+  /* Keep the red missing-row marker; box-shadow does not cascade per-side. */
+  .rowMissing .tdItem { box-shadow: inset 3px 0 0 #ef4444, inset -1px 0 0 #e2e8f0; }
+
+  /* The 240px outline sidebar is still open across this whole range, so an
+     iPad in portrait gives the matrix LESS room than a phone does (768 - 240
+     ≈ 500px of content). 200px of that on a frozen label is too much. */
+  .thItem, .tdItem { min-width: 160px; }
+
+  /* The scale header is `position: sticky; top: 0`, which is resolved against
+     .scroller — an `overflow: auto` box is a scroll container whether or not it
+     currently overflows. So the header can only stick while .scroller ITSELF
+     scrolls vertically. A viewport-relative cap guarantees that on any handset,
+     including landscape; a fixed 460px would exceed a short viewport, handing
+     the scroll to the page and letting the scale headings scroll away — leaving
+     a wall of anonymous radio buttons. */
+  .scroller {
+    max-height: 70vh;
+    max-height: 70dvh;
+    -webkit-overflow-scrolling: touch;
+    /* Always-visible scrollbar. The scale is wider than the screen by design,
+       but a touch device hides overlay scrollbars until you already drag — so
+       nothing tells the PI the rest of the scale is there. */
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f1f5f9;
+  }
+  .scroller::-webkit-scrollbar { height: 8px; width: 8px; }
+  .scroller::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 999px; }
+  .scroller::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
 }
 
-/* Narrow only — a tablet has room to keep the full 200px item column. */
 @media (max-width: 767px) {
-  /* 200px of frozen label on a 360px screen leaves too little room for the
+  /* 160px of frozen label on a 360px screen still leaves too little for the
      scale — the PI would have to scroll to see any option at all. */
   .thItem, .tdItem { min-width: 132px; }
   .tdItem { font-size: 13px; line-height: 1.35; }
   .th { font-size: 11px; padding: 8px 6px; }
 
-  .scroller { max-height: none; }
+  /* Scale headers only — the frozen item column keeps nowrap. Real Likert
+     labels ("Strongly Disagree") are long, and nowrap turns each into a
+     ~140px column, so a 6-point scale becomes 840px of sideways scrolling.
+     Wrapping lets auto table layout compress them toward the 44px radio. */
+  .th:not(.thItem) { white-space: normal; }
 }

@@ -180,7 +180,22 @@ tbody tr:hover .td { background: #f8fafc; }
   .searchInput { width: 100%; box-sizing: border-box; }
   .spacer { display: none; }
 
-  .scroller { max-height: none; }
+  /* Viewport-relative, NOT `none`. The header row is `position: sticky;
+     top: 0`, resolved against .scroller — an `overflow: auto` box is a scroll
+     container whether or not it overflows, so the header only sticks while
+     .scroller itself scrolls. Dropping the cap hands scrolling to the page and
+     the column headings scroll away, leaving unlabelled cells. */
+  .scroller {
+    max-height: 70vh;
+    max-height: 70dvh;
+    /* Always-visible scrollbar — the table is deliberately wider than the
+       screen, and touch overlay scrollbars only appear once you drag. */
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 #f1f5f9;
+  }
+  .scroller::-webkit-scrollbar { height: 8px; width: 8px; }
+  .scroller::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 999px; }
+  .scroller::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
 
   /* `.table { width: 100% }` alone would shrink columns to fit the screen —
      six columns on a 360px phone leaves ~50px per cell, too narrow to read a
