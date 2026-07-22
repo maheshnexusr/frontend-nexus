@@ -120,6 +120,10 @@ export function setSiteStudyContext(payload) {
     organizationLogo: o.organizationLogo ?? o.organization_logo_path ?? null,
     versionNumber: o.versionNumber ?? o.version_number ?? '',
     scope:         o.scope         ?? { edc: false, survey: false, epro: false },
+    // Wizard Step-2 randomisation toggle — gates the Randomisation No. column on
+    // the data-capture roster for roles that can't reach the dashboard endpoint.
+    randomizationEnabled:
+      o.randomizationEnabled ?? o.randomization_enabled ?? false,
     // Step-3 study-configuration toggles (consentManager / consentApproval /
     // queryManager / verificationManager) — drive the optional-module menus
     // (e.g. Consent Review & Approval). null → resolveStudyConfig fail-open.
