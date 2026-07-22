@@ -1838,7 +1838,17 @@ function StudyFormRunnerInner({
                       {({ field: f, value: v, onChange, disabled }) => (
                         <fieldset
                           disabled={readOnly || pageReadOnly || disabled || !canEditField(f)}
-                          style={{ border: 0, padding: 0, margin: 0 }}
+                          // minWidth: 0 is load-bearing, not tidying. The UA
+                          // stylesheet gives every fieldset `min-inline-size:
+                          // min-content`, which no amount of min-width:0 on the
+                          // ANCESTORS can undo. So a wide field — a table or a
+                          // rating matrix — inflated this fieldset to its
+                          // min-content width, burst out of the .fields card,
+                          // and starved the inner .scroller of any overflow to
+                          // scroll: its scrollWidth equalled its clientWidth, so
+                          // the horizontal scrollbar never appeared and the grid
+                          // just ran off the side of the form on a phone.
+                          style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
                         >
                           <FieldInput
                             field={f}
