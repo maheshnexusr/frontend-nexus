@@ -514,8 +514,24 @@ function StudyFormRunnerInner({
 
   // Sidebar — collapsed (hide whole rail) + per-block expanded (show/hide
   // each block's page list).
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  //
+  // The rail is a permanent 240px column on desktop but an off-canvas drawer
+  // below 768px (see SFBPreview.module.css), so it starts collapsed there —
+  // otherwise the outline, not the form, owns the first screen on a phone.
+  // The "Outline" button in the top rail reopens it. Evaluated once at mount;
+  // a later resize doesn't force it either way, and both states stay reachable.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => typeof window !== 'undefined'
+      && window.matchMedia?.('(max-width: 767px)').matches === true,
+  );
   const [expanded,         setExpanded]         = useState({}); // { [blockId]: true }
+
+  // Below 768px the rail overlays the form, so choosing a destination should
+  // hand the screen back to the form. No-op on desktop, where the rail is a
+  // permanent column and closing it would be a surprise.
+  const closeOutlineOnMobile = () => {
+    if (window.matchMedia?.('(max-width: 767px)').matches) setSidebarCollapsed(true);
+  };
 
   // Search — popover open state + currently-highlighted result index.
   const [search,     setSearch]     = useState('');
@@ -883,6 +899,84 @@ function StudyFormRunnerInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [values, blocks, readOnly]);
 
+  /* ── Search index — matches block title, page title, field label/key. ────
+     Lives above the early returns below because hooks must run in the same
+     order on every render. It used to sit further down, next to the search
+     bar it feeds: when `submitted` flipped to true the component returned at
+     the success screen and these two hooks were skipped, so that render made
+     two fewer hook calls than the one before it and React threw "Rendered
+     fewer hooks than expected". Depends only on `search` + `blocks`, both of
+     which are in scope here, so hoisting is behaviour-neutral. */
+  const results = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return [];
+    const out = [];
+    for (const blk of blocks) {
+      if ((blk.title ?? '').toLowerCase().includes(needle)) {
+        out.push({ kind: 'block', id: blk.id, label: blk.title || 'Untitled Block', blockId: blk.id, path: 'Block' });
+      }
+      for (const pg of blk.pages ?? []) {
+        if ((pg.title ?? '').toLowerCase().includes(needle)) {
+          out.push({ kind: 'page', id: pg.id, label: pg.title || 'Untitled Page', blockId: blk.id, pageId: pg.id, path: `${blk.title || 'Block'} › Page` });
+        }
+        for (const fld of pg.fields ?? []) {
+          const hay = `${fld.label ?? ''} ${fld.key ?? ''}`.toLowerCase();
+          if (hay.includes(needle)) {
+            out.push({ kind: 'field', id: fld.id, label: fld.label || fld.key || '(unnamed field)', blockId: blk.id, pageId: pg.id, fieldId: fld.id, path: `${blk.title || 'Block'} › ${pg.title || 'Page'}` });
+          }
+        }
+      }
+    }
+    return out.slice(0, 30);
+  }, [search, blocks]);
+
+  useEffect(() => { setHi(0); }, [results]);
+
+  /* ── Reveal newly-required conditional fields ────────────────────────────
+     A conditional field mounts into the flow the moment its rule turns true.
+     On a phone that field is usually below the fold, so from the PI's seat
+     answering a question does nothing visible — and the new field goes unseen
+     until the mandatory-field gate blocks Submit. Scroll the first newly
+     revealed REQUIRED field into view instead.
+
+     Mobile only: on desktop's two-column grid the field is usually already on
+     screen, and an unrequested scroll would disrupt more than it helps.
+     Purely presentational — reads values, never writes them.
+
+     Placed ABOVE the early returns below, for the same hook-ordering reason
+     as the search index above. It re-derives the current page rather than
+     using `renderFields`, which isn't computed until after those returns. */
+  const prevRequiredRef = useRef(null);
+  // Declared FIRST so it runs first: on a page change this clears the baseline
+  // before the comparison effect reads it, so arriving at a page reads as
+  // "arrival" rather than a burst of freshly revealed fields.
+  useEffect(() => { prevRequiredRef.current = null; }, [blockIdx, pageIdx]);
+  useEffect(() => {
+    const blk = blocks[Math.min(blockIdx, blocks.length - 1)];
+    const pgs = blk?.pages ?? [];
+    const pg  = pgs[Math.min(pageIdx, pgs.length - 1)];
+    const ids = (pg?.fields ?? [])
+      .filter((f) => {
+        const e = evaluateField(f, values);
+        return !e.hidden && e.required;
+      })
+      .map((f) => f.id);
+
+    const prev = prevRequiredRef.current;
+    prevRequiredRef.current = ids;
+    if (prev === null) return;          // first run for this page
+    if (!window.matchMedia?.('(max-width: 767px)').matches) return;
+
+    const fresh = ids.find((id) => !prev.includes(id));
+    if (!fresh) return;
+    requestAnimationFrame(() => {
+      // No-op if the field is role-hidden and never rendered.
+      document
+        .querySelector(`[data-field-id="${fresh}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [values, blocks, blockIdx, pageIdx]);
+
   if (!blocks.length) {
     return (
       <div className={s.emptyRoot} style={{ flex: 1 }}>
@@ -1123,6 +1217,22 @@ function StudyFormRunnerInner({
   // real-time validation). The backend persists the authoritative value on save.
   const liveEligibility = evaluateEligibility(eligibilityCriteria, values);
 
+  /* Scroll the first blocked field into view when a gate rejects Next/Save.
+     Flagging the fields inline isn't enough on a phone: the offending field is
+     usually off-screen, so from the PI's seat the button simply doesn't work.
+     The fields are already on the current page, so this only scrolls — no
+     navigation, and no change to what the gate accepts or rejects. Submit's
+     soft-check path already does the equivalent via jumpToField(). */
+  const scrollToFirstMissing = (fields) => {
+    const first = fields?.[0];
+    if (!first) return;
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-field-id="${first.id}"]`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  };
+
   // Prev/Next step over VISIBLE pages only, so conditionally-hidden pages/blocks
   // are skipped during navigation.
   const goNext = () => {
@@ -1130,6 +1240,7 @@ function StudyFormRunnerInner({
     // is filled — the user must complete the page before moving on.
     if (!readOnly && missingRequiredNow.length) {
       setTriedNext(true);
+      scrollToFirstMissing(missingRequiredNow);
       return;
     }
     const n = visiblePositions[curVisIdx + 1];
@@ -1152,32 +1263,6 @@ function StudyFormRunnerInner({
     setPageIdx(targetPi);
     setExpanded((p) => ({ ...p, [blockId]: true }));
   };
-
-  /* ── Search index — matches block title, page title, field label/key. */
-  const results = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    if (!needle) return [];
-    const out = [];
-    for (const blk of blocks) {
-      if ((blk.title ?? '').toLowerCase().includes(needle)) {
-        out.push({ kind: 'block', id: blk.id, label: blk.title || 'Untitled Block', blockId: blk.id, path: 'Block' });
-      }
-      for (const pg of blk.pages ?? []) {
-        if ((pg.title ?? '').toLowerCase().includes(needle)) {
-          out.push({ kind: 'page', id: pg.id, label: pg.title || 'Untitled Page', blockId: blk.id, pageId: pg.id, path: `${blk.title || 'Block'} › Page` });
-        }
-        for (const fld of pg.fields ?? []) {
-          const hay = `${fld.label ?? ''} ${fld.key ?? ''}`.toLowerCase();
-          if (hay.includes(needle)) {
-            out.push({ kind: 'field', id: fld.id, label: fld.label || fld.key || '(unnamed field)', blockId: blk.id, pageId: pg.id, fieldId: fld.id, path: `${blk.title || 'Block'} › ${pg.title || 'Page'}` });
-          }
-        }
-      }
-    }
-    return out.slice(0, 30);
-  }, [search, blocks]);
-
-  useEffect(() => { setHi(0); }, [results]);
 
   const jumpTo = (r) => {
     goToBlockPage(r.blockId, r.pageId);
@@ -1316,6 +1401,7 @@ function StudyFormRunnerInner({
     if (readOnly || saving) return;
     if (missingRequiredNow.length) {
       setTriedNext(true);
+      scrollToFirstMissing(missingRequiredNow);
       return;
     }
     setSaving(true);
@@ -1420,7 +1506,7 @@ function StudyFormRunnerInner({
     <div className={`${s.root} ${sidebarCollapsed ? s.rootCollapsed : ''}`}>
       {/* ── Collapsed sidebar rail (Back + re-open chevron) ─────────────── */}
       {sidebarCollapsed && (
-        <div style={{ position: 'absolute', top: 16, left: 12, zIndex: 5, display: 'flex', gap: 6 }}>
+        <div className={s.collapsedRail}>
           {onBack && (
             <button
               type="button"
@@ -1432,19 +1518,30 @@ function StudyFormRunnerInner({
               <ArrowLeft size={14} /> Back
             </button>
           )}
+          {/* Icon only — the panel glyph carries the meaning on its own and
+              keeps the bar compact at every width. `title` + `aria-label` keep
+              the label available to hover and to screen readers. */}
           <button
             type="button"
-            className={s.btnPrev}
+            className={s.outlineToggle}
             onClick={() => setSidebarCollapsed(false)}
             title="Show outline"
             aria-label="Show outline"
           >
-            <PanelLeft size={14} /> Outline
+            <PanelLeft size={16} />
           </button>
         </div>
       )}
 
       {!sidebarCollapsed && (
+        <>
+        {/* Drawer scrim — only painted below 768px, where the rail floats over
+            the form. Tapping it closes the outline. Inert on desktop. */}
+        <div
+          className={s.sidebarScrim}
+          onClick={() => setSidebarCollapsed(true)}
+          aria-hidden="true"
+        />
         <aside className={s.sidebar}>
           <div className={s.sidebarHead}>
             {onBack && (
@@ -1465,6 +1562,17 @@ function StudyFormRunnerInner({
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span className={s.sidebarTitle}>Progress Overview</span>
+              {/* Drawer dismiss — hidden on desktop, where the rail is a
+                  permanent column with nothing to close. */}
+              <button
+                type="button"
+                className={s.sidebarClose}
+                onClick={() => setSidebarCollapsed(true)}
+                title="Hide outline"
+                aria-label="Hide outline"
+              >
+                <XIcon size={18} />
+              </button>
             </div>
             <span className={s.sidebarSub}>{pct}% complete</span>
             <div className={s.progressWrap}>
@@ -1539,7 +1647,11 @@ function StudyFormRunnerInner({
                             <button
                               type="button"
                               className={`${s.pageItem} ${pCurrent ? s.pageItemActive : ''} ${pPast ? s.pageItemDone : ''}`}
-                              onClick={() => clickable && goToBlockPage(blk.id, pg.id)}
+                              onClick={() => {
+                                if (!clickable) return;
+                                goToBlockPage(blk.id, pg.id);
+                                closeOutlineOnMobile();
+                              }}
                               disabled={!clickable}
                             >
                               <span className={s.pageDot} />
@@ -1586,6 +1698,7 @@ function StudyFormRunnerInner({
             })}
           </nav>
         </aside>
+        </>
       )}
 
       <div className={s.mainCol} style={MAIN_COL_STYLE}>
@@ -2264,6 +2377,20 @@ function FileFieldInput({ field, value, onChange }) {
     : (field.type === 'multifile' || field.type === 'multiimage');
   const accept = field.accept || ((field.type === 'image' || field.type === 'multiimage') ? 'image/*' : '');
   const maxSizeMb = Number(field.maxSize) || 0;
+  // Native picker hint. iOS Safari only offers "Take Photo" / "Photo Library"
+  // when the accept attribute names an image MIME type — a config written as
+  // extensions (".jpg,.png") shows the Files browser only, so a PI can't
+  // photograph a source document. Add the image/* hint when, and only when,
+  // the configured accept already permits an image, so the picker's options
+  // match what fileMatchesAccept() will allow. That function stays the sole
+  // authority on what's accepted; this widens the picker, not the rule.
+  const nativeAccept = (() => {
+    if (!accept) return undefined;                 // no config → all sources already
+    const toks = accept.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
+    if (toks.some((t) => t.startsWith('image/'))) return accept;   // already covered
+    const IMG = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif', '.bmp'];
+    return toks.some((t) => IMG.includes(t)) ? `${accept},image/*` : accept;
+  })();
   const maxFiles = multiple ? (Number(field.maxFiles) || 10) : 1;
   const files = Array.isArray(value) ? value : (value ? [value] : []);
   const [uploading, setUploading] = useState(false);
@@ -2327,7 +2454,7 @@ function FileFieldInput({ field, value, onChange }) {
           </span>
         )}
       </button>
-      <input ref={inputRef} type="file" accept={accept || undefined} multiple={multiple} style={{ display: 'none' }} onChange={onPick} />
+      <input ref={inputRef} type="file" accept={nativeAccept} multiple={multiple} style={{ display: 'none' }} onChange={onPick} />
       {error && <div style={{ marginTop: 6, fontSize: 12, color: '#b91c1c' }}>{error}</div>}
       {files.length > 0 && (() => {
         const totalKb = files.reduce((sum, f) => sum + (f?.size || 0), 0) / 1024;
@@ -2425,7 +2552,7 @@ function ChildFieldInput({ child, value, onChange, invalid }) {
     case 'textarea':
       return <textarea className={s.textarea} rows={2} style={errStyle} placeholder={cfPlaceholder(child)} value={v} onChange={(e) => onChange(e.target.value)} />;
     case 'number':
-      return <input type="number" className={s.input} style={errStyle} placeholder={cfPlaceholder(child)} value={v} onChange={(e) => onChange(e.target.value)} />;
+      return <input type="number" inputMode="decimal" className={s.input} style={errStyle} placeholder={cfPlaceholder(child)} value={v} onChange={(e) => onChange(e.target.value)} />;
     case 'date':
       return <input type="date" className={s.input} style={errStyle} value={v} onChange={(e) => onChange(e.target.value)} />;
     case 'select':
@@ -2593,6 +2720,13 @@ function FieldInput({ field, value, onChange, allValues, showErrors, optionInput
       return (
         <input
           type={field.type === 'phone' ? 'tel' : field.type}
+          // Brings up the numeric keypad on mobile instead of the full
+          // keyboard. "decimal" rather than "numeric" because the field config
+          // has no integer/decimal distinction and `type="number"` accepts
+          // decimals — a digits-only keypad would block entering lab values
+          // and vitals like 12.5. Purely a keyboard hint; nothing is validated
+          // or coerced differently.
+          inputMode={field.type === 'number' ? 'decimal' : undefined}
           className={s.input}
           placeholder={field.placeholder || ''}
           value={v}
@@ -2735,6 +2869,7 @@ function FieldInput({ field, value, onChange, allValues, showErrors, optionInput
                 ) : (
                   <input
                     type={itype === 'number' ? 'number' : itype === 'date' ? 'date' : 'text'}
+                    inputMode={itype === 'number' ? 'decimal' : undefined}
                     className={s.input}
                     style={{ marginTop: 6, marginLeft: 24, maxWidth: 'calc(100% - 24px)', ...(inputMissing && showErrors ? { outline: '2px solid #fca5a5' } : {}) }}
                     placeholder={optInputPlaceholder(o) || 'Please specify…'}

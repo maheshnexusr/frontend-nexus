@@ -90,3 +90,34 @@ tbody tr:hover .td { background: #f8fafc; }
   background: #f8fafc;
 }
 .emptyIcon { color: #cbd5e1; flex: none; }
+
+/* ── Mobile data entry (< 768 px) ────────────────────────────────────────── */
+/* The matrix stays a matrix: one radio per row across a scale is only legible
+   as a grid, so it scrolls sideways inside .scroller rather than restacking.
+   The item column stays frozen at the left (position:sticky, already set
+   above) so the question text is always visible while the scale scrolls. */
+/* Touch sizing — phone AND tablet. A rating matrix is a wall of radio
+   buttons; at 16px they are the easiest control in the whole form to mis-tap,
+   and on a tablet the PI is using a fingertip just as much as on a phone. */
+@media (max-width: 1023px) {
+  .table { font-size: 14px; }
+
+  /* Each radio cell becomes a 44px touch target. The label wraps the input, so
+     sizing the label is what actually widens the tap area. */
+  .td { padding: 4px 2px; }
+  .radioLabel { min-width: 44px; min-height: 44px; justify-content: center; }
+  .radioLabel input[type='radio'] { width: 22px; height: 22px; }
+
+  .scroller { -webkit-overflow-scrolling: touch; }
+}
+
+/* Narrow only — a tablet has room to keep the full 200px item column. */
+@media (max-width: 767px) {
+  /* 200px of frozen label on a 360px screen leaves too little room for the
+     scale — the PI would have to scroll to see any option at all. */
+  .thItem, .tdItem { min-width: 132px; }
+  .tdItem { font-size: 13px; line-height: 1.35; }
+  .th { font-size: 11px; padding: 8px 6px; }
+
+  .scroller { max-height: none; }
+}

@@ -525,7 +525,9 @@ function TableCell({ col, value, onChange, readOnly, name, rankCount = 0, rankTa
       return (
         <span className={col.type === 'currency' ? s.currencyWrap : undefined}>
           {col.type === 'currency' && <span className={s.currencySign}>$</span>}
-          <input type="number" className={base} value={value ?? ''} disabled={ro} placeholder={col.placeholder || ''} onChange={(e) => onChange(e.target.value)} />
+          {/* inputMode surfaces the numeric keypad on mobile; "decimal" keeps
+              the separator available for currency and non-integer measures. */}
+          <input type="number" inputMode="decimal" className={base} value={value ?? ''} disabled={ro} placeholder={col.placeholder || ''} onChange={(e) => onChange(e.target.value)} />
         </span>
       );
     case 'email':

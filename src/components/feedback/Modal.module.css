@@ -94,8 +94,20 @@
   flex-wrap: wrap;
 }
 
-/* ── Mobile: full-screen bottom sheet (< 480 px) ─────────────────────────── */
-@media (max-width: 479px) {
+/* ── Mobile: bottom sheet (< 768 px) ─────────────────────────────────────── */
+/* Raised from 480px so tablets in portrait get the sheet too — that's where
+   the PI data-entry dialogs (eligibility, reason-for-change, reopen) are read.
+   The card is already a flex column with a `flex: 1; overflow-y: auto` body
+   and `flex-shrink: 0` header/footer, so the body scrolls under stationary
+   action buttons without any further work here. */
+/* Touch: action buttons and the close control clear the touch floor on tablet
+   too, where the dialog stays a centred card. */
+@media (max-width: 1023px) {
+  .closeBtn { width: 44px; height: 44px; }
+  .footer > button { min-height: 44px; }
+}
+
+@media (max-width: 767px) {
   .backdrop {
     align-items: flex-end;
     padding: 0;
@@ -104,7 +116,11 @@
   .card {
     max-width: 100%;
     width: 100%;
-    max-height: 92dvh;
+    /* vh first as the fallback; dvh (where supported) excludes the mobile
+       browser's collapsing toolbars, which vh does not — with vh alone the
+       sheet's action buttons can sit under the address bar. */
+    max-height: 90vh;
+    max-height: 90dvh;
     border-radius: var(--r-xl) var(--r-xl) 0 0;
     animation: edc-slide-up var(--t-normal);
   }
@@ -115,7 +131,22 @@
     max-width: 100%;
   }
 
+  .header { padding: var(--sp-4); }
+  .body   { padding: var(--sp-4); }
+
+  .closeBtn { width: 44px; height: 44px; }
+
   .footer {
-    padding-bottom: calc(var(--sp-4) + var(--safe-bottom));
+    padding: var(--sp-3) var(--sp-4) calc(var(--sp-3) + var(--safe-bottom));
+    gap: var(--sp-2);
+  }
+  /* Callers pass their own buttons into `footer`. They set padding but not
+     height, so a min-height floor lifts them to the touch target without
+     fighting anyone's inline styles. Sharing the row keeps Cancel/Confirm
+     reachable with one thumb. */
+  .footer > button {
+    min-height: 44px;
+    flex: 1 1 auto;
+    justify-content: center;
   }
 }

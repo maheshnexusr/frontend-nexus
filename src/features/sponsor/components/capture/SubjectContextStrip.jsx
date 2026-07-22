@@ -121,45 +121,21 @@ export default function SubjectContextStrip({ studyId, subjectId }) {
   ];
 
   return (
-    <div className={s.strip} data-snapshot-ignore="true" style={STRIP}>
-      {cells.map((c, i) => (
-        <div key={c.label} style={i === 0 ? CELL_FIRST : CELL}>
-          <span style={CELL_LABEL}>{c.label}</span>
-          <span style={CELL_PRIMARY}>{c.primary}</span>
-          {c.secondary && <span style={CELL_SECONDARY}>{c.secondary}</span>}
+    <div className={s.strip} data-snapshot-ignore="true">
+      {cells.map((c) => (
+        <div key={c.label} className={s.cell}>
+          <span className={s.cellLabel}>{c.label}</span>
+          <span className={s.cellPrimary}>{c.primary}</span>
+          {c.secondary && <span className={s.cellSecondary}>{c.secondary}</span>}
         </div>
       ))}
     </div>
   );
 }
 
-const STRIP = {
-  display: 'flex', alignItems: 'stretch', gap: 20,
-  padding: '10px 18px', borderRadius: 10, border: '1px solid #e2e8f0',
-  background: '#fff',
-};
-// Each cell grows to share the strip width equally so there is no empty space
-// left over on the right; a divider sits between adjacent cells.
-const CELL = {
-  display: 'flex', flexDirection: 'column', gap: 1,
-  flex: '1 1 0', minWidth: 0, paddingLeft: 18, borderLeft: '1px solid #eef2f7',
-};
-const CELL_FIRST = { ...CELL, paddingLeft: 0, borderLeft: 'none' };
-const CELL_LABEL = {
-  fontSize: 10, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: '#94a3b8',
-};
-// PRIMARY identifier (Protocol/Site/Subject CODE): the strongest element in the
-// cell — bold + larger — but NORMAL text colour, not blue. The emphasis comes
-// from weight/size, not a highlight colour, so the code reads as the primary
-// identifier without the descriptive values looking more prominent.
-const CELL_PRIMARY = {
-  fontSize: 14, fontWeight: 700, color: '#0f172a', lineHeight: 1.25,
-  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-};
-const CELL_SECONDARY = {
-  fontSize: 12, color: '#475569', lineHeight: 1.3,
-  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%',
-};
+/* Layout lives in SubjectContextStrip.module.css — it was inline here, which
+   meant no media query could reach it and the four cells stayed on one row at
+   every width, ellipsising every value to nothing on a phone. */
 
 SubjectContextStrip.propTypes = {
   studyId:   PropTypes.string,

@@ -1,0 +1,45 @@
+/* PrescriptionUpload — sizing for the interactive controls only.
+
+   The rest of this component stays inline-styled in the JSX (the `S` object).
+   Only the controls that need a touch target were extracted, because inline
+   styles cannot be reached by a media query and this trigger lives in the
+   sticky header of both capture form pages — sponsor and site. */
+
+.trigger {
+  padding: 5px 12px 5px 6px;
+  font-size: 12.5px;
+}
+
+.uploadBtn,
+.uploadGhost {
+  padding: 7px 14px;
+  font-size: 13px;
+}
+
+.removeBtn {
+  width: 30px;
+  height: 30px;
+}
+
+/* ── Touch (≤ 1023 px) — phone AND tablet ────────────────────────────────── */
+@media (max-width: 1023px) {
+  .trigger {
+    min-height: 44px;
+    padding: 6px 14px 6px 8px;
+    font-size: 13.5px;
+  }
+
+  .uploadBtn,
+  .uploadGhost {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  /* Sits directly beside a file link; at 30px a mis-tap deletes an attachment
+     the PI meant to open. */
+  .removeBtn {
+    width: 44px;
+    height: 44px;
+  }
+}

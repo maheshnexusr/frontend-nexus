@@ -5,7 +5,15 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  /* dvh where supported: on mobile browsers 100vh is the height with the
+     toolbars RETRACTED, so the shell overflows the visible viewport and the
+     runner's sticky action bar sits below the fold behind the address bar.
+     vh stays first as the fallback. Mirrors SiteCaptureFormPage. */
+  height: 100dvh;
   width: 100%;
+  /* The runner's .mainCol owns the scrolling; nothing here should ever scroll
+     the page sideways. */
+  overflow-x: hidden;
   background: #f8fafc;
   padding: 0;
   margin: 0;
@@ -193,3 +201,63 @@
   cursor: pointer;
 }
 .successSecondary:hover { background: #f8fafc; border-color: #94a3b8; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOUCH (≤ 1023 px) — phone AND tablet.
+
+   The form itself is StudyFormRunner, which carries its own responsive rules;
+   what's left here is this page's shell (top bar + back button) and the
+   post-submit success card. iPad portrait is exactly 768px, so the ceiling is
+   1023px — see SFBPreview.module.css for the full reasoning.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1023px) {
+  .backBtn {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 0.9rem;
+  }
+
+  .successPrimary,
+  .successSecondary {
+    min-height: 44px;
+    padding: 10px 20px;
+    font-size: 14px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NARROW (< 768 px) — phone. Spacing only.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  .topBar {
+    gap: 10px;
+    padding: 8px 12px;
+    /* Was a hard 56px; the back button is 44px on touch and would otherwise
+       have 6px of breathing room top and bottom. */
+    height: auto;
+    min-height: 56px;
+  }
+
+  .successWrap { padding: 16px 12px; }
+  .successCard {
+    padding: 28px 20px 24px;
+    border-radius: 14px;
+  }
+  .successBadge {
+    width: 60px;
+    height: 60px;
+    margin-bottom: 16px;
+  }
+  .successTitle { font-size: 19px; }
+  .successSub   { font-size: 13px; margin-bottom: 16px; }
+  .successNote  { margin-bottom: 20px; }
+
+  /* Stack the actions so neither is a half-width tap target on a phone. */
+  .successActions { flex-direction: column; gap: 8px; }
+  .successPrimary,
+  .successSecondary { width: 100%; justify-content: center; }
+
+  /* The subject code can be long; let it break rather than force the card
+     wider than the screen. */
+  .successCode { white-space: normal; overflow-wrap: anywhere; }
+}

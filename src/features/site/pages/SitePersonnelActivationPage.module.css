@@ -198,3 +198,81 @@
   line-height: 1.55;
   text-align: left;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TOUCH (≤ 1023 px) — phone AND tablet.
+
+   This is the first screen a new PI ever opens, usually by tapping the invite
+   link in their email on a phone. Everything here is a control they must use
+   before they can do anything else, so the touch floor matters more than the
+   compact look. (The OTP boxes come from OTPInput.module.css and are already
+   46x54px, so they are left alone.)
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1023px) {
+  /* A password field under 16px makes Safari zoom the viewport the moment it
+     takes focus — on the very first interaction with the product. */
+  .input {
+    height: 44px;
+    font-size: 16px;
+    padding: 0 48px 0 14px;
+  }
+
+  /* Show/hide password. At 28px it is a small target sitting inside the field,
+     so a miss puts the caret in the password instead of toggling it. */
+  .eyeBtn {
+    width: 44px;
+    height: 44px;
+    right: 4px;
+  }
+
+  .btnSubmit {
+    height: 48px;
+    font-size: 15px;
+  }
+  /* "Resend code" / "Use a different method" — a bare 4px-padded text button. */
+  .btnLink {
+    min-height: 44px;
+    padding: 10px 8px;
+    font-size: 13.5px;
+  }
+
+  .label { font-size: 13px; }
+  .fieldError { font-size: 12.5px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NARROW (< 768 px) — phone.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  .shell {
+    /* 100vh is measured with the mobile toolbars retracted, so the centred
+       card can sit partly under the address bar. */
+    min-height: 100dvh;
+    padding: 20px 12px;
+    /* Top-align rather than centre: once the keyboard opens on the password
+       field, a vertically centred card is pushed off the top of the screen. */
+    align-items: flex-start;
+  }
+
+  .card {
+    padding: 24px 18px;
+    border-radius: 12px;
+  }
+
+  .title { font-size: 19px; }
+  .sub, .subMuted { font-size: 13px; }
+
+  /* Study / site / role names are long and this is the one place the PI needs
+     to read them in full to know what they are accepting — wrap instead of
+     truncating to an ellipsis. */
+  .summaryRow { align-items: flex-start; }
+  .summaryValue {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+
+  .fineprint { font-size: 12px; }
+}

@@ -11,13 +11,20 @@
   height: 100%;
   min-height: 0;
   background: #f8fafc;
+  /* Positioning context for any absolutely-positioned descendant, so nothing
+     escapes to the viewport's containing block. */
+  position: relative;
 }
 
 /* Outline hidden ("Hide Outline") — drop the 240px rail column so the form
-   content reflows to the full width instead of leaving an empty left gap. */
+   content reflows to the full width instead of leaving an empty left gap.
+   Row 1 carries .collapsedRail's Back/Outline bar, row 2 the form. The aside
+   is not rendered at all while collapsed, so the header row is free. */
 .rootCollapsed {
   grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
 }
+.rootCollapsed .mainCol { grid-row: 2; }
 
 /* ═════════════════════════════════════════════════════════════════════════
    SIDEBAR — compact left rail
@@ -29,6 +36,54 @@
   border-right: 1px solid #e2e8f0;
   overflow: hidden;
   min-height: 0;
+}
+
+/* Drawer-only affordances. On desktop the rail is a permanent grid column, so
+   there is nothing to dismiss and nothing to dim — both stay display:none
+   until the mobile block below turns the rail into an off-canvas drawer. */
+.sidebarScrim { display: none; }
+.sidebarClose { display: none; }
+
+/* Back + "Outline" buttons shown in place of the rail while it is collapsed.
+   Floats over the form on desktop (where collapsing is a deliberate, temporary
+   choice); the mobile block turns it into a real top bar, since below 768px
+   the rail is collapsed by default and the buttons would otherwise sit on top
+   of the form's first rows. */
+/* Back + Outline, shown in place of the rail while the outline is hidden.
+   A real bar occupying the grid's first row — NOT an absolutely positioned
+   overlay. Floating, it collided with the page-supplied topContent strip that
+   StudyFormRunner renders `position: sticky` with an OPAQUE background: the
+   buttons either sat under the subject-identity card or on top of it,
+   depending on z-index, and never lined up with anything. */
+.collapsedRail {
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #fff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+/* Square icon button for the outline toggle — matches .btnPrev's chrome. */
+.outlineToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.outlineToggle:hover {
+  background: #f8fafc;
+  color: #0f172a;
+  border-color: #cbd5e1;
 }
 
 .sidebarHead {
@@ -306,6 +361,16 @@
 /* Full-width on small viewports */
 @media (max-width: 900px) {
   .fields { grid-template-columns: 1fr; }
+
+  /* Per-field width (full / half-left / half-right) is applied by the runner as
+     an INLINE grid-column, so the stylesheet needs !important to win here. A
+     'right' field carries `grid-column: 2 / 3`, which in this single-column
+     grid would create an implicit 2nd column and scroll the page sideways.
+     Collapsing every child to the full row keeps one field per line. */
+  .fields > * {
+    grid-column: 1 / -1 !important;
+    min-width: 0;
+  }
 }
 
 .fieldWrap {
@@ -968,11 +1033,299 @@
 /* ═════════════════════════════════════════════════════════════════════════
    RESPONSIVE
    ═════════════════════════════════════════════════════════════════════════ */
-@media (max-width: 800px) {
-  .root { grid-template-columns: 1fr; }
-  .sidebar {
-    border-right: 0;
-    border-bottom: 1px solid #e2e8f0;
-    max-height: 180px;
+/* 768-900px (tablet portrait): the field grid is already single-column from the
+   block above, and the 240px rail still fits alongside it — so the desktop
+   two-column shell is kept. The rail only goes off-canvas below 768px. */
+
+/* ═════════════════════════════════════════════════════════════════════════
+   TOUCH DATA ENTRY (≤ 1023 px) — phone AND tablet.
+
+   The desktop form is deliberately dense (32px controls, 12.5px text) to fit
+   many fields per screen. On a touch device that density fails two ways:
+   Safari auto-zooms the viewport whenever a focused input renders below 16px
+   — on iPadOS exactly as on iPhone — and sub-40px controls are below the
+   comfortable touch-target floor.
+
+   The ceiling is 1023px to match the app shell, which already switches to its
+   touch layout below 1024px (Sidebar.module.css). Anything narrower than that
+   is a touch device, and iPad portrait is exactly 768px — a `max-width: 767px`
+   ceiling would miss the single most likely PI device entirely.
+
+   This block is ERGONOMICS ONLY (sizes and type). Layout restructuring —
+   single column, stacked choices, off-canvas rail, pinned action bar — lives
+   in the ≤767px block below, where the screen is genuinely narrow.
+   ═════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 1023px) {
+  /* ── Text inputs ─────────────────────────────────────────────────────── */
+  /* 16px is the threshold below which Safari zooms on focus — never go lower
+     here, however cramped the layout looks. 44px is the touch floor. */
+  .input,
+  .select,
+  .textarea,
+  .searchInput {
+    font-size: 16px;
+    height: 44px;
+    padding: 0 12px;
+    border-radius: 8px;
   }
+  .textarea {
+    height: auto;
+    min-height: 88px;
+    padding: 10px 12px;
+    line-height: 1.45;
+  }
+  /* Keep the caret clear of the chevron now that the control is taller. */
+  .select {
+    padding-right: 36px;
+    background-position: right 12px center;
+    background-size: 16px 16px;
+  }
+
+  /* ── Date field ──────────────────────────────────────────────────────── */
+  /* The visible layer is a styled div over a transparent native input; both
+     have to grow together or the tap area drifts away from the display. */
+  .dateField { height: 44px; }
+  .dateDisplay {
+    font-size: 16px;
+    padding: 0 12px;
+    border-radius: 8px;
+  }
+
+  /* ── Choice options ──────────────────────────────────────────────────── */
+  /* Sized for touch at every width; the STACKING happens only below 768px,
+     since a tablet has room to keep the pills flowing in a row. */
+  .choiceItem {
+    min-height: 44px;
+    padding: 10px 12px;
+    gap: 10px;
+    font-size: 15px;
+    line-height: 1.35;
+    border-radius: 8px;
+  }
+  /* The <label> is the tap target; the native control just has to be big
+     enough to read as one. */
+  .choiceItem input {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+  }
+
+  /* ── Toggle ──────────────────────────────────────────────────────────── */
+  .toggleWrap { min-height: 44px; }
+  .toggleTrack { width: 44px; height: 26px; }
+  .toggleThumb { width: 22px; height: 22px; }
+  .toggleLabel { font-size: 15px; }
+
+  /* ── File / signature / rating ───────────────────────────────────────── */
+  .fileZone {
+    min-height: 120px;
+    padding: 20px 16px;
+    font-size: 14px;
+  }
+  .fileHint { font-size: 12.5px; }
+  .signaturePad { height: 64px; font-size: 13px; }
+  /* Lucide sets width/height as SVG attributes, so the icons can't be scaled
+     from here — widen the gap instead so adjacent stars aren't mis-tapped. */
+  .stars { gap: 10px; min-height: 44px; }
+
+  /* ── Buttons ─────────────────────────────────────────────────────────── */
+  .btnPrev,
+  .btnNext,
+  .btnNextBlock,
+  .btnSubmit,
+  .outlineBtn,
+  .successBtn {
+    min-height: 44px;
+    height: auto;
+    padding: 10px 16px;
+    font-size: 14px;
+    border-radius: 8px;
+  }
+
+  /* Outline rows are navigation targets — touch floor applies on tablet too,
+     where the rail is still a permanent column. */
+  .stepBlockHead { min-height: 44px; }
+  .pageItem      { min-height: 44px; font-size: 14px; }
+
+  /* ── Dismissable outline on tablet ───────────────────────────────────── */
+  /* At 768-1023px the rail is a permanent 240px column that eats a third of
+     the width, and there was no control to hide it — the close button was
+     phone-only. Expose it here so the PI can reclaim the space; the top bar
+     below then carries Back + Outline to bring it back. */
+  .sidebarClose {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin: -10px -10px -10px auto;
+    border: 0;
+    background: none;
+    color: #475569;
+    cursor: pointer;
+  }
+
+  /* (.collapsedRail is a static top bar at every width now — see the base
+     rules. Only its controls need growing for touch here.) */
+  .collapsedRail { gap: 8px; }
+  .outlineToggle { width: 44px; height: 44px; }
+
+  /* ── Action bar pinned to the bottom of the form ─────────────────────── */
+  /* Applies to tablet as well as phone: a portrait tablet runs the same long
+     forms, and Prev/Next/Save scrolling off the end is the same hunt for the
+     PI either way.
+
+     `sticky`, not `fixed`: a fixed bar is positioned against the visual
+     viewport, so the on-screen keyboard shoves it up over the field being
+     typed into. Sticky keeps it glued to the bottom of .mainCol's scrollport,
+     which the keyboard does not move — and .mainCol already scrolls
+     independently, so the form body scrolls under a stationary bar. */
+  .mainCol {
+    /* .mainCol carries an inline `padding: 20px 16px 28px` from the runner;
+       the bottom inset would otherwise float the bar above the screen edge. */
+    padding-bottom: 0 !important;
+  }
+
+  .navFooter {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    /* Pushes the bar to the bottom when a short page doesn't fill the screen. */
+    margin-top: auto;
+    /* Bleed through .mainCol's 16px inline side padding for a full-width bar. */
+    margin-left: -16px;
+    margin-right: -16px;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px calc(10px + var(--safe-bottom, 0px));
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    box-shadow: 0 -2px 10px rgba(15, 23, 42, 0.08);
+  }
+
+  /* The page dots are a second progress display — the outline already owns
+     that (and on tablet the rail is right there on screen), and they are a
+     7px tap target besides. */
+  .dots { display: none; }
+
+  /* scrollIntoView (revealed conditional fields, first-invalid-field on
+     submit) targets the OUTERMOST [data-field-id] wrapper — the grid child,
+     which carries no class. Scoped to the same breakpoint as the sticky bar
+     above, so a field is never scrolled to a spot hidden underneath it. */
+  .fields > [data-field-id] {
+    scroll-margin-top: 16px;
+    scroll-margin-bottom: 96px;
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   NARROW LAYOUT (< 768 px) — phone.
+
+   Restructuring only. Everything here changes where things sit, not how big
+   they are; the sizes came from the touch block above.
+   ═════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  /* ── Field container ─────────────────────────────────────────────────── */
+  .fields {
+    padding: 10px 12px;
+    /* Roomier than desktop's 8px on purpose: an invalid field is flagged with
+       `outline: 2px` at `outline-offset: 4px`, which paints 6px outside its
+       box. In a single column with a tight gap, two flagged neighbours would
+       have their outlines collide into one another. */
+    row-gap: 12px;
+    column-gap: 0;
+  }
+  .fieldWrap { padding: 6px 0; gap: 5px; }
+
+  /* ── Radio / checkbox groups ─────────────────────────────────────────── */
+  /* Desktop and tablet wrap these as inline pills; side-by-side pills on a
+     phone are cramped and easy to mis-tap, so each option takes its own row.
+     A field authored with `orientation: horizontal` carries an inline
+     flex-direction/flex-wrap from FieldInput, so these need !important. */
+  .choiceGroup {
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .choiceItem { width: 100%; }
+
+  /* ── Headings / meta ─────────────────────────────────────────────────── */
+  .pageHeading {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 12px;
+  }
+  .pageTitle { font-size: 16px; }
+  .pageDesc  { font-size: 12.5px; }
+
+  /* ── Outline rail → off-canvas drawer ────────────────────────────────── */
+  /* The rail carries the only progress display (percentage bar + block/page
+     tree), so it is kept intact rather than duplicated into a separate mobile
+     step indicator — it just stops occupying the form's screen. The runner
+     mounts it collapsed below this breakpoint. */
+  /* Row 1 holds the collapsed rail's top bar, row 2 the form. .mainCol is
+     pinned to row 2 so that when the drawer is OPEN — and the top bar isn't
+     rendered — row 1 simply collapses to zero instead of the form sliding up
+     into an `auto` track and losing the bounded height the sticky bar needs. */
+  .root {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .mainCol { grid-row: 2; }
+
+  /* .collapsedRail is already a static top bar from the base rules. Here the
+     rail is a fixed drawer and out of flow whether open or closed, so .root
+     takes the header row unconditionally rather than only when collapsed. */
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(86vw, 320px);
+    max-height: none;
+    z-index: 60;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 0;
+    box-shadow: 4px 0 16px rgba(15, 23, 42, 0.14);
+    padding-bottom: var(--safe-bottom, 0px);
+    overflow-y: auto;
+  }
+
+  .sidebarScrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 59;
+    background: rgba(15, 23, 42, 0.44);
+  }
+
+  /* (.sidebarClose is revealed in the ≤1023px block — it applies here too.) */
+
+  /* (.stepBlockHead / .pageItem touch sizing lives in the ≤1023px block.) */
+  .sidebarTitle  { font-size: 15px; }
+  .sidebarSub    { font-size: 12px; }
+
+  /* Buttons in the bar carry inline margins (marginLeft:'auto' on Save,
+     marginRight:8 on the rest) that were tuned for one non-wrapping desktop
+     row. On a phone the bar wraps to 2-3 rows and those margins strand
+     buttons mid-row, so the flex `gap` takes over spacing entirely and the
+     buttons share each row. A tablet fits them in one row, so it keeps the
+     desktop arrangement (Save pushed right by its auto margin). */
+  .navFooter > button,
+  .navFooter > span {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  /* Share the row: Previous + Next sit side by side, a lone Submit spans it. */
+  .navFooter > button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  /* Status / eligibility chips size to content and wrap as a group. */
+  .navFooter > span { flex: 0 0 auto; }
 }

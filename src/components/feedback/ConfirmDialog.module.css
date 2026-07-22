@@ -74,3 +74,21 @@
 .btnDanger  { background: var(--color-danger);  }
 .btnWarning { background: var(--color-warning); }
 .btnInfo    { background: var(--color-info);    }
+
+/* ── Mobile (< 768 px) ───────────────────────────────────────────────────── */
+/* The sheet scaffold comes from Modal.module.css; these are the dialog's own
+   contents. Confirm actions here are often destructive (delete, exclude), so
+   the two buttons get equal weight rather than a cramped pair in the corner. */
+@media (max-width: 1023px) {
+  .cancelBtn,
+  .confirmBtn {
+    min-height: 44px;
+    padding: 10px var(--sp-4);
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 767px) {
+  .content { padding: var(--sp-2) 0 var(--sp-3); }
+  .message { max-width: none; }
+}
