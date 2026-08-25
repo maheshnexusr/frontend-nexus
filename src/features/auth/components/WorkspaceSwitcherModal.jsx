@@ -31,6 +31,7 @@ import {
   selectCurrentUser,
 } from '@/features/auth/authSlice';
 import { enterSponsorWorkspaceAsync, exitSponsorView, selectIsViewingSponsor } from '@/features/workspace/store/sponsorViewSlice';
+import { switchEnvironment } from '@/features/workspace/store/workspaceSlice';
 import { profileService } from '@/services/profileService';
 import { sponsorStudyContextStore } from '@/services/sponsorAuthService';
 import { normalizePermissionsResponse } from '@/api/profileClient';
@@ -217,10 +218,14 @@ export default function WorkspaceSwitcherModal({ open, onClose }) {
       // skips the study picker that would normally set it. The /enter
       // response carries each assigned study's environment.
       const enteredStudy = (entered?.studies ?? []).find((s) => s.id === item.studyId);
+      const environment  = enteredStudy?.environment || 'UAT';
       sponsorStudyContextStore.set({
-        studyId:     item.studyId,
-        environment: enteredStudy?.environment || 'UAT',
+        studyId: item.studyId,
+        environment,
       });
+      // Keep the header env badge in sync even when the workspace slice
+      // already holds this study (fetchStudyAsync would be skipped then).
+      dispatch(switchEnvironment(environment));
 
       onClose?.();
       navigate(item.path);
