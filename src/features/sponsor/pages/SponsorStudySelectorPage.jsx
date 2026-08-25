@@ -178,11 +178,12 @@ export default function SponsorStudySelectorPage() {
 
       dispatch(
         selectStudy({
-          id:     study.id,
-          title:  study.title,
-          scope:  study.scope,
-          config: study.config,
-          logo:   study.organizationLogo ?? null,
+          id:          study.id,
+          title:       study.title,
+          scope:       study.scope,
+          config:      study.config,
+          logo:        study.organizationLogo ?? null,
+          environment: study.environment,
         }),
       );
       navigate(`/sponsor/${study.id}/dashboard`, { replace });

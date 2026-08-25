@@ -99,11 +99,12 @@ export const fetchStudyAsync = createAsyncThunk(
           return rejectWithValue(`Study "${studyId}" is not assigned to your account.`);
         }
         return {
-          id:     match.id,
-          title:  match.title,
-          scope:  match.scope,
-          config: match.config ?? null,
-          logo:   match.organizationLogo ?? null,
+          id:          match.id,
+          title:       match.title,
+          scope:       match.scope,
+          config:      match.config ?? null,
+          logo:        match.organizationLogo ?? null,
+          environment: match.environment ?? ctx?.environment ?? null,
         };
       } catch (err) {
         return rejectWithValue(err?.message ?? 'Failed to load sponsor study.');
@@ -167,12 +168,15 @@ const workspaceSlice = createSlice({
      * @param {{ payload: { id: string, title: string, scope?: StudyScope, config?: StudyConfig } }} action
      */
     selectStudy(state, action) {
-      const { id, title, scope = null, config = null, logo = null } = action.payload;
+      const { id, title, scope = null, config = null, logo = null, environment = null } = action.payload;
       state.activeStudyId    = id;
       state.activeStudyTitle = title;
       state.studyScope       = scope;
       state.studyConfig      = config;
       state.sponsorLogo      = logo;
+      if (environment === 'UAT' || environment === 'LIVE') {
+        state.activeEnvironment = environment;
+      }
       state.studyStatus      = 'succeeded';
       state.studyError       = null;
     },
@@ -218,6 +222,12 @@ const workspaceSlice = createSlice({
         // Sponsor organisation logo (for the sidebar brand). Sponsor list path
         // sends `logo`; the CRO study-detail path sends `organization_logo_path`.
         state.sponsorLogo      = payload.logo ?? payload.organization_logo_path ?? null;
+        // The header env badge must reflect the environment the study was
+        // opened in, not the initial-state default. Only the sponsor path
+        // knows it; the CRO /studies/:id shape doesn't carry one — keep as-is.
+        if (payload.environment === 'UAT' || payload.environment === 'LIVE') {
+          state.activeEnvironment = payload.environment;
+        }
         state.studyStatus      = 'succeeded';
         state.studyError       = null;
       })
