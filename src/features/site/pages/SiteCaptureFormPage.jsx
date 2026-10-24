@@ -15,6 +15,7 @@ import StudyFormRunner from '@/components/study-form-runner/StudyFormRunner';
 import Modal from '@/components/feedback/Modal';
 import { siteWorkspaceClient } from '@/features/site/api/siteWorkspaceClient';
 import { useSiteRolePermissions } from '@/features/site/hooks/useSiteRolePermissions';
+import { getSiteStudyContext } from '@/features/site/authStore';
 import { selectCurrentUser } from '@/features/auth/authSlice';
 import { addToast } from '@/app/notificationSlice';
 import SubjectContextStrip from '@/features/sponsor/components/capture/SubjectContextStrip';
@@ -41,11 +42,11 @@ export default function SiteCaptureFormPage() {
   // Per-study permission tree (null = unrestricted). A role without
   // data_capture.edit gets the form view-only.
   const perms      = useSiteRolePermissions();
-  // NOTE: data-entry actions (Save / Mark Completed / Submit) are gated by
-  // SUBJECT OWNERSHIP, not the data_capture.edit/complete/submit role flags —
-  // see `canEnterData` below. Only the responsible owner fills the form, which
-  // also restores edit access to the right user after a sponsor/CRO reopen.
-  // A verifier (data_verification.edit) sees the "Verify Page" action even on a
+  // NOTE: data entry (Save) is gated by the backend's effective edit access for
+  // this subject — the responsible owner, or any site member when the study's
+  // shared-entry policy is on (see `canEnterData` below). Mark Completed and
+  // Submit additionally need their own data_capture permissions. A verifier
+  // (data_verification.edit) sees the "Verify Page" action even on a
   // read-only/submitted form — SDV happens on completed data.
   const canVerify  = !perms || perms?.data_verification?.verify === true || perms?.data_verification?.edit === true;
 
@@ -73,16 +74,44 @@ export default function SiteCaptureFormPage() {
   const [reopenOpen,   setReopenOpen]   = useState(false);
   const [reopenReason, setReopenReason] = useState('');
   const [reopening,    setReopening]    = useState(false);
-  // Whether the signed-in site user is the subject's RESPONSIBLE owner. Set from
-  // the backend `is_owner` flag on load. Only the owner may fill/submit the form
-  // (and regain edit access after a sponsor/CRO reopen) — everyone else is
-  // read-only, independent of the role's edit permission. Defaults true so the
-  // owner is never briefly locked out before the flag loads (the backend also
-  // enforces this on every save).
-  const [isOwner, setIsOwner] = useState(true);
+  // Effective edit access for THIS user on THIS subject, as the backend computes
+  // it (GET .../data → `access`): the responsible owner, or — when the study's
+  // shared-entry policy is on — any site member. Defaults editable so the owner
+  // is never briefly locked out before the flag loads; the backend enforces on
+  // every save regardless, so this only shapes the UI.
+  const [access, setAccess] = useState({ isOwner: true, canEdit: true, sharedEntry: false });
   const [rfcActive, setRfcActive] = useState(false);
-  // Owner-scoped data entry. Drives every editable affordance below.
-  const canEnterData = isOwner;
+  // Drives every editable affordance below.
+  const canEnterData = access.canEdit;
+  // Submit / Mark Completed keep their own permissions on top of edit access
+  // (edit is the pre-split fallback, mirroring the backend route gates).
+  // A system site role's tree is the wildcard '*' in siteStudyContext; the
+  // permissions hook collapses it to {} (fail-closed), so read the raw context
+  // to keep that role unrestricted here.
+  const rawSitePerms = getSiteStudyContext()?.permissions;
+  const siteWildcard = rawSitePerms === '*' || rawSitePerms === true;
+  const dc = perms?.data_capture;
+  const dcAllows = (action) => siteWildcard || !perms || dc === true || dc?.[action] === true;
+  const canSubmitPerm   = dcAllows('submit')   || dcAllows('edit');
+  const canCompletePerm = dcAllows('complete') || dcAllows('edit');
+  // Role name for the runner's field-level viewRoles/editRoles (configured per
+  // field in the form designer; enforced server-side on save).
+  const userRole = getSiteStudyContext()?.roleName || null;
+  // Fold the backend access flags into state. Falls back to the legacy per-row
+  // `is_owner` when an older backend returns no `access` object.
+  const applyAccess = (dataRes, row) => {
+    const acc = dataRes?.access;
+    if (acc) {
+      setAccess({
+        isOwner:     acc.is_owner !== false,
+        canEdit:     acc.can_edit !== false,
+        sharedEntry: acc.shared_entry === true,
+      });
+    } else if (row) {
+      const owner = row.is_owner !== false;
+      setAccess({ isOwner: owner, canEdit: row.can_edit !== undefined ? row.can_edit !== false : owner, sharedEntry: false });
+    }
+  };
   // Step-3 study module toggles (from the form GET). When off, the form hides
   // the verification workflow (Verify / Mark Completed / "Under Verification"
   // chip) and the query chips. Default true until the form loads.
@@ -141,7 +170,7 @@ export default function SiteCaptureFormPage() {
           const row = dataRes?.data ?? null;
           setDefaults(row?.form_data ?? row?.formData ?? {});
           setFormStatus(row?.status ?? 'In Progress');
-          if (row) setIsOwner(row.is_owner !== false);
+          applyAccess(dataRes, row);
           setRfcActive(row?.rfc_active === true);
 
           // Which pages are already Marked Completed → the runner shows a
@@ -190,7 +219,7 @@ export default function SiteCaptureFormPage() {
         const dataRes = await siteWorkspaceClient.getSubjectFormData(subjectId, formId);
         const row = dataRes?.data ?? null;
         if (row?.status) setFormStatus(row.status);
-        if (row) setIsOwner(row.is_owner !== false);
+        applyAccess(dataRes, row);
       } catch { /* best-effort status refresh */ }
     };
     window.addEventListener('focus', refresh);
@@ -203,8 +232,8 @@ export default function SiteCaptureFormPage() {
 
   const handleSubmit = useCallback(async (formData, { reason, reasons } = {}) => {
     if (!canEnterData) {
-      dispatch(addToast({ type: 'info', message: "Only the subject's owner can submit this form." }));
-      throw new Error('not-owner');
+      dispatch(addToast({ type: 'info', message: "You do not have edit access to this subject's data." }));
+      throw new Error('no-edit-access');
     }
     if (!subjectId) {
       dispatch(addToast({ type: 'error', message: 'Cannot save: no subject selected.' }));
@@ -310,8 +339,8 @@ export default function SiteCaptureFormPage() {
   // the form so the user can keep editing.
   const handleSave = useCallback(async (formData, { reason, reasons } = {}) => {
     if (!canEnterData) {
-      dispatch(addToast({ type: 'info', message: "Only the subject's owner can edit this form." }));
-      throw new Error('not-owner');
+      dispatch(addToast({ type: 'info', message: "You do not have edit access to this subject's data." }));
+      throw new Error('no-edit-access');
     }
     if (!subjectId) {
       dispatch(addToast({ type: 'error', message: 'Cannot save: no subject selected.' }));
@@ -417,8 +446,9 @@ export default function SiteCaptureFormPage() {
         <SubjectContextStrip studyId="site" subjectId={subjectId} />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        {/* Prescriptions — only the subject's owner (treating doctor/PI) can
-            upload; everyone else sees the read-only list in the dialog. */}
+        {/* Prescriptions — only users with edit access to the subject (the owner,
+            or any site member under shared entry) can upload; everyone else sees
+            the read-only list in the dialog. */}
         <PrescriptionUpload subjectId={subjectId} canUpload={canEnterData} />
         {isSubmitted && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -443,13 +473,13 @@ export default function SiteCaptureFormPage() {
             )}
           </span>
         )}
-        {!isSubmitted && !isOwner && (
+        {!isSubmitted && !canEnterData && (
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 5,
             padding: '3px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 700,
             background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1',
           }}>
-            👁 View-only — only the subject&apos;s owner can edit
+            👁 View-only — you do not have edit access to this subject
           </span>
         )}
       </div>
@@ -464,16 +494,17 @@ export default function SiteCaptureFormPage() {
         defaultValues={defaults}
         onSubmit={handleSubmit}
         onSave={canEnterData ? handleSave : undefined}
-        onCompletePage={canEnterData && verificationEnabled ? handleCompletePage : undefined}
+        onCompletePage={canEnterData && canCompletePerm && verificationEnabled ? handleCompletePage : undefined}
         onVerifyPage={canVerify && verificationEnabled ? handleVerifyPage : undefined}
         eligibilityCriteria={eligCriteria}
         completedPages={completedPages}
         verification={verification}
         verificationEnabled={verificationEnabled}
         queryEnabled={queryEnabled}
-        canSubmit={canEnterData}
-        submitLabel={canEnterData ? 'Submit eCRF' : 'Read-only view'}
+        canSubmit={canEnterData && canSubmitPerm}
+        submitLabel={canEnterData && canSubmitPerm ? 'Submit eCRF' : 'Read-only view'}
         readOnly={!canEnterData || isSubmitted}
+        userRole={userRole}
         onBack={() => navigate(-1)}
         onExcluded={() => navigate('/site/capture')}
         rfcActive={rfcActive}
@@ -514,7 +545,7 @@ export default function SiteCaptureFormPage() {
         }
       >
         <p style={{ margin: '0 0 10px', fontSize: 13, color: '#475569', lineHeight: 1.5 }}>
-          Reopening makes this submitted form editable again for the subject&apos;s owner.
+          Reopening makes this submitted form editable again for users with edit access to this subject.
           Please give a reason — it is recorded in the audit trail.
         </p>
         <textarea

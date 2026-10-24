@@ -258,7 +258,8 @@ export default function SiteCapturePage() {
   // survey ON BEHALF of a respondent, and each completed survey is one record
   // they own. "Start Survey" auto-creates the record (auto-numbered, no subject
   // form) and drops the user straight into data capture for it. The records
-  // table is owner-scoped server-side, so each person sees only their own.
+  // table is owner-scoped server-side while the study's shared-entry policy is
+  // off; with it on, the whole site's responses are listed.
   const startSurvey = useCallback(async () => {
     if (startingSurvey) return;
     setStartingSurvey(true);
@@ -280,13 +281,23 @@ export default function SiteCapturePage() {
   // response yet, auto-open a fresh survey form (Start Survey) on landing; once
   // they have one, this page shows their submission(s) in the table instead.
   // Runs once per mount (ref guard) and only after the list has loaded.
+  //
+  // Keyed on THIS person's OWN response, not on list length: with shared entry
+  // on, the roster also holds colleagues' responses. Rows with no recorded owner
+  // (legacy) count as possibly mine so we never auto-create a duplicate — the
+  // backend would 409 it anyway.
+  const myPersonnelId = getSiteStudyContext()?.personnelId ?? '';
+  const hasOwnResponse = useMemo(
+    () => subjects.some((s) => !s.ownerId || s.ownerId === myPersonnelId),
+    [subjects, myPersonnelId],
+  );
   const autoStartedRef = useRef(false);
   useEffect(() => {
     if (!surveyMode || loading || !canCreateSubject) return;
-    if (subjects.length > 0 || autoStartedRef.current) return;
+    if (hasOwnResponse || autoStartedRef.current) return;
     autoStartedRef.current = true;
     startSurvey();
-  }, [surveyMode, loading, canCreateSubject, subjects.length, startSurvey]);
+  }, [surveyMode, loading, canCreateSubject, hasOwnResponse, startSurvey]);
 
   const confirmDelete = useCallback(async () => {
     const subject = deleteTarget;
