@@ -228,9 +228,11 @@ export default function SiteLayout() {
       icon:  Activity,
       path:  '/site/activity-log',
     },
-    allowed('reports') && {
+    // Reports Studio — same gate as the page and the backend route: any of
+    // reports.view / download_enrollment / export.
+    allowedAnyAction('reports', 'view', 'download_enrollment', 'export') && {
       key:   'reports',
-      label: 'Reports',
+      label: 'Reports Studio',
       icon:  BarChart2,
       path:  '/site/reports',
     },
