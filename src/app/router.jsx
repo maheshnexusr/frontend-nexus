@@ -175,6 +175,7 @@ const SiteSubjectFormPage            = lazy(() => import('@/features/site/pages/
 const SitePersonnelPage              = lazy(() => import('@/features/site/pages/SitePersonnelPage'));
 const SiteQueriesPage                = lazy(() => import('@/features/site/pages/SiteQueriesPage'));
 const SiteFeaturePlaceholderPage     = lazy(() => import('@/features/site/pages/SiteFeaturePlaceholderPage'));
+const SiteReportsPage                = lazy(() => import('@/features/site/pages/SiteReportsPage'));
 const SiteProfilePage                = lazy(() => import('@/features/site/pages/SiteProfilePage'));
 const RolesPage              = lazy(() => import('@/features/sponsor/pages/RolesPage'));
 const ReportsPage            = lazy(() => import('@/features/sponsor/pages/ReportsPage'));
@@ -352,7 +353,7 @@ export const router = createBrowserRouter([
           { path: 'consent/config/:templateId/design',  element: sp(ConsentConfigPage) },
           { path: 'consent/submit',          element: sp(ConsentSubmissionPage) },
           { path: 'consent/review',          element: sp(ConsentReviewPage) },
-          { path: 'reports',                 element: sp(SiteFeaturePlaceholderPage) },
+          { path: 'reports',                 element: sp(SiteReportsPage) },
           { path: 'sites',                   element: sp(SiteFeaturePlaceholderPage) },
           { path: 'personnel',               element: sp(SitePersonnelPage) },
           { path: 'roles',                   element: sp(SiteFeaturePlaceholderPage) },

@@ -5,6 +5,10 @@
  * enrolled in the study, exported as Excel (.xlsx) only. Visibility + download
  * are gated on the `reports` permission leaf (download_enrollment, or the
  * blanket export).
+ *
+ * `site` (SiteReportsPage): the same page for site personnel. It calls the site
+ * workspace endpoint, which limits the workbook to the caller's own site, and
+ * takes the study title from the site study context.
  */
 
 import { useState, useEffect } from 'react';
@@ -12,6 +16,8 @@ import { useParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { Users, Download, Loader2 } from 'lucide-react';
 import axiosClient from '@/api/sponsorAxiosClient';
+import siteAxiosClient from '@/api/siteAxiosClient';
+import { getSiteStudyContext } from '@/features/site/authStore';
 import { addToast } from '@/app/notificationSlice';
 import { usePermissions } from '@/features/auth/usePermissions';
 import { sponsorStudyContextStore } from '@/services/sponsorAuthService';
@@ -21,7 +27,7 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
 // "<Study Title> - <Protocol>.xlsx", filesystem-safe.
 const safe = (s) => String(s ?? '').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim();
 
-export default function ReportsPage() {
+export default function ReportsPage({ site = false }) {
   const { studyId } = useParams();
   const dispatch    = useDispatch();
   const { has }     = usePermissions();
@@ -34,9 +40,11 @@ export default function ReportsPage() {
 
   const [downloading, setDownloading] = useState(false);
   // Study title + protocol drive the download filename (and the card heading).
-  const [study, setStudy] = useState(null);
+  const [study, setStudy] = useState(() => (site ? getSiteStudyContext() : null));
 
   useEffect(() => {
+    // A site session already holds the study title + protocol in its context.
+    if (site) return undefined;
     let cancelled = false;
     // The forms endpoint returns the study's title + protocol number (used to
     // name the download). Best-effort — the filename falls back if it fails.
@@ -47,17 +55,26 @@ export default function ReportsPage() {
       })
       .catch(() => { /* filename falls back to a generic name */ });
     return () => { cancelled = true; };
-  }, [studyId]);
+  }, [studyId, site]);
 
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const ctx = sponsorStudyContextStore.get();
-      // No date range — export EVERY subject in the study.
-      const params = { study_id: studyId, environment: ctx?.environment };
-      const blob = await axiosClient.get('/api/v1/sponsor/workspace/reports/enrollment/download', {
-        params, responseType: 'blob',
-      });
+      let blob;
+      if (site) {
+        // The site client injects study + environment; the backend takes the
+        // site from the workspace token.
+        blob = await siteAxiosClient.get('/api/v1/site/workspace/reports/enrollment/download', {
+          responseType: 'blob',
+        });
+      } else {
+        const ctx = sponsorStudyContextStore.get();
+        // No date range — export EVERY subject in the study.
+        const params = { study_id: studyId, environment: ctx?.environment };
+        blob = await axiosClient.get('/api/v1/sponsor/workspace/reports/enrollment/download', {
+          params, responseType: 'blob',
+        });
+      }
       const data = blob instanceof Blob ? blob : new Blob([blob], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
@@ -85,7 +102,11 @@ export default function ReportsPage() {
       <div className={css.header}>
         <div>
           <h1 className={css.title}>Reports Studio</h1>
-          <p className={css.sub}>Download study reports as Excel (.xlsx) files.</p>
+          <p className={css.sub}>
+            {site
+              ? 'Download reports for your site as Excel (.xlsx) files.'
+              : 'Download study reports as Excel (.xlsx) files.'}
+          </p>
         </div>
       </div>
 
@@ -97,7 +118,7 @@ export default function ReportsPage() {
           <div className={css.cardBody}>
             <p className={css.cardTitle}>All Subjects</p>
             <p className={css.cardDesc}>
-              An Excel workbook with a summary sheet of every subject (protocol, site,
+              An Excel workbook with a summary sheet of every subject{site ? ' at your site' : ''} (protocol, site,
               subject, status, eligibility, dates) plus one sheet per subject containing
               their full data-capture (each form field and the captured value).
             </p>
